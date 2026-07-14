@@ -109,24 +109,28 @@ async function syncEnrollments(db, student, oldProgramIds = []) {
   const orgId = student.organization_id;
   const newIds = student.program_ids || [];
   const now = new Date().toISOString();
-  // Newly added
+  const today = now.slice(0, 10);
   const added = newIds.filter(id => !oldProgramIds.includes(id));
   const removed = oldProgramIds.filter(id => !newIds.includes(id));
   for (const pid of added) {
-    // Check if enrollment already exists and is active
     const existing = await db.collection('enrollments').findOne({ student_id: student.id, program_id: pid, left_at: null });
     if (existing) continue;
+    const prog = await db.collection('programs').findOne({ id: pid });
+    const allSessions = prog?.sessions || [];
+    // sessions_credited = remaining sessions of this class from today forward
+    const remainingFromToday = allSessions.filter(d => d >= today);
+    const credited = remainingFromToday.length || allSessions.length;
     await db.collection('enrollments').insertOne({
       id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
-      enrolled_at: now, left_at: null, status: 'active', created_at: now,
+      enrolled_at: now, left_at: null, status: 'active',
+      sessions_credited: credited,
+      created_at: now,
     });
-    // Auto-create fee record
-    const prog = await db.collection('programs').findOne({ id: pid });
     if (prog?.fee_amount) {
       await db.collection('fees').insertOne({
         id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
         fee_type: 'Term Fee', amount: prog.fee_amount, paid_amount: 0, status: 'pending',
-        due_date: prog.start_date || now.slice(0, 10), created_at: now,
+        due_date: prog.start_date || today, created_at: now,
       });
     }
   }
@@ -231,13 +235,24 @@ async function handleSeed() {
 
   // Enrollments
   await db.collection('enrollments').deleteMany({});
+  // Attach generated sessions to programs (needed for session-quota)
+  for (const p of programs) {
+    const sess = generateSessions(p);
+    await db.collection('programs').updateOne({ id: p.id }, { $set: { sessions: sess } });
+  }
+  const progWithSessions = await db.collection('programs').find({ organization_id: orgId }).toArray();
+  const progMap = Object.fromEntries(progWithSessions.map(p => [p.id, p]));
   const enrollments = [];
   students.forEach(s => {
     (s.program_ids || [s.program_id]).filter(Boolean).forEach(pid => {
+      const prog = progMap[pid];
+      const credited = prog?.sessions?.length || 16;
       enrollments.push({
         id: uuidv4(), organization_id: orgId, student_id: s.id, program_id: pid,
         enrolled_at: s.admission_date || new Date().toISOString(),
-        left_at: null, status: 'active', created_at: new Date().toISOString(),
+        left_at: null, status: 'active',
+        sessions_credited: credited,
+        created_at: new Date().toISOString(),
       });
     });
   });
@@ -499,17 +514,52 @@ async function router(req, method) {
   }
 
   // Enrollments endpoints
-  if (resource === 'enrollments' && method === 'GET') {
-    const q = orgScope(user);
-    const url2 = new URL(req.url);
-    if (url2.searchParams.get('student_id')) q.student_id = url2.searchParams.get('student_id');
-    if (url2.searchParams.get('program_id')) q.program_id = url2.searchParams.get('program_id');
-    const items = await db.collection('enrollments').find(q).sort({ enrolled_at: -1 }).toArray();
-    // Enrich with program names
-    const progIds = [...new Set(items.map(e => e.program_id))];
-    const progs = await db.collection('programs').find({ id: { $in: progIds } }).toArray();
-    const pMap = Object.fromEntries(progs.map(p => [p.id, p]));
-    return json({ items: items.map(e => ({ ...stripId(e), program_name: pMap[e.program_id]?.name || '-', program: pMap[e.program_id] ? stripId(pMap[e.program_id]) : null })) });
+  if (resource === 'enrollments') {
+    if (method === 'GET') {
+      const q = orgScope(user);
+      const url2 = new URL(req.url);
+      if (url2.searchParams.get('student_id')) q.student_id = url2.searchParams.get('student_id');
+      if (url2.searchParams.get('program_id')) q.program_id = url2.searchParams.get('program_id');
+      const items = await db.collection('enrollments').find(q).sort({ enrolled_at: -1 }).toArray();
+      const progIds = [...new Set(items.map(e => e.program_id))];
+      const progs = await db.collection('programs').find({ id: { $in: progIds } }).toArray();
+      const pMap = Object.fromEntries(progs.map(p => [p.id, p]));
+      // compute attendance-based sessions_attended per enrollment
+      const attRecs = await db.collection('attendance').find({ organization_id: user.organization_id }).toArray();
+      const enriched = items.map(e => {
+        const enrolledDate = (e.enrolled_at || '').slice(0, 10);
+        const attended = attRecs.filter(a => a.student_id === e.student_id && a.program_id === e.program_id && (a.status === 'present' || a.status === 'late') && a.date >= enrolledDate).length;
+        const credited = e.sessions_credited || (pMap[e.program_id]?.sessions?.length || 0);
+        const remaining = Math.max(0, credited - attended);
+        return { ...stripId(e), program_name: pMap[e.program_id]?.name || '-', program: pMap[e.program_id] ? stripId(pMap[e.program_id]) : null, sessions_credited: credited, sessions_attended: attended, sessions_remaining: remaining };
+      });
+      return json({ items: enriched });
+    }
+    // Renew an enrollment: create a fresh one with a new quota
+    if (method === 'POST' && id === 'renew') {
+      const body = await req.json(); // { enrollment_id }
+      const old = await db.collection('enrollments').findOne({ id: body.enrollment_id, organization_id: user.organization_id });
+      if (!old) return json({ error: 'Enrollment not found' }, 404);
+      const prog = await db.collection('programs').findOne({ id: old.program_id });
+      const credited = prog?.sessions?.length || 16;
+      const now = new Date().toISOString();
+      // Mark previous as completed
+      await db.collection('enrollments').updateOne({ id: old.id }, { $set: { status: 'completed', left_at: now } });
+      const fresh = {
+        id: uuidv4(), organization_id: user.organization_id, student_id: old.student_id, program_id: old.program_id,
+        enrolled_at: now, left_at: null, status: 'active', sessions_credited: credited,
+        renewed_from: old.id, created_at: now,
+      };
+      await db.collection('enrollments').insertOne(fresh);
+      if (prog?.fee_amount) {
+        await db.collection('fees').insertOne({
+          id: uuidv4(), organization_id: user.organization_id, student_id: old.student_id, program_id: old.program_id,
+          fee_type: 'Term Fee (Renewal)', amount: prog.fee_amount, paid_amount: 0, status: 'pending',
+          due_date: now.slice(0, 10), created_at: now,
+        });
+      }
+      return json(stripId(fresh));
+    }
   }
 
   // Sessions for a program

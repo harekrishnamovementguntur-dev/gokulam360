@@ -1140,6 +1140,7 @@ function Students({ students, setStudents }) {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [cardOf, setCardOf] = useState(null);
+  const [historyOf, setHistoryOf] = useState(null);
   const [org, setOrg] = useState(null);
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -1272,6 +1273,7 @@ function Students({ students, setStudents }) {
                 {s.mobile && <div className="flex items-center gap-1.5"><Phone size={11} /> {s.mobile}</div>}
               </div>
               <div className="flex gap-1 mt-3 pt-3 border-t">
+                <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setHistoryOf(s)}><Activity size={13} className="mr-1" /> History</Button>
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setCardOf(s)}><IdCard size={13} className="mr-1" /> ID Card</Button>
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(s)}><Edit3 size={13} className="mr-1" /> Edit</Button>
                 <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(s)}><Trash2 size={13} /></Button>
@@ -1395,7 +1397,139 @@ function Students({ students, setStudents }) {
           )}
         </DialogContent>
       </Dialog>
+
+      <EnrollmentHistoryDialog student={historyOf} onClose={() => setHistoryOf(null)} onChange={() => load()} />
     </div>
+  );
+}
+
+/* ============================================================
+   ENROLLMENT HISTORY DRAWER
+============================================================ */
+function EnrollmentHistoryDialog({ student, onClose, onChange }) {
+  const [enrollments, setEnrollments] = useState([]);
+  const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (!student) return;
+    setLoading(true);
+    api(`/enrollments?student_id=${student.id}`).then(r => setEnrollments(r.items)).finally(() => setLoading(false));
+  }, [student]);
+
+  const renew = async (e) => {
+    if (!confirm(`Renew ${e.program_name} for a fresh term?`)) return;
+    try {
+      await api('/enrollments/renew', { method: 'POST', body: JSON.stringify({ enrollment_id: e.id }) });
+      confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 }, colors: ['#7c3aed', '#22c55e'] });
+      toast.success('Enrollment renewed 🎉');
+      api(`/enrollments?student_id=${student.id}`).then(r => setEnrollments(r.items));
+      onChange && onChange();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  if (!student) return null;
+
+  const active = enrollments.filter(e => !e.left_at || e.status === 'active');
+  const past = enrollments.filter(e => e.left_at && e.status !== 'active');
+
+  return (
+    <Dialog open={!!student} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-3">
+            <Avatar className="h-11 w-11">
+              {student.photo_url ? <AvatarImage src={student.photo_url} /> : <AvatarFallback className="bg-saffron-gradient text-white">{initials(student.first_name + ' ' + student.last_name)}</AvatarFallback>}
+            </Avatar>
+            <div>
+              <div>{student.first_name} {student.last_name}</div>
+              <div className="text-[10px] font-mono text-muted-foreground font-normal">{student.student_id}</div>
+            </div>
+          </DialogTitle>
+          <DialogDescription>Enrollment history · session credits · renewals</DialogDescription>
+        </DialogHeader>
+
+        {loading ? (
+          <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}</div>
+        ) : enrollments.length === 0 ? (
+          <EmptyState small text="Not enrolled in any class yet" />
+        ) : (
+          <div className="space-y-4">
+            <div>
+              <div className="text-[11px] uppercase tracking-widest text-muted-foreground mb-2 font-semibold">Active enrollments ({active.length})</div>
+              <div className="space-y-2">
+                {active.map(e => <EnrollmentCard key={e.id} e={e} onRenew={renew} />)}
+                {active.length === 0 && <div className="text-xs text-muted-foreground italic">No active enrollments</div>}
+              </div>
+            </div>
+            {past.length > 0 && (
+              <div>
+                <div className="text-[11px] uppercase tracking-widest text-muted-foreground mb-2 font-semibold">History ({past.length})</div>
+                <div className="space-y-2">
+                  {past.map(e => <EnrollmentCard key={e.id} e={e} past />)}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EnrollmentCard({ e, onRenew, past = false }) {
+  const usedPct = e.sessions_credited ? Math.min(100, Math.round((e.sessions_attended / e.sessions_credited) * 100)) : 0;
+  const exhausted = e.sessions_remaining === 0 && e.sessions_credited > 0;
+  const carryover = e.program?.end_date && new Date(e.program.end_date) < new Date() && e.sessions_remaining > 0;
+  return (
+    <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
+      className={`rounded-2xl p-4 border ${past ? 'bg-muted/40 opacity-80' : 'bg-white/60 dark:bg-white/5 glass'}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-saffron-gradient text-white grid place-items-center"><BookOpen size={16} /></div>
+          <div>
+            <div className="font-semibold text-sm">{e.program_name}</div>
+            <div className="text-[10px] text-muted-foreground">
+              Enrolled {new Date(e.enrolled_at).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })}
+              {e.left_at && <> · Left {new Date(e.left_at).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })}</>}
+              {e.renewed_from && <> · Renewal</>}
+            </div>
+          </div>
+        </div>
+        <Badge className={e.status === 'active' ? 'bg-emerald-500' : e.status === 'completed' ? 'bg-primary' : 'bg-muted text-muted-foreground'}>{e.status}</Badge>
+      </div>
+
+      <div className="mt-3 space-y-1.5">
+        <div className="flex items-center justify-between text-[11px]">
+          <span className="text-muted-foreground">Sessions used</span>
+          <span className="font-semibold">
+            <span className={exhausted ? 'text-rose-600' : 'text-emerald-600'}>{e.sessions_attended}</span>
+            <span className="text-muted-foreground"> / {e.sessions_credited}</span>
+          </span>
+        </div>
+        <div className="h-2 rounded-full bg-muted overflow-hidden">
+          <div className={`h-full rounded-full transition-all ${exhausted ? 'bg-rose-500' : usedPct > 75 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${usedPct}%` }} />
+        </div>
+        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+          <span>Started {e.program?.start_date || '—'}</span>
+          <span>{e.sessions_remaining} sessions remaining</span>
+        </div>
+      </div>
+
+      {(exhausted || carryover) && !past && (
+        <div className="mt-3 flex items-center gap-2">
+          {exhausted && (
+            <div className="text-[11px] text-rose-600 flex items-center gap-1">
+              ⚠ Quota exhausted
+            </div>
+          )}
+          {carryover && !exhausted && (
+            <div className="text-[11px] text-primary flex items-center gap-1">
+              📚 {e.sessions_remaining} unused sessions carrying over from previous term
+            </div>
+          )}
+          {onRenew && <Button size="sm" className="ml-auto bg-saffron-gradient text-white h-7 text-[11px]" onClick={() => onRenew(e)}>Renew term</Button>}
+        </div>
+      )}
+    </motion.div>
   );
 }
 
@@ -1597,18 +1731,19 @@ function Attendance() {
   const [sessions, setSessions] = useState([]);
   const [date, setDate] = useState('');
   const [marks, setMarks] = useState({});
-  const [existing, setExisting] = useState({}); // map studentId -> status for the chosen date
+  const [existing, setExisting] = useState({});
+  const [enrollments, setEnrollments] = useState([]);
   useEffect(() => { api('/students').then(r => setStudents(r.items)); api('/programs').then(r => setPrograms(r.items)); }, []);
   useEffect(() => {
-    if (!program) { setSessions([]); setDate(''); return; }
+    if (!program) { setSessions([]); setDate(''); setEnrollments([]); return; }
     api(`/programs/${program}/sessions`).then(r => {
       setSessions(r.sessions || []);
-      // Auto-select today or nearest past session
       const today = new Date().toISOString().slice(0, 10);
       const todayS = r.sessions?.find(s => s.date === today);
       const nearest = r.sessions?.filter(s => s.is_past || s.is_today).slice(-1)[0];
       setDate((todayS || nearest || r.sessions?.[0])?.date || '');
     });
+    api(`/enrollments?program_id=${program}`).then(r => setEnrollments(r.items));
   }, [program]);
   useEffect(() => {
     if (!program || !date) { setExisting({}); return; }
@@ -1743,14 +1878,29 @@ function Attendance() {
           !date ? <EmptyState text="Pick a session from the strip above" /> :
           list.length === 0 ? <EmptyState text="No students enrolled in this class" /> : (
             <div className="space-y-1.5">
-              {list.map(s => (
-                <div key={s.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 transition">
+              {list.map(s => {
+                const enr = enrollments.find(e => e.student_id === s.id && !e.left_at);
+                const remaining = enr?.sessions_remaining ?? null;
+                const credited = enr?.sessions_credited ?? null;
+                const exhausted = remaining === 0 && credited > 0;
+                return (
+                <div key={s.id} className={`flex items-center gap-3 p-2 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 transition ${exhausted ? 'opacity-60' : ''}`}>
                   <Avatar className="h-9 w-9">
                     {s.photo_url ? <AvatarImage src={s.photo_url} /> : <AvatarFallback className="bg-saffron-gradient text-white text-xs">{initials(s.first_name + ' ' + s.last_name)}</AvatarFallback>}
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{s.first_name} {s.last_name}</div>
-                    <div className="text-[10px] font-mono text-muted-foreground">{s.student_id}</div>
+                    <div className="text-sm font-medium truncate flex items-center gap-2">
+                      {s.first_name} {s.last_name}
+                      {exhausted && <Badge className="bg-rose-500 text-[9px] px-1.5 py-0">Quota done</Badge>}
+                    </div>
+                    <div className="text-[10px] text-muted-foreground flex items-center gap-2">
+                      <span className="font-mono">{s.student_id}</span>
+                      {remaining !== null && (
+                        <span className={`inline-flex items-center gap-1 ${exhausted ? 'text-rose-600' : remaining <= 3 ? 'text-amber-600' : 'text-emerald-600'}`}>
+                          · <b>{remaining}</b>/{credited} sessions left
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex gap-1.5 flex-wrap">
                     {['present', 'absent', 'late', 'excused'].map(v => (
@@ -1759,7 +1909,7 @@ function Attendance() {
                     ))}
                   </div>
                 </div>
-              ))}
+              );})}
             </div>
           )}
       </div>
