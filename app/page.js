@@ -181,7 +181,7 @@ function Login({ onLoggedIn }) {
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot" /> Serving Krishna's children
                 </div>
                 <h2 className="text-3xl font-bold leading-tight text-shadow-warm">Manage with devotion.<br/>Scale with grace.</h2>
-                <p className="text-white/85 text-sm mt-3">A premium platform for Hare Krishna Sunday Schools — students, teachers, attendance, fees, ID cards & more.</p>
+                <p className="text-white/85 text-sm mt-3">A premium platform for Hare Krishna Gokulam Schools — students, teachers, attendance, fees, ID cards & more.</p>
               </div>
             </div>
             {/* Floating stat cards */}
