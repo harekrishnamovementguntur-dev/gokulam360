@@ -316,9 +316,9 @@ async function router(req, method) {
     if (method === 'POST' && !id) {
       if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
       const body = await req.json();
-      const doc = { id: uuidv4(), ...body, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), is_deleted: false };
+      const doc = { id: uuidv4(), name: body.name, address: body.address, contact_email: body.contact_email, contact_phone: body.contact_phone, currency: body.currency || 'INR', academic_year: body.academic_year || '2025-26', logo_url: body.logo_url || '', created_at: new Date().toISOString(), updated_at: new Date().toISOString(), is_deleted: false };
       await db.collection('organizations').insertOne(doc);
-      // Create org admin if provided
+      // Create org admin
       if (body.admin_email && body.admin_password) {
         const passHash = await bcrypt.hash(body.admin_password, 10);
         await db.collection('users').insertOne({
@@ -326,6 +326,21 @@ async function router(req, method) {
           role: 'org_admin', organization_id: doc.id, created_at: new Date().toISOString()
         });
       }
+      // Create first program
+      if (body.first_program?.name) {
+        await db.collection('programs').insertOne({
+          id: uuidv4(), organization_id: doc.id, name: body.first_program.name,
+          description: body.first_program.description || '', age_group: body.first_program.age_group || '',
+          duration_months: Number(body.first_program.duration_months) || 4, capacity: Number(body.first_program.capacity) || 30,
+          start_date: body.first_program.start_date || '', end_date: body.first_program.end_date || '',
+          created_at: new Date().toISOString(), is_deleted: false,
+        });
+      }
+      // Log
+      await db.collection('activity').insertOne({
+        id: uuidv4(), organization_id: doc.id, kind: 'org_created',
+        title: `Organization "${doc.name}" created`, actor: user.name, created_at: new Date().toISOString(),
+      });
       return json(stripId(doc));
     }
     if (method === 'PUT' && id) {
@@ -581,7 +596,102 @@ async function router(req, method) {
       const sMap = Object.fromEntries(students.map(s => [s.id, `${s.first_name} ${s.last_name}`]));
       return json({ items: items.map(f => ({ ...stripId(f), student_name: sMap[f.student_id] || '-' })) });
     }
+    if (type === 'attendance-summary') {
+      const students = await db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray();
+      const attendance = await db.collection('attendance').find(scope).toArray();
+      const summary = students.map(s => {
+        const sRecs = attendance.filter(a => a.student_id === s.id);
+        const months = {};
+        sRecs.forEach(a => {
+          const key = a.date.slice(0, 7);
+          if (!months[key]) months[key] = { present: 0, total: 0 };
+          months[key].total++;
+          if (a.status === 'present' || a.status === 'late') months[key].present++;
+        });
+        const monthly = Object.fromEntries(Object.entries(months).map(([k, v]) => [k, v.total ? Math.round((v.present / v.total) * 100) : 0]));
+        const totalPresent = sRecs.filter(a => a.status === 'present' || a.status === 'late').length;
+        const overall = sRecs.length ? Math.round((totalPresent / sRecs.length) * 100) : 0;
+        return { student_id: s.student_id, name: `${s.first_name} ${s.last_name}`, overall, monthly, total_sessions: sRecs.length, present: totalPresent };
+      });
+      const allMonths = Array.from(new Set(attendance.map(a => a.date.slice(0, 7)))).sort();
+      return json({ months: allMonths, students: summary });
+    }
     return json({ error: 'Unknown report' }, 400);
+  }
+
+  // Bulk import students
+  if (resource === 'students-import' && method === 'POST') {
+    if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
+    const body = await req.json();
+    const rows = Array.isArray(body.rows) ? body.rows : [];
+    const programs = await db.collection('programs').find({ organization_id: user.organization_id }).toArray();
+    const pMap = Object.fromEntries(programs.map(p => [p.name.toLowerCase(), p.id]));
+    const docs = [];
+    const errors = [];
+    rows.forEach((r, idx) => {
+      const first_name = (r.first_name || r['First Name'] || '').trim();
+      const last_name = (r.last_name || r['Last Name'] || '').trim();
+      if (!first_name && !last_name) { errors.push({ row: idx + 2, error: 'Missing name' }); return; }
+      const programName = (r.program || r['Program'] || '').toLowerCase().trim();
+      docs.push({
+        id: uuidv4(),
+        organization_id: user.organization_id,
+        student_id: (r.student_id || r['Student ID'] || 'GK-2025-' + String(Math.floor(1000 + Math.random() * 9000))).toString(),
+        first_name, last_name,
+        dob: r.dob || r['DOB'] || '',
+        gender: r.gender || r['Gender'] || 'Male',
+        mobile: r.mobile || r['Mobile'] || '',
+        email: r.email || r['Email'] || '',
+        father_name: r.father_name || r['Father Name'] || '',
+        mother_name: r.mother_name || r['Mother Name'] || '',
+        emergency_contact: r.emergency_contact || r['Emergency Contact'] || '',
+        address: r.address || r['Address'] || '',
+        program_id: pMap[programName] || '',
+        status: (r.status || r['Status'] || 'active').toLowerCase(),
+        admission_date: r.admission_date || r['Admission Date'] || new Date().toISOString().slice(0, 10),
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        is_deleted: false,
+      });
+    });
+    if (docs.length) await db.collection('students').insertMany(docs);
+    await db.collection('activity').insertOne({
+      id: uuidv4(), organization_id: user.organization_id, kind: 'student_added',
+      title: `Bulk import: ${docs.length} students added`, actor: user.name || 'Admin', created_at: new Date().toISOString(),
+    });
+    return json({ imported: docs.length, errors });
+  }
+
+  // Attendance summary report - per student monthly %
+  if (resource === 'reports' && id === 'attendance-summary' && method === 'GET') {
+    const scope = orgScope(user);
+    const students = await db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray();
+    const attendance = await db.collection('attendance').find(scope).toArray();
+    // Group attendance by student+month
+    const summary = students.map(s => {
+      const sRecs = attendance.filter(a => a.student_id === s.id);
+      const months = {};
+      sRecs.forEach(a => {
+        const key = a.date.slice(0, 7); // YYYY-MM
+        if (!months[key]) months[key] = { present: 0, total: 0 };
+        months[key].total++;
+        if (a.status === 'present' || a.status === 'late') months[key].present++;
+      });
+      const monthly = Object.fromEntries(Object.entries(months).map(([k, v]) => [k, v.total ? Math.round((v.present / v.total) * 100) : 0]));
+      const totalPresent = sRecs.filter(a => a.status === 'present' || a.status === 'late').length;
+      const overall = sRecs.length ? Math.round((totalPresent / sRecs.length) * 100) : 0;
+      return {
+        student_id: s.student_id,
+        name: `${s.first_name} ${s.last_name}`,
+        overall,
+        monthly,
+        total_sessions: sRecs.length,
+        present: totalPresent,
+      };
+    });
+    // Collect all months in dataset
+    const allMonths = Array.from(new Set(attendance.map(a => a.date.slice(0, 7)))).sort();
+    return json({ months: allMonths, students: summary });
   }
 
   return json({ error: 'Not found', path: url.pathname, method }, 404);

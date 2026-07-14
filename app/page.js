@@ -10,7 +10,7 @@ import {
   UserCircle2, TrendingUp, ChevronRight, Sparkles, Flame, BookOpen, ClipboardCheck,
   Bell, Send, MessageSquare, Camera, FileText, Download, FileSpreadsheet, Command as CmdIcon,
   Rocket, Award, Heart, Activity, ArrowUpRight, Phone, PartyPopper, Zap, Layers, School,
-  ChevronLeft
+  ChevronLeft, Upload, Check, CheckCircle2, Circle, Palette, Wallet, UserPlus
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip as RTooltip,
@@ -713,60 +713,403 @@ function EmptyState({ text = 'Nothing here yet', small = false, action }) {
 }
 
 /* ============================================================
-   ORGANIZATIONS
+   IMPORT STUDENTS (CSV / XLSX)
+============================================================ */
+function ImportStudents({ programs, onImported }) {
+  const [open, setOpen] = useState(false);
+  const [rows, setRows] = useState([]);
+  const [fileName, setFileName] = useState('');
+  const [importing, setImporting] = useState(false);
+  const fileRef = useRef(null);
+
+  const template = [
+    { first_name: 'Krishna', last_name: 'Sharma', dob: '2015-05-12', gender: 'Male', mobile: '+919876543210', email: 'krishna@example.com', father_name: 'Ramesh Sharma', mother_name: 'Sita Sharma', emergency_contact: '+919812345678', address: 'Vrindavan Colony, Kochi', program: programs[0]?.name || 'Sunday School', status: 'active' },
+    { first_name: 'Radha', last_name: 'Menon', dob: '2016-08-24', gender: 'Female', mobile: '+919876000001', email: 'radha@example.com', father_name: 'Mohan Menon', mother_name: 'Lakshmi Menon', emergency_contact: '+919812345679', address: 'Kochi', program: programs[1]?.name || 'Sunday School', status: 'active' },
+  ];
+
+  const downloadTemplate = async () => {
+    const XLSX = await import('xlsx');
+    const ws = XLSX.utils.json_to_sheet(template);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Students');
+    XLSX.writeFile(wb, 'gokulam360-students-template.xlsx');
+  };
+
+  const onFile = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    setFileName(file.name);
+    const buf = await file.arrayBuffer();
+    if (file.name.endsWith('.csv')) {
+      const text = new TextDecoder().decode(buf);
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      const headers = lines[0].split(',').map(h => h.replace(/^"|"$/g, '').trim());
+      const parsed = lines.slice(1).map(line => {
+        const cells = line.match(/("([^"]*)"|[^,]+)/g)?.map(c => c.replace(/^"|"$/g, '').trim()) || [];
+        return Object.fromEntries(headers.map((h, i) => [h, cells[i] || '']));
+      });
+      setRows(parsed);
+    } else {
+      const XLSX = await import('xlsx');
+      const wb = XLSX.read(buf);
+      const first = wb.SheetNames[0];
+      const parsed = XLSX.utils.sheet_to_json(wb.Sheets[first], { defval: '' });
+      setRows(parsed);
+    }
+  };
+
+  const submit = async () => {
+    setImporting(true);
+    try {
+      const res = await api('/students-import', { method: 'POST', body: JSON.stringify({ rows }) });
+      confetti({ particleCount: Math.min(200, res.imported * 4), spread: 90, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#22c55e'] });
+      toast.success(`🎉 Imported ${res.imported} students${res.errors.length ? ` • ${res.errors.length} skipped` : ''}`);
+      setOpen(false); setRows([]); setFileName('');
+      onImported && onImported();
+    } catch (e) { toast.error(e.message); }
+    finally { setImporting(false); }
+  };
+
+  const previewCols = ['first_name', 'last_name', 'mobile', 'program', 'gender', 'status'];
+
+  return (
+    <>
+      <Button variant="outline" onClick={() => setOpen(true)}><Upload size={15} className="mr-1" /> Import</Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Bulk Import Students</DialogTitle>
+            <DialogDescription>Upload a CSV or Excel file. Columns: first_name, last_name, dob, gender, mobile, email, father_name, mother_name, emergency_contact, address, program, status</DialogDescription>
+          </DialogHeader>
+
+          {rows.length === 0 ? (
+            <div className="space-y-4">
+              <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-8 text-center hover:bg-primary/10 transition cursor-pointer" onClick={() => fileRef.current?.click()}>
+                <div className="w-14 h-14 rounded-2xl bg-saffron-gradient text-white grid place-items-center mx-auto mb-3 shadow-lg"><Upload size={22} /></div>
+                <div className="font-semibold">Drop your file here or click to browse</div>
+                <div className="text-xs text-muted-foreground mt-1">.csv, .xlsx, .xls — up to 500 students</div>
+                <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" hidden onChange={onFile} />
+              </div>
+              <div className="flex items-center gap-2 justify-center">
+                <span className="text-xs text-muted-foreground">First time?</span>
+                <Button size="sm" variant="link" onClick={downloadTemplate}><Download size={13} className="mr-1" /> Download Excel template</Button>
+              </div>
+              <div className="text-[11px] text-muted-foreground text-center">
+                Program names must match existing programs (case-insensitive). Missing programs default to unassigned.
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-sm">
+                  <span className="font-semibold">{rows.length} rows</span> parsed from <code className="text-xs">{fileName}</code>
+                </div>
+                <Button size="sm" variant="ghost" onClick={() => { setRows([]); setFileName(''); }}>Change file</Button>
+              </div>
+              <div className="rounded-xl border overflow-hidden max-h-80 overflow-y-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-card">
+                    <TableRow>{previewCols.map(c => <TableHead key={c} className="text-[11px] uppercase">{c.replace('_', ' ')}</TableHead>)}</TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.slice(0, 50).map((r, i) => (
+                      <TableRow key={i}>
+                        {previewCols.map(c => (
+                          <TableCell key={c} className="text-xs whitespace-nowrap">{String(r[c] || r[c.replace('_', ' ')] || '-')}</TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {rows.length > 50 && <div className="text-center text-[11px] text-muted-foreground py-2">…and {rows.length - 50} more rows</div>}
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button className="bg-saffron-gradient" onClick={submit} disabled={importing || rows.length === 0}>
+              {importing ? 'Importing…' : `Import ${rows.length} students`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+/* ============================================================
+   ORGANIZATIONS + WIZARD
 ============================================================ */
 function Organizations() {
   const [items, setItems] = useState([]);
-  const [open, setOpen] = useState(false);
-  const empty = { name: '', address: '', contact_email: '', contact_phone: '', currency: 'INR', admin_name: '', admin_email: '', admin_password: '' };
-  const [form, setForm] = useState(empty);
+  const [wizardOpen, setWizardOpen] = useState(false);
   const load = () => api('/organizations').then(r => setItems(r.items));
   useEffect(() => { load(); }, []);
-  const save = async () => {
-    try { await api('/organizations', { method: 'POST', body: JSON.stringify(form) }); toast.success('Organization created 🎉'); setOpen(false); load(); setForm(empty); }
-    catch (e) { toast.error(e.message); }
-  };
+
   return (
     <div className="space-y-5">
       <PageHeader title="Organizations" subtitle="Manage every tenant on Gokulam360" icon={Building2}
-        action={<Button onClick={() => setOpen(true)} className="bg-saffron-gradient shadow"><Plus size={15} className="mr-1" /> New Organization</Button>} />
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {items.map((o, i) => (
-          <motion.div key={o.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-            className="rounded-2xl glass p-5 card-lift">
-            <div className="flex items-start gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-saffron-gradient text-white grid place-items-center shadow"><Building2 size={20} /></div>
-              <div className="flex-1 min-w-0">
-                <div className="font-semibold truncate">{o.name}</div>
-                <div className="text-xs text-muted-foreground truncate">{o.address}</div>
+        action={<Button onClick={() => setWizardOpen(true)} className="bg-saffron-gradient shadow"><Plus size={15} className="mr-1" /> New Organization</Button>} />
+      {items.length === 0 ? <EmptyState text="No organizations yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={() => setWizardOpen(true)}><Plus size={14} className="mr-1" />Create first organization</Button>} /> : (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {items.map((o, i) => (
+            <motion.div key={o.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+              className="rounded-2xl glass p-5 card-lift">
+              <div className="flex items-start gap-3">
+                <div className="w-12 h-12 rounded-2xl bg-saffron-gradient text-white grid place-items-center shadow"><Building2 size={20} /></div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold truncate">{o.name}</div>
+                  <div className="text-xs text-muted-foreground truncate">{o.address}</div>
+                </div>
+                <Badge variant="secondary">{o.currency}</Badge>
               </div>
-              <Badge variant="secondary">{o.currency}</Badge>
-            </div>
-            <div className="mt-3 space-y-1 text-xs">
-              <div className="flex items-center gap-2"><span className="text-muted-foreground">Email</span><span className="ml-auto font-medium">{o.contact_email || '-'}</span></div>
-              <div className="flex items-center gap-2"><span className="text-muted-foreground">Phone</span><span className="ml-auto font-medium">{o.contact_phone || '-'}</span></div>
-              <div className="flex items-center gap-2"><span className="text-muted-foreground">Since</span><span className="ml-auto font-medium">{new Date(o.created_at).toLocaleDateString()}</span></div>
-            </div>
-          </motion.div>
-        ))}
-      </div>
+              <div className="mt-3 space-y-1 text-xs">
+                <div className="flex items-center gap-2"><span className="text-muted-foreground">Email</span><span className="ml-auto font-medium truncate max-w-[60%]">{o.contact_email || '-'}</span></div>
+                <div className="flex items-center gap-2"><span className="text-muted-foreground">Phone</span><span className="ml-auto font-medium">{o.contact_phone || '-'}</span></div>
+                <div className="flex items-center gap-2"><span className="text-muted-foreground">Since</span><span className="ml-auto font-medium">{new Date(o.created_at).toLocaleDateString()}</span></div>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+      <OrgWizard open={wizardOpen} onOpenChange={setWizardOpen} onCreated={() => { setWizardOpen(false); load(); }} />
+    </div>
+  );
+}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>Create Organization</DialogTitle><DialogDescription>Also provisions the first Org Admin.</DialogDescription></DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
-            <div className="col-span-2"><Label>Address</Label><Input value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
-            <div><Label>Contact Email</Label><Input value={form.contact_email} onChange={e => setForm({ ...form, contact_email: e.target.value })} /></div>
-            <div><Label>Contact Phone</Label><Input value={form.contact_phone} onChange={e => setForm({ ...form, contact_phone: e.target.value })} /></div>
-            <div className="col-span-2 pt-2 text-[10px] font-semibold text-muted-foreground uppercase tracking-widest">Admin account</div>
-            <div><Label>Admin Name</Label><Input value={form.admin_name} onChange={e => setForm({ ...form, admin_name: e.target.value })} /></div>
-            <div><Label>Admin Email</Label><Input value={form.admin_email} onChange={e => setForm({ ...form, admin_email: e.target.value })} /></div>
-            <div className="col-span-2"><Label>Admin Password</Label><Input type="password" value={form.admin_password} onChange={e => setForm({ ...form, admin_password: e.target.value })} /></div>
+function OrgWizard({ open, onOpenChange, onCreated }) {
+  const [step, setStep] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({
+    name: '', address: '',
+    contact_email: '', contact_phone: '',
+    currency: 'INR', academic_year: '2025-26', logo_url: '',
+    admin_name: '', admin_email: '', admin_password: '',
+    first_program: { name: 'Sunday School', description: 'Weekly spiritual education for children', age_group: '6-14', duration_months: 4, capacity: 40, start_date: '', end_date: '' },
+    fees: { admission: 500, term: 1500 },
+  });
+  const set = (patch) => setForm(f => ({ ...f, ...patch }));
+  const setProgram = (patch) => setForm(f => ({ ...f, first_program: { ...f.first_program, ...patch } }));
+  const setFees = (patch) => setForm(f => ({ ...f, fees: { ...f.fees, ...patch } }));
+
+  const steps = [
+    { key: 'welcome', title: 'Welcome', icon: Sparkles, subtitle: "Let's set up your Sunday School" },
+    { key: 'details', title: 'Organization', icon: Building2, subtitle: 'Basic details' },
+    { key: 'contact', title: 'Contact', icon: Phone, subtitle: 'How families reach you' },
+    { key: 'branding', title: 'Branding', icon: Palette, subtitle: 'Currency & academic year' },
+    { key: 'admin', title: 'Admin', icon: UserPlus, subtitle: 'First admin account' },
+    { key: 'program', title: 'First Program', icon: BookOpen, subtitle: 'Add your inaugural class' },
+    { key: 'review', title: 'Launch', icon: Rocket, subtitle: 'Review & create' },
+  ];
+
+  const canNext = () => {
+    const s = steps[step].key;
+    if (s === 'details') return form.name.trim().length > 1;
+    if (s === 'contact') return form.contact_email.includes('@');
+    if (s === 'admin') return form.admin_name && form.admin_email.includes('@') && form.admin_password.length >= 6;
+    if (s === 'program') return true;
+    return true;
+  };
+
+  const next = () => { if (!canNext()) { toast.error('Please complete required fields'); return; } setStep(s => Math.min(steps.length - 1, s + 1)); };
+  const prev = () => setStep(s => Math.max(0, s - 1));
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      await api('/organizations', { method: 'POST', body: JSON.stringify(form) });
+      confetti({ particleCount: 250, spread: 100, origin: { y: 0.5 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#22c55e', '#f43f5e'] });
+      toast.success(`🎉 ${form.name} is live!`);
+      onCreated();
+      // Reset
+      setStep(0);
+      setForm({ name: '', address: '', contact_email: '', contact_phone: '', currency: 'INR', academic_year: '2025-26', logo_url: '', admin_name: '', admin_email: '', admin_password: '', first_program: { name: 'Sunday School', description: '', age_group: '6-14', duration_months: 4, capacity: 40, start_date: '', end_date: '' }, fees: { admission: 500, term: 1500 } });
+    } catch (e) { toast.error(e.message); }
+    finally { setSaving(false); }
+  };
+
+  const s = steps[step];
+  const StepIcon = s.icon;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl p-0 overflow-hidden max-h-[92vh]">
+        <div className="grid md:grid-cols-[220px_1fr]">
+          {/* Left rail */}
+          <div className="hidden md:flex flex-col bg-gradient-to-b from-primary/15 via-blue-500/10 to-fuchsia-500/10 p-5 border-r">
+            <div className="flex items-center gap-2 mb-6">
+              <div className="w-9 h-9 rounded-xl bg-saffron-gradient grid place-items-center text-white shadow ring-glow"><Flame size={16} /></div>
+              <div className="font-bold text-sm">Gokulam<span className="text-gradient">360</span></div>
+            </div>
+            <div className="space-y-1">
+              {steps.map((st, i) => {
+                const done = i < step; const active = i === step; const Ic = st.icon;
+                return (
+                  <div key={st.key} className={`flex items-center gap-2.5 py-2 px-2 rounded-lg text-[12px] transition ${active ? 'bg-white/70 dark:bg-white/10 shadow-sm font-semibold' : 'opacity-70'}`}>
+                    <div className={`w-6 h-6 rounded-full grid place-items-center text-white text-[10px] font-semibold shrink-0 ${done ? 'bg-emerald-500' : active ? 'bg-saffron-gradient' : 'bg-muted text-muted-foreground'}`}>
+                      {done ? <Check size={12} /> : <Ic size={11} />}
+                    </div>
+                    <span>{st.title}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-auto rounded-xl bg-white/60 dark:bg-black/20 backdrop-blur p-3">
+              <div className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1">Step {step + 1} of {steps.length}</div>
+              <Progress value={((step + 1) / steps.length) * 100} className="h-1.5" />
+            </div>
           </div>
-          <DialogFooter><Button onClick={save} className="bg-saffron-gradient">Create</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
+
+          {/* Right content */}
+          <div className="p-6 md:p-8 flex flex-col max-h-[92vh] overflow-y-auto">
+            <AnimatePresence mode="wait">
+              <motion.div key={step} initial={{ opacity: 0, x: 12 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -12 }} transition={{ duration: 0.25 }} className="flex-1 min-h-[340px]">
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-11 h-11 rounded-2xl bg-saffron-gradient text-white grid place-items-center shadow-lg"><StepIcon size={18} /></div>
+                  <div>
+                    <div className="text-xl font-bold tracking-tight">{s.title}</div>
+                    <div className="text-xs text-muted-foreground">{s.subtitle}</div>
+                  </div>
+                </div>
+
+                {s.key === 'welcome' && (
+                  <div className="space-y-4 text-center py-4">
+                    <motion.div initial={{ scale: 0.7 }} animate={{ scale: 1 }} transition={{ type: 'spring', stiffness: 180 }}
+                      className="mx-auto w-24 h-24 rounded-3xl bg-saffron-gradient grid place-items-center text-white shadow-2xl ring-glow">
+                      <Rocket size={40} />
+                    </motion.div>
+                    <div className="text-2xl font-bold">Welcome to Gokulam<span className="text-gradient">360</span></div>
+                    <div className="text-sm text-muted-foreground max-w-md mx-auto">
+                      In just 6 quick steps you'll launch a fully-configured Sunday School — with an admin account, first program, and everything ready for enrolments.
+                    </div>
+                    <div className="flex justify-center gap-3 pt-3">
+                      {[
+                        { icon: Building2, label: 'Multi-tenant' },
+                        { icon: Users, label: 'Roles' },
+                        { icon: MessageSquare, label: 'WhatsApp' },
+                        { icon: IdCard, label: 'ID Cards' },
+                      ].map(f => (
+                        <div key={f.label} className="rounded-xl bg-white/60 dark:bg-white/5 border p-3 min-w-[100px]">
+                          <div className="w-8 h-8 rounded-lg bg-saffron-gradient text-white grid place-items-center mx-auto mb-1.5"><f.icon size={14} /></div>
+                          <div className="text-[11px] font-medium">{f.label}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {s.key === 'details' && (
+                  <div className="space-y-3">
+                    <div><Label>Organization Name *</Label><Input value={form.name} onChange={e => set({ name: e.target.value })} placeholder="e.g. ISKCON Gokulam Sunday School" /></div>
+                    <div><Label>Address</Label><Textarea rows={2} value={form.address} onChange={e => set({ address: e.target.value })} placeholder="Full address for records" /></div>
+                  </div>
+                )}
+
+                {s.key === 'contact' && (
+                  <div className="space-y-3">
+                    <div><Label>Primary Email *</Label><Input type="email" value={form.contact_email} onChange={e => set({ contact_email: e.target.value })} placeholder="contact@yourorg.org" /></div>
+                    <div><Label>Phone</Label><Input value={form.contact_phone} onChange={e => set({ contact_phone: e.target.value })} placeholder="+91 98765 43210" /></div>
+                    <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-[11px] text-muted-foreground">
+                      💡 This is displayed on ID cards, receipts and parent communications.
+                    </div>
+                  </div>
+                )}
+
+                {s.key === 'branding' && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div><Label>Currency</Label>
+                      <Select value={form.currency} onValueChange={v => set({ currency: v })}>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="INR">₹ INR — Indian Rupee</SelectItem>
+                          <SelectItem value="USD">$ USD — US Dollar</SelectItem>
+                          <SelectItem value="GBP">£ GBP — British Pound</SelectItem>
+                          <SelectItem value="EUR">€ EUR — Euro</SelectItem>
+                          <SelectItem value="AUD">A$ AUD — Australian Dollar</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div><Label>Academic Year</Label><Input value={form.academic_year} onChange={e => set({ academic_year: e.target.value })} placeholder="2025-26" /></div>
+                    <div className="col-span-2 mt-2">
+                      <Label>Fee defaults</Label>
+                      <div className="grid grid-cols-2 gap-2 mt-1">
+                        <Input type="number" value={form.fees.admission} onChange={e => setFees({ admission: Number(e.target.value) })} placeholder="Admission fee" />
+                        <Input type="number" value={form.fees.term} onChange={e => setFees({ term: Number(e.target.value) })} placeholder="Term fee" />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {s.key === 'admin' && (
+                  <div className="space-y-3">
+                    <div className="rounded-xl p-3 bg-gradient-to-br from-primary/10 to-blue-500/10 border border-primary/20 text-[11px]">
+                      This person will manage this organization end-to-end. They'll get their own login.
+                    </div>
+                    <div><Label>Full Name *</Label><Input value={form.admin_name} onChange={e => set({ admin_name: e.target.value })} placeholder="Radha Devi Dasi" /></div>
+                    <div><Label>Email *</Label><Input type="email" value={form.admin_email} onChange={e => set({ admin_email: e.target.value })} placeholder="admin@yourorg.org" /></div>
+                    <div><Label>Password * (min 6 chars)</Label><Input type="password" value={form.admin_password} onChange={e => set({ admin_password: e.target.value })} placeholder="At least 6 characters" /></div>
+                  </div>
+                )}
+
+                {s.key === 'program' && (
+                  <div className="space-y-3">
+                    <div className="text-[11px] text-muted-foreground">Add your first class — you can add more later.</div>
+                    <div><Label>Program Name</Label><Input value={form.first_program.name} onChange={e => setProgram({ name: e.target.value })} placeholder="Sunday School" /></div>
+                    <div><Label>Description</Label><Textarea rows={2} value={form.first_program.description} onChange={e => setProgram({ description: e.target.value })} /></div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div><Label className="text-[10px]">Age Group</Label><Input value={form.first_program.age_group} onChange={e => setProgram({ age_group: e.target.value })} placeholder="6-14" /></div>
+                      <div><Label className="text-[10px]">Duration (mo)</Label><Input type="number" value={form.first_program.duration_months} onChange={e => setProgram({ duration_months: e.target.value })} /></div>
+                      <div><Label className="text-[10px]">Capacity</Label><Input type="number" value={form.first_program.capacity} onChange={e => setProgram({ capacity: e.target.value })} /></div>
+                    </div>
+                  </div>
+                )}
+
+                {s.key === 'review' && (
+                  <div className="space-y-3">
+                    <div className="rounded-2xl overflow-hidden">
+                      <div className="bg-saffron-gradient text-white p-4">
+                        <div className="text-[11px] uppercase tracking-widest opacity-80">Ready to launch</div>
+                        <div className="text-2xl font-bold mt-1">{form.name}</div>
+                        <div className="text-xs opacity-90 mt-0.5">{form.address}</div>
+                      </div>
+                      <div className="p-4 bg-white/50 dark:bg-white/5 space-y-2 text-xs">
+                        <ReviewRow icon={MessageSquare} label="Contact" value={`${form.contact_email} • ${form.contact_phone || '—'}`} />
+                        <ReviewRow icon={Palette} label="Currency" value={`${form.currency} • ${form.academic_year}`} />
+                        <ReviewRow icon={UserPlus} label="Admin" value={`${form.admin_name} <${form.admin_email}>`} />
+                        <ReviewRow icon={BookOpen} label="First program" value={`${form.first_program.name} • ${form.first_program.age_group} • ${form.first_program.capacity} seats`} />
+                        <ReviewRow icon={Wallet} label="Fee defaults" value={`Admission ${form.currency} ${form.fees.admission} • Term ${form.currency} ${form.fees.term}`} />
+                      </div>
+                    </div>
+                    <div className="text-[11px] text-muted-foreground text-center">Click <b>Launch</b> to create the organization and admin login instantly.</div>
+                  </div>
+                )}
+              </motion.div>
+            </AnimatePresence>
+
+            <div className="flex items-center gap-2 mt-6 pt-4 border-t">
+              <Button variant="ghost" onClick={prev} disabled={step === 0}><ChevronLeft size={14} className="mr-1" /> Back</Button>
+              <div className="ml-auto flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">{step + 1} / {steps.length}</span>
+                {step < steps.length - 1 ? (
+                  <Button className="bg-saffron-gradient" onClick={next}>Continue <ChevronRight size={14} className="ml-1" /></Button>
+                ) : (
+                  <Button className="bg-saffron-gradient" onClick={submit} disabled={saving}>
+                    <Rocket size={14} className="mr-1" /> {saving ? 'Launching…' : 'Launch Organization'}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ReviewRow({ icon: Icon, label, value }) {
+  return (
+    <div className="flex items-center gap-3 py-1.5 border-b last:border-0">
+      <div className="w-8 h-8 rounded-lg bg-primary/10 grid place-items-center text-primary"><Icon size={14} /></div>
+      <div className="text-[10px] uppercase tracking-widest text-muted-foreground w-24">{label}</div>
+      <div className="flex-1 font-medium truncate">{value}</div>
     </div>
   );
 }
@@ -871,7 +1214,10 @@ function Students({ students, setStudents }) {
   return (
     <div className="space-y-5">
       <PageHeader title="Students" subtitle={`${filtered.length} of ${students.length} students`} icon={GraduationCap}
-        action={<Button onClick={openNew} className="bg-saffron-gradient shadow"><Plus size={15} className="mr-1" /> Add Student</Button>} />
+        action={<div className="flex gap-2">
+          <ImportStudents programs={programs} onImported={load} />
+          <Button onClick={openNew} className="bg-saffron-gradient shadow"><Plus size={15} className="mr-1" /> Add Student</Button>
+        </div>} />
 
       {/* Filters bar */}
       <div className="flex flex-wrap items-center gap-3">
@@ -1577,10 +1923,15 @@ function Notifications({ students }) {
 function Reports() {
   const [tab, setTab] = useState('students');
   const [rows, setRows] = useState([]);
+  const [attSummary, setAttSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   useEffect(() => {
     setLoading(true);
-    api(`/reports/${tab}`).then(r => setRows(r.items)).finally(() => setLoading(false));
+    if (tab === 'attendance-summary') {
+      api('/reports/attendance-summary').then(setAttSummary).finally(() => setLoading(false));
+    } else {
+      api(`/reports/${tab}`).then(r => setRows(r.items)).finally(() => setLoading(false));
+    }
   }, [tab]);
 
   const columns = {
@@ -1590,15 +1941,30 @@ function Reports() {
   }[tab];
 
   const exportCSV = () => {
+    if (tab === 'attendance-summary' && attSummary) {
+      const headers = ['Student ID', 'Name', 'Overall %', 'Sessions', 'Present', ...attSummary.months];
+      const lines = attSummary.students.map(s => [s.student_id, s.name, s.overall + '%', s.total_sessions, s.present, ...attSummary.months.map(m => (s.monthly[m] ?? '-') + (s.monthly[m] !== undefined ? '%' : ''))]);
+      const csv = [headers.join(','), ...lines.map(l => l.map(v => `"${v}"`).join(','))].join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'attendance-summary.csv'; a.click();
+      return;
+    }
     const csv = [columns.join(','), ...rows.map(r => columns.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${tab}-report.csv`; a.click();
   };
   const exportXLSX = async () => {
     const XLSX = await import('xlsx');
-    const ws = XLSX.utils.json_to_sheet(rows.map(r => Object.fromEntries(columns.map(c => [c, r[c] ?? '']))));
-    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, tab);
-    XLSX.writeFile(wb, `${tab}-report.xlsx`);
+    let ws, sheet = tab;
+    if (tab === 'attendance-summary' && attSummary) {
+      const data = attSummary.students.map(s => ({ 'Student ID': s.student_id, Name: s.name, 'Overall %': s.overall, Sessions: s.total_sessions, Present: s.present, ...Object.fromEntries(attSummary.months.map(m => [m, s.monthly[m] ?? ''])) }));
+      ws = XLSX.utils.json_to_sheet(data);
+      sheet = 'attendance-summary';
+    } else {
+      ws = XLSX.utils.json_to_sheet(rows.map(r => Object.fromEntries(columns.map(c => [c, r[c] ?? '']))));
+    }
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, sheet);
+    XLSX.writeFile(wb, `${sheet}-report.xlsx`);
   };
   const exportPDF = async () => {
     const { jsPDF } = await import('jspdf');
@@ -1631,29 +1997,125 @@ function Reports() {
         <TabsList>
           <TabsTrigger value="students">Students</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
+          <TabsTrigger value="attendance-summary">Monthly Summary</TabsTrigger>
           <TabsTrigger value="fees">Fees</TabsTrigger>
         </TabsList>
         <TabsContent value={tab} className="mt-4">
-          <div className="rounded-2xl glass overflow-hidden">
-            {loading ? <div className="p-6 space-y-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-8" />)}</div> :
-              rows.length === 0 ? <EmptyState text="No data in this report" /> : (
-                <div className="overflow-x-auto">
-                  <Table>
-                    <TableHeader><TableRow>{columns.map(c => <TableHead key={c} className="whitespace-nowrap">{c.replace(/_/g, ' ')}</TableHead>)}</TableRow></TableHeader>
-                    <TableBody>
-                      {rows.slice(0, 200).map((r, i) => (
-                        <TableRow key={i}>
-                          {columns.map(c => <TableCell key={c} className="whitespace-nowrap text-xs">{String(r[c] ?? '-')}</TableCell>)}
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                  {rows.length > 200 && <div className="text-center text-[11px] text-muted-foreground py-3">Showing 200 of {rows.length} rows. Export to see all.</div>}
-                </div>
-              )}
-          </div>
+          {tab === 'attendance-summary' ? (
+            <AttendanceSummaryTable data={attSummary} loading={loading} />
+          ) : (
+            <div className="rounded-2xl glass overflow-hidden">
+              {loading ? <div className="p-6 space-y-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-8" />)}</div> :
+                rows.length === 0 ? <EmptyState text="No data in this report" /> : (
+                  <div className="overflow-x-auto">
+                    <Table>
+                      <TableHeader><TableRow>{columns.map(c => <TableHead key={c} className="whitespace-nowrap">{c.replace(/_/g, ' ')}</TableHead>)}</TableRow></TableHeader>
+                      <TableBody>
+                        {rows.slice(0, 200).map((r, i) => (
+                          <TableRow key={i}>
+                            {columns.map(c => <TableCell key={c} className="whitespace-nowrap text-xs">{String(r[c] ?? '-')}</TableCell>)}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                    {rows.length > 200 && <div className="text-center text-[11px] text-muted-foreground py-3">Showing 200 of {rows.length} rows. Export to see all.</div>}
+                  </div>
+                )}
+            </div>
+          )}
         </TabsContent>
       </Tabs>
+    </div>
+  );
+}
+
+function AttendanceSummaryTable({ data, loading }) {
+  if (loading || !data) return <div className="rounded-2xl glass p-6 space-y-2">{[...Array(8)].map((_, i) => <Skeleton key={i} className="h-8" />)}</div>;
+  if (!data.students.length) return <EmptyState text="No attendance recorded yet" />;
+  const pctColor = (p) => {
+    if (p === undefined || p === null || p === '-') return 'bg-muted text-muted-foreground';
+    if (p >= 90) return 'bg-emerald-500 text-white';
+    if (p >= 75) return 'bg-emerald-400 text-white';
+    if (p >= 50) return 'bg-amber-400 text-white';
+    if (p >= 25) return 'bg-orange-500 text-white';
+    return 'bg-rose-500 text-white';
+  };
+  const sorted = [...data.students].sort((a, b) => b.overall - a.overall);
+  const avg = sorted.length ? Math.round(sorted.reduce((s, x) => s + x.overall, 0) / sorted.length) : 0;
+  const top = sorted.slice(0, 3);
+  const bottom = sorted.slice(-3).reverse();
+
+  return (
+    <div className="space-y-4">
+      <div className="grid md:grid-cols-3 gap-3">
+        <div className="rounded-2xl glass p-4 flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-saffron-gradient grid place-items-center text-white shadow"><Users size={18} /></div>
+          <div><div className="text-2xl font-bold"><Counter value={data.students.length} /></div><div className="text-[10px] text-muted-foreground">Students tracked</div></div>
+        </div>
+        <div className="rounded-2xl glass p-4 flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-emerald-gradient grid place-items-center text-white shadow"><TrendingUp size={18} /></div>
+          <div><div className="text-2xl font-bold"><Counter value={avg} />%</div><div className="text-[10px] text-muted-foreground">Average attendance</div></div>
+        </div>
+        <div className="rounded-2xl glass p-4 flex items-center gap-3">
+          <div className="w-11 h-11 rounded-xl bg-violet-gradient grid place-items-center text-white shadow"><CalendarIcon size={18} /></div>
+          <div><div className="text-2xl font-bold"><Counter value={data.months.length} /></div><div className="text-[10px] text-muted-foreground">Months tracked</div></div>
+        </div>
+      </div>
+      <div className="grid md:grid-cols-2 gap-3">
+        <div className="rounded-2xl glass p-4">
+          <div className="text-xs font-semibold flex items-center gap-1.5 mb-3"><Award size={13} className="text-emerald-500" /> Top performers</div>
+          {top.map(s => (
+            <div key={s.student_id} className="flex items-center gap-2 py-1.5">
+              <div className="flex-1 text-sm">{s.name}</div>
+              <div className={`text-xs px-2 py-0.5 rounded-full ${pctColor(s.overall)}`}>{s.overall}%</div>
+            </div>
+          ))}
+        </div>
+        <div className="rounded-2xl glass p-4">
+          <div className="text-xs font-semibold flex items-center gap-1.5 mb-3"><Zap size={13} className="text-rose-500" /> Needs attention</div>
+          {bottom.map(s => (
+            <div key={s.student_id} className="flex items-center gap-2 py-1.5">
+              <div className="flex-1 text-sm">{s.name}</div>
+              <div className={`text-xs px-2 py-0.5 rounded-full ${pctColor(s.overall)}`}>{s.overall}%</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="rounded-2xl glass overflow-hidden">
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader className="sticky top-0 bg-card/95 backdrop-blur">
+              <TableRow>
+                <TableHead>Student</TableHead>
+                <TableHead className="text-center">Overall</TableHead>
+                <TableHead className="text-center">Sessions</TableHead>
+                {data.months.map(m => <TableHead key={m} className="text-center whitespace-nowrap">{new Date(m + '-01').toLocaleString('en', { month: 'short', year: '2-digit' })}</TableHead>)}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {sorted.map(s => (
+                <TableRow key={s.student_id}>
+                  <TableCell>
+                    <div className="font-medium text-sm">{s.name}</div>
+                    <div className="text-[10px] font-mono text-muted-foreground">{s.student_id}</div>
+                  </TableCell>
+                  <TableCell className="text-center">
+                    <div className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${pctColor(s.overall)}`}>{s.overall}%</div>
+                  </TableCell>
+                  <TableCell className="text-center text-xs">{s.present}/{s.total_sessions}</TableCell>
+                  {data.months.map(m => (
+                    <TableCell key={m} className="text-center">
+                      {s.monthly[m] !== undefined ? (
+                        <div className={`inline-flex w-11 h-6 items-center justify-center rounded text-[11px] font-semibold ${pctColor(s.monthly[m])}`}>{s.monthly[m]}%</div>
+                      ) : <span className="text-muted-foreground text-xs">—</span>}
+                    </TableCell>
+                  ))}
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
+      </div>
     </div>
   );
 }
