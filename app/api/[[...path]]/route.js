@@ -147,6 +147,13 @@ async function handleSeed() {
   }
   await db.collection('students').insertMany(students);
 
+  // Parent user linked to first active student
+  const parentStudent = students.find(s => s.status === 'active');
+  await db.collection('users').insertOne({
+    id: uuidv4(), email: 'parent@iskcongokulam.org', password_hash: passHash, name: 'Parent of ' + parentStudent.first_name,
+    role: 'parent', organization_id: orgId, student_id: parentStudent.id, created_at: new Date().toISOString(),
+  });
+
   // Fees
   const fees = students.slice(0, 20).map((s, i) => ({
     id: uuidv4(),
@@ -196,6 +203,23 @@ async function handleSeed() {
   ];
   await db.collection('events').insertMany(events);
 
+  // Seed activity feed
+  const activityKinds = [
+    { kind: 'student_added', title: 'New admission: Krishna Nair joined Sunday School', actor: 'Radha Devi Dasi' },
+    { kind: 'attendance', title: 'Attendance marked for Bhagavad Gita Course', actor: 'Govinda Das' },
+    { kind: 'fee_paid', title: 'Fee received from Arjun Iyer', actor: 'Radha Devi Dasi' },
+    { kind: 'notification', title: 'SMS reminder sent to 12 parents', actor: 'Radha Devi Dasi' },
+    { kind: 'event', title: 'Janmashtami event scheduled for August 16', actor: 'Nitai Das' },
+    { kind: 'student_added', title: 'New admission: Tulsi Pillai joined Preschool', actor: 'Radha Devi Dasi' },
+    { kind: 'fee_paid', title: 'Admission fee received from Yashoda Krishnan', actor: 'Radha Devi Dasi' },
+  ];
+  await db.collection('activity').deleteMany({});
+  const activityDocs = activityKinds.map((a, i) => ({
+    id: uuidv4(), organization_id: orgId, ...a,
+    created_at: new Date(Date.now() - i * 3600 * 1000 * 4).toISOString(),
+  }));
+  await db.collection('activity').insertMany(activityDocs);
+
   return json({
     ok: true,
     message: 'Seed complete',
@@ -203,6 +227,7 @@ async function handleSeed() {
       { role: 'super_admin', email: 'super@gokulam360.com', password: 'password123' },
       { role: 'org_admin', email: 'admin@iskcongokulam.org', password: 'password123' },
       { role: 'teacher', email: 'teacher@iskcongokulam.org', password: 'password123' },
+      { role: 'parent', email: 'parent@iskcongokulam.org', password: 'password123' },
     ],
   });
 }
@@ -319,6 +344,19 @@ async function router(req, method) {
         is_deleted: false,
       };
       await col.insertOne(doc);
+      // Log activity for known resources
+      if (['students', 'teachers', 'events', 'programs'].includes(resource)) {
+        const titleMap = {
+          students: `New admission: ${doc.first_name || ''} ${doc.last_name || ''}`.trim(),
+          teachers: `Teacher added: ${doc.name || ''}`,
+          events: `Event scheduled: ${doc.name || ''}`,
+          programs: `Program created: ${doc.name || ''}`,
+        };
+        await db.collection('activity').insertOne({
+          id: uuidv4(), organization_id: user.organization_id, kind: resource.slice(0, -1) + '_added',
+          title: titleMap[resource], actor: user.name || 'Admin', created_at: new Date().toISOString(),
+        });
+      }
       return json(stripId(doc));
     }
     if (method === 'PUT' && id) {
@@ -418,6 +456,80 @@ async function router(req, method) {
       attendanceTrend,
       feeSplit,
     });
+  }
+
+  // Notifications (mock sender)
+  if (resource === 'notifications') {
+    const col = db.collection('notifications');
+    if (method === 'GET' && !id) {
+      const items = await col.find(orgScope(user)).sort({ created_at: -1 }).limit(200).toArray();
+      return json({ items: items.map(stripId) });
+    }
+    if (method === 'POST' && !id) {
+      const body = await req.json();
+      // body: { channel: 'sms'|'whatsapp', recipients: [{name,phone}], message, kind }
+      const doc = {
+        id: uuidv4(),
+        organization_id: user.organization_id,
+        channel: body.channel || 'sms',
+        kind: body.kind || 'custom',
+        message: body.message,
+        recipients: body.recipients || [],
+        status: 'sent', // MOCKED
+        provider: 'mock',
+        sent_by: user.id,
+        created_at: new Date().toISOString(),
+      };
+      await col.insertOne(doc);
+      // Activity
+      await db.collection('activity').insertOne({
+        id: uuidv4(), organization_id: user.organization_id, kind: 'notification',
+        title: `${body.channel?.toUpperCase() || 'SMS'} sent to ${body.recipients?.length || 0} recipient(s)`,
+        meta: { channel: body.channel, kind: body.kind }, actor: user.name, created_at: new Date().toISOString(),
+      });
+      return json(stripId(doc));
+    }
+  }
+
+  // Activity feed
+  if (resource === 'activity' && method === 'GET') {
+    const items = await db.collection('activity').find(orgScope(user)).sort({ created_at: -1 }).limit(30).toArray();
+    return json({ items: items.map(stripId) });
+  }
+
+  // Parent portal - get current parent's child
+  if (resource === 'parent' && id === 'me' && method === 'GET') {
+    if (user.role !== 'parent') return json({ error: 'Forbidden' }, 403);
+    const userDoc = await db.collection('users').findOne({ id: user.id });
+    const studentId = userDoc?.student_id;
+    if (!studentId) return json({ error: 'No child linked' }, 404);
+    const student = await db.collection('students').findOne({ id: studentId });
+    const att = await db.collection('attendance').find({ student_id: studentId }).sort({ date: -1 }).limit(20).toArray();
+    const fees = await db.collection('fees').find({ student_id: studentId }).toArray();
+    return json({ student: stripId(student), attendance: att.map(stripId), fees: fees.map(stripId) });
+  }
+
+  // Reports endpoint - returns comprehensive report data
+  if (resource === 'reports' && method === 'GET') {
+    const type = id;
+    const scope = orgScope(user);
+    if (type === 'students') {
+      const items = await db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray();
+      return json({ items: items.map(stripId) });
+    }
+    if (type === 'attendance') {
+      const items = await db.collection('attendance').find(scope).sort({ date: -1 }).toArray();
+      const students = await db.collection('students').find(scope).toArray();
+      const sMap = Object.fromEntries(students.map(s => [s.id, `${s.first_name} ${s.last_name}`]));
+      return json({ items: items.map(a => ({ ...stripId(a), student_name: sMap[a.student_id] || '-' })) });
+    }
+    if (type === 'fees') {
+      const items = await db.collection('fees').find(scope).toArray();
+      const students = await db.collection('students').find(scope).toArray();
+      const sMap = Object.fromEntries(students.map(s => [s.id, `${s.first_name} ${s.last_name}`]));
+      return json({ items: items.map(f => ({ ...stripId(f), student_name: sMap[f.student_id] || '-' })) });
+    }
+    return json({ error: 'Unknown report' }, 400);
   }
 
   return json({ error: 'Not found', path: url.pathname, method }, 404);
