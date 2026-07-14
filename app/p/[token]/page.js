@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, use } from 'react';
 import { motion } from 'framer-motion';
 import { Flame, BookOpen } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -10,7 +10,7 @@ const fmtINR = (n) => new Intl.NumberFormat('en-IN', { style: 'currency', curren
 const initials = (s = '') => s.split(' ').filter(Boolean).map(x => x[0]).join('').slice(0, 2).toUpperCase();
 
 function PublicPage({ params }) {
-  const token = params.token;
+  const { token } = use(params);
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
   useEffect(() => {
