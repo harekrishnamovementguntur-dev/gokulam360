@@ -91,6 +91,53 @@ function stripId(doc) {
   return rest;
 }
 
+function generateSessions(program) {
+  const days = program.days_of_week || [];
+  if (!days.length || !program.start_date || !program.end_date) return [];
+  const sessions = [];
+  const start = new Date(program.start_date + 'T00:00:00');
+  const end = new Date(program.end_date + 'T00:00:00');
+  const cur = new Date(start);
+  while (cur <= end) {
+    if (days.includes(cur.getDay())) sessions.push(cur.toISOString().slice(0, 10));
+    cur.setDate(cur.getDate() + 1);
+  }
+  return sessions;
+}
+
+async function syncEnrollments(db, student, oldProgramIds = []) {
+  const orgId = student.organization_id;
+  const newIds = student.program_ids || [];
+  const now = new Date().toISOString();
+  // Newly added
+  const added = newIds.filter(id => !oldProgramIds.includes(id));
+  const removed = oldProgramIds.filter(id => !newIds.includes(id));
+  for (const pid of added) {
+    // Check if enrollment already exists and is active
+    const existing = await db.collection('enrollments').findOne({ student_id: student.id, program_id: pid, left_at: null });
+    if (existing) continue;
+    await db.collection('enrollments').insertOne({
+      id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
+      enrolled_at: now, left_at: null, status: 'active', created_at: now,
+    });
+    // Auto-create fee record
+    const prog = await db.collection('programs').findOne({ id: pid });
+    if (prog?.fee_amount) {
+      await db.collection('fees').insertOne({
+        id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
+        fee_type: 'Term Fee', amount: prog.fee_amount, paid_amount: 0, status: 'pending',
+        due_date: prog.start_date || now.slice(0, 10), created_at: now,
+      });
+    }
+  }
+  for (const pid of removed) {
+    await db.collection('enrollments').updateMany(
+      { student_id: student.id, program_id: pid, left_at: null },
+      { $set: { left_at: now, status: 'left' } }
+    );
+  }
+}
+
 // ========== SEED ==========
 async function handleSeed() {
   const db = await getDb();
@@ -181,6 +228,20 @@ async function handleSeed() {
     });
   }
   await db.collection('students').insertMany(students);
+
+  // Enrollments
+  await db.collection('enrollments').deleteMany({});
+  const enrollments = [];
+  students.forEach(s => {
+    (s.program_ids || [s.program_id]).filter(Boolean).forEach(pid => {
+      enrollments.push({
+        id: uuidv4(), organization_id: orgId, student_id: s.id, program_id: pid,
+        enrolled_at: s.admission_date || new Date().toISOString(),
+        left_at: null, status: 'active', created_at: new Date().toISOString(),
+      });
+    });
+  });
+  if (enrollments.length) await db.collection('enrollments').insertMany(enrollments);
 
   // Parent user linked to first active student
   const parentStudent = students.find(s => s.status === 'active');
@@ -381,7 +442,7 @@ async function router(req, method) {
       const items = await col.find(q).sort({ created_at: -1 }).limit(500).toArray();
       return json({ items: items.map(stripId) });
     }
-    if (method === 'GET' && id) {
+    if (method === 'GET' && id && !sub) {
       const doc = await col.findOne({ id, ...orgScope(user) });
       if (!doc) return json({ error: 'Not found' }, 404);
       return json(stripId(doc));
@@ -396,7 +457,13 @@ async function router(req, method) {
         updated_at: new Date().toISOString(),
         is_deleted: false,
       };
+      // Generate sessions for programs
+      if (resource === 'programs') doc.sessions = generateSessions(doc);
       await col.insertOne(doc);
+      // Handle student enrollments
+      if (resource === 'students' && doc.program_ids?.length) {
+        await syncEnrollments(db, doc, []);
+      }
       // Log activity for known resources
       if (['students', 'teachers', 'events', 'programs'].includes(resource)) {
         const titleMap = {
@@ -414,14 +481,54 @@ async function router(req, method) {
     }
     if (method === 'PUT' && id) {
       const body = await req.json();
-      await col.updateOne({ id, ...orgScope(user) }, { $set: { ...body, updated_at: new Date().toISOString() } });
+      const before = await col.findOne({ id, ...orgScope(user) });
+      const updated = { ...body, updated_at: new Date().toISOString() };
+      if (resource === 'programs') updated.sessions = generateSessions({ ...before, ...body });
+      await col.updateOne({ id, ...orgScope(user) }, { $set: updated });
       const doc = await col.findOne({ id });
+      // Sync student enrollments diff
+      if (resource === 'students' && body.program_ids) {
+        await syncEnrollments(db, doc, before?.program_ids || []);
+      }
       return json(stripId(doc));
     }
     if (method === 'DELETE' && id) {
       await col.updateOne({ id, ...orgScope(user) }, { $set: { is_deleted: true } });
       return json({ ok: true });
     }
+  }
+
+  // Enrollments endpoints
+  if (resource === 'enrollments' && method === 'GET') {
+    const q = orgScope(user);
+    const url2 = new URL(req.url);
+    if (url2.searchParams.get('student_id')) q.student_id = url2.searchParams.get('student_id');
+    if (url2.searchParams.get('program_id')) q.program_id = url2.searchParams.get('program_id');
+    const items = await db.collection('enrollments').find(q).sort({ enrolled_at: -1 }).toArray();
+    // Enrich with program names
+    const progIds = [...new Set(items.map(e => e.program_id))];
+    const progs = await db.collection('programs').find({ id: { $in: progIds } }).toArray();
+    const pMap = Object.fromEntries(progs.map(p => [p.id, p]));
+    return json({ items: items.map(e => ({ ...stripId(e), program_name: pMap[e.program_id]?.name || '-', program: pMap[e.program_id] ? stripId(pMap[e.program_id]) : null })) });
+  }
+
+  // Sessions for a program
+  if (resource === 'programs' && id && sub === 'sessions' && method === 'GET') {
+    const prog = await db.collection('programs').findOne({ id, ...orgScope(user) });
+    if (!prog) return json({ error: 'Not found' }, 404);
+    let sessions = prog.sessions;
+    if (!sessions || !sessions.length) sessions = generateSessions(prog);
+    // Attach attendance count per session
+    const att = await db.collection('attendance').find({ program_id: id, organization_id: user.organization_id }).toArray();
+    const byDate = {};
+    att.forEach(a => { if (!byDate[a.date]) byDate[a.date] = { total: 0, present: 0 }; byDate[a.date].total++; if (a.status === 'present' || a.status === 'late') byDate[a.date].present++; });
+    const enriched = sessions.map(d => ({
+      date: d, day_name: new Date(d + 'T00:00:00').toLocaleDateString('en', { weekday: 'long' }),
+      marked: !!byDate[d], present: byDate[d]?.present || 0, total: byDate[d]?.total || 0,
+      is_past: new Date(d) < new Date().setHours(0, 0, 0, 0),
+      is_today: d === new Date().toISOString().slice(0, 10),
+    }));
+    return json({ program_id: id, program_name: prog.name, days_of_week: prog.days_of_week, sessions: enriched });
   }
 
   // Bulk attendance

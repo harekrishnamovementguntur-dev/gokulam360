@@ -1594,13 +1594,33 @@ function Attendance() {
   const [students, setStudents] = useState([]);
   const [programs, setPrograms] = useState([]);
   const [program, setProgram] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [sessions, setSessions] = useState([]);
+  const [date, setDate] = useState('');
   const [marks, setMarks] = useState({});
+  const [existing, setExisting] = useState({}); // map studentId -> status for the chosen date
   useEffect(() => { api('/students').then(r => setStudents(r.items)); api('/programs').then(r => setPrograms(r.items)); }, []);
+  useEffect(() => {
+    if (!program) { setSessions([]); setDate(''); return; }
+    api(`/programs/${program}/sessions`).then(r => {
+      setSessions(r.sessions || []);
+      // Auto-select today or nearest past session
+      const today = new Date().toISOString().slice(0, 10);
+      const todayS = r.sessions?.find(s => s.date === today);
+      const nearest = r.sessions?.filter(s => s.is_past || s.is_today).slice(-1)[0];
+      setDate((todayS || nearest || r.sessions?.[0])?.date || '');
+    });
+  }, [program]);
+  useEffect(() => {
+    if (!program || !date) { setExisting({}); return; }
+    api(`/attendance?program_id=${program}&date=${date}`).then(r => {
+      const m = {};
+      (r.items || []).forEach(a => { m[a.student_id] = a.status; });
+      setExisting(m); setMarks(m);
+    }).catch(() => {});
+  }, [program, date]);
+
   const selectedProgram = programs.find(p => p.id === program);
-  const classDays = selectedProgram?.days_of_week || [];
-  const selectedDayOfWeek = new Date(date + 'T00:00:00').getDay();
-  const isValidClassDay = !selectedProgram || classDays.length === 0 || classDays.includes(selectedDayOfWeek);
+  const selectedSession = sessions.find(s => s.date === date);
   const list = students.filter(s => {
     if (s.status !== 'active') return false;
     if (!program) return true;
@@ -1611,14 +1631,16 @@ function Attendance() {
   const bulk = (v) => { const m = {}; list.forEach(s => m[s.id] = v); setMarks(m); };
   const save = async () => {
     if (!program) { toast.error('Please pick a class first'); return; }
-    if (!isValidClassDay) { toast.error(`${DAY_FULL[selectedDayOfWeek]} is not a class day for ${selectedProgram.name}`); return; }
+    if (!date) { toast.error('Pick a session date'); return; }
     try {
       const records = list.map(s => ({ student_id: s.id, status: marks[s.id] || 'present' }));
       await api('/attendance-bulk', { method: 'POST', body: JSON.stringify({ date, program_id: program, records }) });
-      confetti({ particleCount: 60, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#22c55e'] });
+      confetti({ particleCount: 60, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#22c55e', '#7c3aed'] });
       toast.success(`Attendance saved for ${records.length} students`);
+      api(`/programs/${program}/sessions`).then(r => setSessions(r.sessions || []));
     } catch (e) { toast.error(e.message); }
   };
+
   const counts = useMemo(() => {
     const c = { present: 0, absent: 0, late: 0, excused: 0 };
     list.forEach(s => { const v = marks[s.id]; if (v) c[v]++; });
@@ -1634,45 +1656,74 @@ function Attendance() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Attendance" subtitle="Mark & track student attendance" icon={ClipboardCheck} />
+      <PageHeader title="Attendance" subtitle="Session-based marking · scheduled auto-generated" icon={ClipboardCheck} />
 
-      {/* Controls */}
+      {/* Class picker */}
       <div className="rounded-2xl glass p-4 flex flex-wrap gap-3 items-end">
-        <div><Label className="text-[11px]">Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
-        <div className="min-w-[240px]"><Label className="text-[11px]">Class</Label>
+        <div className="min-w-[260px]"><Label className="text-[11px]">Class</Label>
           <Select value={program} onValueChange={setProgram}>
             <SelectTrigger><SelectValue placeholder="Select a class" /></SelectTrigger>
             <SelectContent>{programs.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         {selectedProgram && (
-          <div className="flex flex-col">
-            <Label className="text-[11px]">Class days</Label>
-            <div className="flex gap-1 mt-1">
-              {DAY_LABELS.map((l, i) => (
-                <div key={i} className={`w-8 h-8 rounded-md text-[10px] font-semibold grid place-items-center ${classDays.includes(i) ? (i === selectedDayOfWeek ? 'ring-2 ring-primary bg-primary text-primary-foreground' : 'bg-primary/80 text-primary-foreground') : 'bg-muted text-muted-foreground/50'}`}>{l[0]}</div>
-              ))}
-            </div>
+          <div className="text-[11px] text-muted-foreground">
+            <div>Runs on <b className="text-primary">{(selectedProgram.days_of_week || []).map(d => DAY_FULL[d]).join(', ') || '—'}</b></div>
+            <div>{sessions.length} sessions scheduled · {sessions.filter(s => s.marked).length} marked</div>
           </div>
         )}
-        <div className="ml-auto flex gap-2 flex-wrap">
-          <Button size="sm" variant="outline" onClick={() => bulk('present')} disabled={!isValidClassDay}>Mark all Present</Button>
-          <Button size="sm" variant="outline" onClick={() => bulk('absent')} disabled={!isValidClassDay}>Mark all Absent</Button>
-          <Button onClick={save} className="bg-saffron-gradient shadow" disabled={!isValidClassDay || !program}>Save Attendance</Button>
+        <div className="ml-auto flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => bulk('present')} disabled={!date}>All Present</Button>
+          <Button size="sm" variant="outline" onClick={() => bulk('absent')} disabled={!date}>All Absent</Button>
+          <Button onClick={save} className="bg-saffron-gradient shadow" disabled={!date || !program}>Save Attendance</Button>
         </div>
       </div>
 
-      {selectedProgram && !isValidClassDay && (
-        <div className="rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-800 dark:text-rose-200 p-3 text-sm flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-rose-500 text-white grid place-items-center shrink-0">⚠</div>
-          <div>
-            <span className="font-semibold">{DAY_FULL[selectedDayOfWeek]} isn't a class day</span> for <b>{selectedProgram.name}</b>.
-            This class runs on <b>{classDays.map(d => DAY_FULL[d]).join(', ') || 'no days set'}</b>. Pick another date or edit the class schedule.
+      {/* Session picker strip */}
+      {program && sessions.length > 0 && (
+        <div className="rounded-2xl glass p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-semibold flex items-center gap-1.5"><CalendarIcon size={14} className="text-primary" /> Sessions</div>
+            <div className="text-[11px] text-muted-foreground">Scroll to pick a session · today's session is auto-selected</div>
+          </div>
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {sessions.map(s => {
+              const active = s.date === date;
+              const cls = active ? 'bg-saffron-gradient text-white shadow-lg scale-105' :
+                s.marked ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-800 dark:text-emerald-200' :
+                s.is_past ? 'bg-muted text-muted-foreground border border-transparent' :
+                s.is_today ? 'bg-primary/10 border border-primary/40 text-primary' :
+                'bg-white/50 dark:bg-white/5 border border-transparent';
+              const d = new Date(s.date + 'T00:00:00');
+              return (
+                <button key={s.date} onClick={() => setDate(s.date)}
+                  className={`shrink-0 rounded-xl px-3 py-2 min-w-[76px] transition ${cls}`}>
+                  <div className="text-[9px] uppercase font-semibold opacity-80">{d.toLocaleString('en', { month: 'short' })}</div>
+                  <div className="text-lg font-bold leading-none">{d.getDate()}</div>
+                  <div className="text-[9px] opacity-80 mt-0.5">{d.toLocaleString('en', { weekday: 'short' })}</div>
+                  {s.marked && !active && <div className="text-[9px] mt-1 flex items-center justify-center gap-0.5"><Check size={9} /> {s.present}/{s.total}</div>}
+                  {s.is_today && !active && <div className="text-[9px] mt-1 font-semibold">TODAY</div>}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* Stats */}
+      {selectedSession && (
+        <div className={`rounded-xl p-3 text-sm flex items-center gap-3 ${selectedSession.marked ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-200' : 'bg-primary/10 border border-primary/30'}`}>
+          <div className={`w-9 h-9 rounded-lg grid place-items-center text-white ${selectedSession.marked ? 'bg-emerald-500' : 'bg-saffron-gradient'}`}>
+            {selectedSession.marked ? <Check size={16} /> : <ClipboardCheck size={16} />}
+          </div>
+          <div>
+            <div className="font-semibold">{selectedSession.day_name}, {new Date(date + 'T00:00:00').toLocaleDateString('en', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+            <div className="text-[11px] opacity-80">
+              {selectedSession.marked ? `Already marked · ${selectedSession.present}/${selectedSession.total} present · saving will overwrite` : 'Not yet marked · ready to record'}
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-4 gap-3">
         {[
           { k: 'present', l: 'Present', c: counts.present, grad: 'bg-emerald-gradient' },
@@ -1689,27 +1740,28 @@ function Attendance() {
 
       <div className="rounded-2xl glass p-4">
         {!program ? <EmptyState text="Select a class to see enrolled students" /> :
+          !date ? <EmptyState text="Pick a session from the strip above" /> :
           list.length === 0 ? <EmptyState text="No students enrolled in this class" /> : (
-            <div className={`space-y-1.5 ${!isValidClassDay ? 'opacity-40 pointer-events-none' : ''}`}>
-            {list.map(s => (
-              <div key={s.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 transition">
-                <Avatar className="h-9 w-9">
-                  {s.photo_url ? <AvatarImage src={s.photo_url} /> : <AvatarFallback className="bg-saffron-gradient text-white text-xs">{initials(s.first_name + ' ' + s.last_name)}</AvatarFallback>}
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{s.first_name} {s.last_name}</div>
-                  <div className="text-[10px] font-mono text-muted-foreground">{s.student_id}</div>
+            <div className="space-y-1.5">
+              {list.map(s => (
+                <div key={s.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 transition">
+                  <Avatar className="h-9 w-9">
+                    {s.photo_url ? <AvatarImage src={s.photo_url} /> : <AvatarFallback className="bg-saffron-gradient text-white text-xs">{initials(s.first_name + ' ' + s.last_name)}</AvatarFallback>}
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{s.first_name} {s.last_name}</div>
+                    <div className="text-[10px] font-mono text-muted-foreground">{s.student_id}</div>
+                  </div>
+                  <div className="flex gap-1.5 flex-wrap">
+                    {['present', 'absent', 'late', 'excused'].map(v => (
+                      <button key={v} onClick={() => setMark(s.id, v)}
+                        className={`text-[11px] px-2.5 py-1 rounded-full capitalize font-medium transition ${chip(v, marks[s.id] === v)}`}>{v}</button>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex gap-1.5 flex-wrap">
-                  {['present', 'absent', 'late', 'excused'].map(v => (
-                    <button key={v} onClick={() => setMark(s.id, v)}
-                      className={`text-[11px] px-2.5 py-1 rounded-full capitalize font-medium transition ${chip(v, marks[s.id] === v)}`}>{v}</button>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
+            </div>
+          )}
       </div>
     </div>
   );
