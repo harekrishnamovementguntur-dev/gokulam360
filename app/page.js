@@ -915,7 +915,6 @@ function Students({ students, setStudents }) {
               </div>
               <div className="text-[11px] text-muted-foreground mt-3 space-y-0.5">
                 {s.mobile && <div className="flex items-center gap-1.5"><Phone size={11} /> {s.mobile}</div>}
-                {s.initiated_name && <div className="flex items-center gap-1.5"><Heart size={11} /> {s.initiated_name}</div>}
               </div>
               <div className="flex gap-1 mt-3 pt-3 border-t">
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setCardOf(s)}><IdCard size={13} className="mr-1" /> ID Card</Button>
@@ -930,7 +929,7 @@ function Students({ students, setStudents }) {
       {/* Add/Edit */}
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? 'Edit Student' : 'New Student'}</DialogTitle><DialogDescription>Fill personal, family & spiritual details.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? 'Edit Student' : 'New Student'}</DialogTitle><DialogDescription>Fill personal & family details.</DialogDescription></DialogHeader>
 
           {/* Photo uploader */}
           <div className="flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-r from-primary/10 to-blue-500/10 dark:from-primary/20 dark:to-blue-500/15 border">
@@ -954,7 +953,6 @@ function Students({ students, setStudents }) {
             <TabsList>
               <TabsTrigger value="personal">Personal</TabsTrigger>
               <TabsTrigger value="family">Family</TabsTrigger>
-              <TabsTrigger value="spiritual">Spiritual</TabsTrigger>
             </TabsList>
             <TabsContent value="personal" className="grid grid-cols-2 gap-3 mt-2">
               <div><Label>Student ID</Label><Input value={form.student_id} onChange={e => setForm({ ...form, student_id: e.target.value })} /></div>
@@ -991,11 +989,6 @@ function Students({ students, setStudents }) {
               <div><Label>Mother Name</Label><Input value={form.mother_name} onChange={e => setForm({ ...form, mother_name: e.target.value })} /></div>
               <div><Label>Guardian</Label><Input value={form.guardian || ''} onChange={e => setForm({ ...form, guardian: e.target.value })} /></div>
               <div><Label>Emergency Contact</Label><Input value={form.emergency_contact} onChange={e => setForm({ ...form, emergency_contact: e.target.value })} /></div>
-            </TabsContent>
-            <TabsContent value="spiritual" className="grid grid-cols-2 gap-3 mt-2">
-              <div><Label>Initiated Name</Label><Input value={form.initiated_name} onChange={e => setForm({ ...form, initiated_name: e.target.value })} /></div>
-              <div><Label>Counsellor</Label><Input value={form.counsellor} onChange={e => setForm({ ...form, counsellor: e.target.value })} /></div>
-              <div className="col-span-2"><Label>Temple Association</Label><Input value={form.temple} onChange={e => setForm({ ...form, temple: e.target.value })} /></div>
             </TabsContent>
           </Tabs>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient">{editing ? 'Update' : 'Create'}</Button></DialogFooter>
@@ -1359,123 +1352,164 @@ function Fees() {
 }
 
 /* ============================================================
-   NOTIFICATIONS
+   NOTIFICATIONS — FREE via wa.me deep-links
 ============================================================ */
 function Notifications({ students }) {
   const [items, setItems] = useState([]);
-  const [config, setConfig] = useState({ twilio_configured: false });
-  const [channel, setChannel] = useState('sms');
   const [kind, setKind] = useState('fee_reminder');
+  const [target, setTarget] = useState('all_active');
+  const [customIds, setCustomIds] = useState([]);
   const [message, setMessage] = useState('Namaste 🙏 Kindly complete your ward\'s pending fee at your convenience. Hare Krishna!');
-  const [target, setTarget] = useState('sample');
-  const [sending, setSending] = useState(false);
-  useEffect(() => { api('/notifications').then(r => setItems(r.items)); api('/config').then(setConfig).catch(() => {}); }, []);
-
-  const recipients = useMemo(() => {
-    const src = students.filter(s => s.status === 'active');
-    if (target === 'all_active') return src.map(s => ({ name: s.first_name + ' ' + s.last_name, phone: s.mobile }));
-    return src.slice(0, 5).map(s => ({ name: s.first_name + ' ' + s.last_name, phone: s.mobile }));
-  }, [students, target]);
-
-  const send = async () => {
-    setSending(true);
-    try {
-      const res = await api('/notifications', { method: 'POST', body: JSON.stringify({ channel, kind, message, recipients }) });
-      confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#0ea5e9'] });
-      if (res.provider === 'twilio') {
-        toast.success(`✅ Sent via Twilio: ${res.stats.sent} delivered, ${res.stats.failed} failed`);
-      } else {
-        toast.info(`Logged ${res.stats.mock} messages (mock mode — configure Twilio to send real messages)`);
-      }
-      api('/notifications').then(r => setItems(r.items));
-    } catch (e) { toast.error(e.message); }
-    finally { setSending(false); }
-  };
+  const [sentIds, setSentIds] = useState(new Set());
+  useEffect(() => { api('/notifications').then(r => setItems(r.items)).catch(() => {}); }, []);
 
   const kinds = {
     fee_reminder: 'Fee reminder',
     birthday: 'Birthday wish',
     event: 'Event announcement',
+    attendance: 'Attendance update',
     custom: 'Custom message',
   };
   const templates = {
     fee_reminder: 'Namaste 🙏 Kindly complete your ward\'s pending fee at your convenience. Hare Krishna!',
     birthday: '🎂 Wishing your dear child a very Happy Birthday! May Krishna\'s blessings be always upon them. — Gokulam Sunday School',
     event: '🌸 Upcoming: Janmashtami Celebration on Aug 16. Please join us with your family for kirtan, prasadam and cultural programs.',
+    attendance: 'Dear Parent, this is a gentle reminder about your child\'s recent attendance. Please encourage regular participation. 🙏',
     custom: '',
+  };
+
+  const normalize = (raw) => {
+    if (!raw) return null;
+    let p = String(raw).trim().replace(/[\s\-()+]/g, '');
+    if (/^\d{10}$/.test(p)) p = '91' + p;
+    else if (/^91\d{10}$/.test(p)) { /* ok */ }
+    else if (/^\d{11,15}$/.test(p)) { /* pass */ }
+    else return null;
+    return p;
+  };
+
+  const activeStudents = useMemo(() => students.filter(s => s.status === 'active' && s.mobile), [students]);
+  const recipients = useMemo(() => {
+    let src = activeStudents;
+    if (target === 'sample') src = src.slice(0, 5);
+    if (target === 'custom') src = activeStudents.filter(s => customIds.includes(s.id));
+    return src.map(s => ({ id: s.id, name: `${s.first_name} ${s.last_name}`, phone: s.mobile, phoneClean: normalize(s.mobile), photo: s.photo_url }));
+  }, [activeStudents, target, customIds]);
+
+  const validRecipients = recipients.filter(r => r.phoneClean);
+  const invalidCount = recipients.length - validRecipients.length;
+
+  const waLink = (phone, text) => `https://wa.me/${phone}?text=${encodeURIComponent(text)}`;
+
+  const logSend = async (r) => {
+    setSentIds(prev => new Set([...prev, r.id]));
+    try {
+      await api('/notifications', { method: 'POST', body: JSON.stringify({
+        channel: 'whatsapp', kind, message, recipients: [{ name: r.name, phone: r.phone }]
+      }) });
+      api('/notifications').then(res => setItems(res.items));
+    } catch (e) { /* log fail silently */ }
+  };
+
+  const openOne = (r) => {
+    window.open(waLink(r.phoneClean, message), '_blank');
+    logSend(r);
+  };
+
+  const openAll = async () => {
+    if (validRecipients.length === 0) { toast.error('No valid recipients'); return; }
+    if (validRecipients.length > 15 && !confirm(`This will open ${validRecipients.length} WhatsApp tabs. Continue?`)) return;
+    toast.info(`Opening ${validRecipients.length} WhatsApp chats… allow popups if blocked`);
+    confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#25D366', '#128C7E', '#7c3aed'] });
+    for (let i = 0; i < validRecipients.length; i++) {
+      const r = validRecipients[i];
+      setTimeout(() => { window.open(waLink(r.phoneClean, message), '_blank'); logSend(r); }, i * 350);
+    }
+  };
+
+  const copyMessage = () => { navigator.clipboard.writeText(message); toast.success('Message copied'); };
+
+  const toggleCustom = (id) => {
+    setCustomIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Notifications" subtitle="Reach parents via SMS or WhatsApp" icon={Bell} />
-      {config.twilio_configured ? (
-        <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-200 p-3 text-xs flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 pulse-dot" />
-          <span className="font-semibold">Twilio active</span> — messages will be delivered to real phone numbers. For WhatsApp testing, ensure recipients have joined your Twilio sandbox first.
+      <PageHeader title="WhatsApp Notifications" subtitle="Send messages via free WhatsApp deep-links" icon={Bell} />
+
+      <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-900 dark:text-emerald-200 p-3 text-xs flex items-start gap-2">
+        <div className="w-6 h-6 rounded-full bg-emerald-500 grid place-items-center text-white shrink-0"><MessageSquare size={12} /></div>
+        <div>
+          <div className="font-semibold">100% free — no API keys, no monthly fees.</div>
+          Clicking "Send" opens WhatsApp Web / WhatsApp app on your device with the message pre-filled to each parent's number. You just hit send. Works on desktop, mobile, and iPad.
         </div>
-      ) : (
-        <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 p-3 text-xs">
-          ⚠️ <span className="font-semibold">Mock mode:</span> Add <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code>, <code>TWILIO_SMS_FROM_NUMBER</code> to <code>/app/.env</code> to enable real delivery.
-        </div>
-      )}
+      </div>
 
       <div className="grid lg:grid-cols-3 gap-4">
         {/* Composer */}
         <div className="lg:col-span-2 rounded-2xl glass p-5 space-y-4">
-          <div className="flex items-center gap-2">
-            <div className={`flex-1 p-3 rounded-xl border-2 cursor-pointer transition ${channel === 'sms' ? 'border-primary bg-primary/5' : 'border-transparent bg-muted/50'}`} onClick={() => setChannel('sms')}>
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-lg bg-saffron-gradient grid place-items-center text-white"><MessageSquare size={16} /></div>
-                <div>
-                  <div className="text-sm font-semibold">SMS</div>
-                  <div className="text-[10px] text-muted-foreground">Standard text message</div>
-                </div>
-              </div>
-            </div>
-            <div className={`flex-1 p-3 rounded-xl border-2 cursor-pointer transition ${channel === 'whatsapp' ? 'border-primary bg-primary/5' : 'border-transparent bg-muted/50'}`} onClick={() => setChannel('whatsapp')}>
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-lg bg-emerald-gradient grid place-items-center text-white"><MessageSquare size={16} /></div>
-                <div>
-                  <div className="text-sm font-semibold">WhatsApp</div>
-                  <div className="text-[10px] text-muted-foreground">Rich messaging</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div><Label className="text-[11px]">Template</Label>
-            <Select value={kind} onValueChange={v => { setKind(v); setMessage(templates[v] || ''); }}>
+          <div>
+            <Label className="text-[11px]">Template</Label>
+            <Select value={kind} onValueChange={v => { setKind(v); if (templates[v]) setMessage(templates[v]); }}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>{Object.entries(kinds).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          <div><Label className="text-[11px]">Recipients</Label>
+          <div>
+            <Label className="text-[11px]">Recipients</Label>
             <Select value={target} onValueChange={setTarget}>
               <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all_active">All active students' parents ({students.filter(s => s.status === 'active').length})</SelectItem>
+                <SelectItem value="all_active">All active students ({activeStudents.length})</SelectItem>
                 <SelectItem value="sample">First 5 (testing)</SelectItem>
+                <SelectItem value="custom">Choose individually ({customIds.length} selected)</SelectItem>
               </SelectContent>
             </Select>
           </div>
+
+          {target === 'custom' && (
+            <div className="max-h-52 overflow-y-auto rounded-xl border p-2 space-y-1 bg-white/30 dark:bg-white/5">
+              {activeStudents.map(s => (
+                <label key={s.id} className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-white/60 dark:hover:bg-white/10 cursor-pointer">
+                  <input type="checkbox" checked={customIds.includes(s.id)} onChange={() => toggleCustom(s.id)} className="accent-primary" />
+                  <span className="text-xs">{s.first_name} {s.last_name}</span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">{s.mobile}</span>
+                </label>
+              ))}
+            </div>
+          )}
+
           <div>
             <Label className="text-[11px]">Message</Label>
             <Textarea rows={5} value={message} onChange={e => setMessage(e.target.value)} placeholder="Type message…" />
-            <div className="text-[10px] text-muted-foreground mt-1">{message.length} chars • {Math.ceil(message.length / 160)} SMS</div>
+            <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
+              <span>{message.length} characters</span>
+              <button onClick={copyMessage} className="hover:text-primary">Copy message</button>
+            </div>
           </div>
-          <Button className="w-full bg-saffron-gradient shadow" onClick={send} disabled={sending || recipients.length === 0}>
-            <Send size={14} className="mr-1.5" /> {sending ? 'Sending…' : `Send to ${recipients.length} recipient(s)`}
-          </Button>
+
+          <div className="flex gap-2">
+            <Button className="flex-1 bg-emerald-gradient shadow" onClick={openAll} disabled={validRecipients.length === 0}>
+              <MessageSquare size={14} className="mr-1.5" /> Open all {validRecipients.length} chats
+            </Button>
+          </div>
+          {invalidCount > 0 && (
+            <div className="text-[11px] text-amber-600 dark:text-amber-400">
+              ⚠️ {invalidCount} recipient(s) skipped — invalid or missing phone number.
+            </div>
+          )}
         </div>
 
-        {/* Live preview */}
+        {/* WhatsApp preview */}
         <div className="rounded-2xl glass p-5">
-          <div className="text-xs font-semibold mb-3">Live Preview</div>
-          <div className="rounded-3xl bg-black text-white p-1 shadow-2xl mx-auto max-w-[280px]">
-            <div className="rounded-[22px] bg-slate-900 h-[440px] p-4 flex flex-col relative overflow-hidden">
-              <div className="text-center text-[10px] text-slate-400 mb-2">{channel === 'whatsapp' ? 'WhatsApp' : 'Messages'} • {new Date().toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })}</div>
-              <div className={`self-start max-w-[85%] rounded-2xl px-3 py-2 text-xs ${channel === 'whatsapp' ? 'bg-emerald-600' : 'bg-slate-700'}`}>
+          <div className="text-xs font-semibold mb-3">WhatsApp Preview</div>
+          <div className="rounded-3xl bg-black text-white p-1 shadow-2xl mx-auto max-w-[260px]">
+            <div className="rounded-[22px] p-4 h-[420px] flex flex-col relative overflow-hidden"
+              style={{ background: 'linear-gradient(180deg,#0b1416 0%,#0e1a1d 100%)' }}>
+              <div className="text-center text-[10px] text-slate-400 mb-2">WhatsApp • {new Date().toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })}</div>
+              <div className="self-start max-w-[85%] rounded-2xl px-3 py-2 text-xs shadow" style={{ background: '#005c4b' }}>
                 {message || <span className="text-slate-400">Your message will appear here…</span>}
+                <div className="text-[9px] text-slate-300 text-right mt-1">{new Date().toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })} ✓✓</div>
               </div>
               <div className="mt-auto text-center text-[9px] text-slate-500">via Gokulam360 • {kinds[kind]}</div>
             </div>
@@ -1483,17 +1517,49 @@ function Notifications({ students }) {
         </div>
       </div>
 
+      {/* Recipients list with per-person Send */}
+      <div className="rounded-2xl glass p-5">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-sm font-semibold flex items-center gap-1.5"><Users size={14} className="text-primary" /> Recipients ({validRecipients.length})</div>
+          <div className="text-[11px] text-muted-foreground">Click each row to send individually</div>
+        </div>
+        {recipients.length === 0 ? <EmptyState small text="No recipients selected" /> : (
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-2 max-h-96 overflow-y-auto">
+            {recipients.map(r => {
+              const sent = sentIds.has(r.id);
+              const invalid = !r.phoneClean;
+              return (
+                <div key={r.id} className={`flex items-center gap-2.5 p-2 rounded-xl border transition ${invalid ? 'opacity-50 bg-muted/30' : sent ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-white/40 dark:bg-white/5 hover:bg-emerald-500/5'}`}>
+                  <Avatar className="h-9 w-9">
+                    {r.photo ? <AvatarImage src={r.photo} /> : <AvatarFallback className="bg-saffron-gradient text-white text-[11px]">{initials(r.name)}</AvatarFallback>}
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium truncate">{r.name}</div>
+                    <div className="text-[10px] font-mono text-muted-foreground">{r.phone || 'No phone'}</div>
+                  </div>
+                  {invalid ? <Badge variant="destructive" className="text-[9px]">invalid</Badge> :
+                    <Button size="sm" variant={sent ? 'ghost' : 'default'} className={`h-7 text-[11px] ${sent ? 'text-emerald-600' : 'bg-emerald-gradient text-white'}`} onClick={() => openOne(r)}>
+                      {sent ? '✓ Sent' : <><MessageSquare size={11} className="mr-1" /> Send</>}
+                    </Button>
+                  }
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       {/* History */}
       <div className="rounded-2xl glass p-5">
         <div className="text-sm font-semibold flex items-center gap-1.5 mb-3"><Activity size={14} className="text-primary" /> Notification History</div>
         {items.length === 0 ? <EmptyState small text="No notifications sent yet" /> : (
           <div className="space-y-2">
-            {items.map(n => (
+            {items.slice(0, 20).map(n => (
               <div key={n.id} className="flex items-start gap-3 p-3 rounded-xl bg-white/40 dark:bg-white/5 border">
-                <div className={`w-9 h-9 rounded-lg grid place-items-center text-white ${n.channel === 'whatsapp' ? 'bg-emerald-gradient' : 'bg-saffron-gradient'}`}><MessageSquare size={15} /></div>
+                <div className="w-9 h-9 rounded-lg grid place-items-center text-white bg-emerald-gradient"><MessageSquare size={15} /></div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium line-clamp-1">{n.message}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">{n.channel?.toUpperCase()} • {n.recipients?.length || 0} recipients • {timeAgo(n.created_at)}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">To {n.recipients?.[0]?.name || 'recipients'} • {kinds[n.kind] || n.kind} • {timeAgo(n.created_at)}</div>
                 </div>
                 <Badge className="bg-emerald-500">sent</Badge>
               </div>
