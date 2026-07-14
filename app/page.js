@@ -265,6 +265,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
       { key: 'notifications', label: 'Notifications', icon: Bell, roles: ['super_admin', 'org_admin'] },
       { key: 'reports', label: 'Reports', icon: FileText, roles: ['super_admin', 'org_admin'] },
       { key: 'events', label: 'Events', icon: CalendarIcon, roles: ['super_admin', 'org_admin', 'teacher'] },
+      { key: 'backup', label: 'Backup', icon: Download, roles: ['super_admin', 'org_admin'] },
     ];
     return items.filter(i => i.roles.includes(user.role));
   }, [user.role]);
@@ -360,6 +361,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               {view === 'notifications' && <Notifications students={students} />}
               {view === 'reports' && <Reports />}
               {view === 'events' && <Events />}
+              {view === 'backup' && <Backup />}
             </motion.div>
           </AnimatePresence>
         </main>
@@ -1141,7 +1143,7 @@ function Students({ students, setStudents }) {
   const [org, setOrg] = useState(null);
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const empty = { first_name: '', last_name: '', dob: '', gender: 'Male', address: '', mobile: '', email: '', father_name: '', mother_name: '', emergency_contact: '', initiated_name: '', counsellor: '', temple: '', program_id: '', status: 'active', student_id: '', photo_url: '' };
+  const empty = { first_name: '', last_name: '', dob: '', gender: 'Male', address: '', mobile: '', email: '', father_name: '', mother_name: '', emergency_contact: '', initiated_name: '', counsellor: '', temple: '', program_id: '', program_ids: [], status: 'active', student_id: '', photo_url: '' };
   const [form, setForm] = useState(empty);
   const fileRef = useRef(null);
 
@@ -1155,13 +1157,14 @@ function Students({ students, setStudents }) {
     return list;
   }, [students, q, statusFilter]);
 
-  const openEdit = (s) => { setEditing(s); setForm({ ...empty, ...s }); setOpen(true); };
+  const openEdit = (s) => { setEditing(s); setForm({ ...empty, ...s, program_ids: s.program_ids && s.program_ids.length ? s.program_ids : (s.program_id ? [s.program_id] : []) }); setOpen(true); };
   const openNew = () => { setEditing(null); setForm({ ...empty, student_id: 'GK-2025-' + String(Math.floor(1000 + Math.random() * 9000)) }); setOpen(true); };
   const save = async () => {
     try {
       const isNew = !editing;
-      if (editing) await api(`/students/${editing.id}`, { method: 'PUT', body: JSON.stringify(form) });
-      else await api('/students', { method: 'POST', body: JSON.stringify(form) });
+      const payload = { ...form, program_id: form.program_ids?.[0] || form.program_id }; // keep legacy
+      if (editing) await api(`/students/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      else await api('/students', { method: 'POST', body: JSON.stringify(payload) });
       if (isNew) {
         confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#22c55e', '#0ea5e9'] });
         toast.success(`🎉 ${form.first_name} welcomed to ${org?.name || 'the school'}!`);
@@ -1255,7 +1258,13 @@ function Students({ students, setStudents }) {
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold truncate">{s.first_name} {s.last_name}</div>
                   <div className="text-[10px] text-muted-foreground font-mono">{s.student_id}</div>
-                  <div className="text-[11px] text-primary mt-0.5 truncate">{programs.find(p => p.id === s.program_id)?.name || '—'}</div>
+                  <div className="text-[11px] text-primary mt-0.5 flex flex-wrap gap-1">
+                    {((s.program_ids && s.program_ids.length ? s.program_ids : [s.program_id]).filter(Boolean).slice(0, 2).map(pid => {
+                      const prog = programs.find(p => p.id === pid);
+                      return prog ? <span key={pid} className="px-1.5 py-0.5 rounded bg-primary/10 text-[10px]">{prog.name}</span> : null;
+                    }))}
+                    {(s.program_ids?.length || 0) > 2 && <span className="text-[10px] text-muted-foreground">+{s.program_ids.length - 2}</span>}
+                  </div>
                 </div>
                 <Badge className={`text-[10px] ${s.status === 'active' ? 'bg-emerald-500 hover:bg-emerald-500' : 'bg-muted text-muted-foreground'}`}>{s.status}</Badge>
               </div>
@@ -1323,11 +1332,25 @@ function Students({ students, setStudents }) {
               <div><Label>Mobile</Label><Input value={form.mobile} onChange={e => setForm({ ...form, mobile: e.target.value })} /></div>
               <div><Label>Email</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
               <div className="col-span-2"><Label>Address</Label><Textarea rows={2} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
-              <div className="col-span-2"><Label>Program</Label>
-                <Select value={form.program_id} onValueChange={v => setForm({ ...form, program_id: v })}>
-                  <SelectTrigger><SelectValue placeholder="Select program" /></SelectTrigger>
-                  <SelectContent>{programs.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
-                </Select>
+              <div className="col-span-2"><Label>Enroll in Classes (select multiple)</Label>
+                <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 rounded-lg border bg-white/30 dark:bg-white/5">
+                  {programs.map(p => {
+                    const selected = form.program_ids?.includes(p.id);
+                    return (
+                      <label key={p.id} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-xs transition ${selected ? 'bg-primary/15 border border-primary/40' : 'bg-white/50 dark:bg-white/5 border border-transparent hover:border-primary/30'}`}>
+                        <input type="checkbox" className="accent-primary" checked={!!selected} onChange={() => {
+                          const ids = form.program_ids || [];
+                          setForm({ ...form, program_ids: selected ? ids.filter(x => x !== p.id) : [...ids, p.id] });
+                        }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{p.name}</div>
+                          <div className="text-[9px] text-muted-foreground">{(p.days_of_week || []).map(d => DAY_LABELS[d]).join(', ')} · {fmtINR(p.fee_amount || 0)}</div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+                <div className="text-[10px] text-muted-foreground mt-1">{(form.program_ids || []).length} class(es) selected</div>
               </div>
             </TabsContent>
             <TabsContent value="family" className="grid grid-cols-2 gap-3 mt-2">
@@ -1441,18 +1464,38 @@ function Teachers({ teachers, setTeachers }) {
 /* ============================================================
    CLASSES / BATCHES (built on programs)
 ============================================================ */
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const DAY_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+function DaysPicker({ value = [], onChange }) {
+  const toggle = (d) => onChange(value.includes(d) ? value.filter(x => x !== d) : [...value, d].sort());
+  return (
+    <div className="flex gap-1.5 flex-wrap">
+      {DAY_LABELS.map((label, i) => {
+        const active = value.includes(i);
+        return (
+          <button type="button" key={i} onClick={() => toggle(i)}
+            className={`w-11 h-11 rounded-xl text-xs font-semibold transition ${active ? 'bg-saffron-gradient text-white shadow-lg scale-105' : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}>
+            {label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function Classes() {
   const [items, setItems] = useState([]);
   const [students, setStudents] = useState([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const empty = { name: '', description: '', age_group: '', duration_months: 4, capacity: 30, start_date: '', end_date: '' };
+  const empty = { name: '', description: '', age_group: '', duration_months: 4, capacity: 30, start_date: '', end_date: '', days_of_week: [0], fee_amount: 1500 };
   const [form, setForm] = useState(empty);
   const load = () => api('/programs').then(r => setItems(r.items));
   useEffect(() => { load(); api('/students').then(r => setStudents(r.items)); }, []);
   const save = async () => {
     try {
-      const payload = { ...form, duration_months: Number(form.duration_months) || 0, capacity: Number(form.capacity) || 0 };
+      const payload = { ...form, duration_months: Number(form.duration_months) || 0, capacity: Number(form.capacity) || 0, fee_amount: Number(form.fee_amount) || 0 };
       if (editing) await api(`/programs/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       else await api('/programs', { method: 'POST', body: JSON.stringify(payload) });
       confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7'] });
@@ -1462,33 +1505,42 @@ function Classes() {
   };
   const del = async (p) => { if (!confirm(`Delete ${p.name}?`)) return; await api(`/programs/${p.id}`, { method: 'DELETE' }); toast.success('Deleted'); load(); };
   const openNew = () => { setEditing(null); setForm(empty); setOpen(true); };
-  const openEdit = (p) => { setEditing(p); setForm({ ...empty, ...p }); setOpen(true); };
+  const openEdit = (p) => { setEditing(p); setForm({ ...empty, ...p, days_of_week: p.days_of_week || [0] }); setOpen(true); };
+
+  const enrolledCount = (p) => students.filter(s => (s.program_ids || [s.program_id]).includes(p.id)).length;
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Classes & Batches" subtitle="Programs, sections, capacity, schedule" icon={School}
+      <PageHeader title="Classes & Batches" subtitle="Schedules, days, capacity & fees" icon={School}
         action={<Button className="bg-saffron-gradient shadow" onClick={openNew}><Plus size={15} className="mr-1" /> New Class</Button>} />
 
       {items.length === 0 ? <EmptyState text="No classes yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openNew}><Plus size={14} className="mr-1" />Create first class</Button>} /> : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map((p, i) => {
-            const enrolled = students.filter(s => s.program_id === p.id).length;
+            const enrolled = enrolledCount(p);
             const pct = Math.min(100, Math.round((enrolled / (p.capacity || 1)) * 100));
+            const days = p.days_of_week || [0];
             return (
               <motion.div key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
                 className="rounded-2xl glass p-5 card-lift group">
                 <div className="flex items-start justify-between">
                   <div className="w-11 h-11 rounded-2xl bg-saffron-gradient grid place-items-center shadow"><BookOpen className="text-white" size={18} /></div>
-                  <div className="flex items-center gap-1">
-                    <Badge variant="secondary">{p.age_group}</Badge>
-                  </div>
+                  <Badge variant="secondary">{p.age_group}</Badge>
                 </div>
                 <div className="mt-3 font-semibold">{p.name}</div>
                 <div className="text-xs text-muted-foreground line-clamp-2 min-h-[32px]">{p.description}</div>
+
+                {/* Days pills */}
+                <div className="mt-3 flex gap-1 flex-wrap">
+                  {DAY_LABELS.map((l, di) => (
+                    <div key={di} className={`w-7 h-7 rounded-md text-[10px] font-semibold grid place-items-center ${days.includes(di) ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground/50'}`}>{l[0]}</div>
+                  ))}
+                </div>
+
                 <div className="mt-3 grid grid-cols-3 text-center gap-2">
                   <div><div className="text-lg font-bold"><Counter value={enrolled} /></div><div className="text-[10px] text-muted-foreground">Enrolled</div></div>
                   <div><div className="text-lg font-bold">{p.capacity}</div><div className="text-[10px] text-muted-foreground">Capacity</div></div>
-                  <div><div className="text-lg font-bold">{p.duration_months}m</div><div className="text-[10px] text-muted-foreground">Duration</div></div>
+                  <div><div className="text-lg font-bold">{fmtINR(p.fee_amount || 0)}</div><div className="text-[10px] text-muted-foreground">Fee</div></div>
                 </div>
                 <div className="mt-3">
                   <div className="flex justify-between text-[10px] text-muted-foreground mb-1"><span>Fill rate</span><span>{pct}%</span></div>
@@ -1496,7 +1548,7 @@ function Classes() {
                 </div>
                 <div className="mt-3 text-[10px] text-muted-foreground flex justify-between">
                   <span>{p.start_date} → {p.end_date}</span>
-                  <span className="text-primary font-semibold">Weekly · Sundays</span>
+                  <span className="text-primary font-semibold">{days.length} day{days.length !== 1 ? 's' : ''}/wk</span>
                 </div>
                 <div className="flex gap-1 mt-3 pt-3 border-t opacity-0 group-hover:opacity-100 transition">
                   <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(p)}><Edit3 size={13} className="mr-1" /> Edit</Button>
@@ -1509,19 +1561,26 @@ function Classes() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{editing ? 'Edit' : 'New'} Class / Batch</DialogTitle><DialogDescription>Define program details, capacity & duration.</DialogDescription></DialogHeader>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>{editing ? 'Edit' : 'New'} Class / Batch</DialogTitle><DialogDescription>Set schedule, capacity & fee.</DialogDescription></DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Sunday School Term 2" /></div>
             <div className="col-span-2"><Label>Description</Label><Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short description of the program" /></div>
-            <div><Label>Age Group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="e.g. 6-14" /></div>
+            <div className="col-span-2">
+              <Label>Class Days *</Label>
+              <DaysPicker value={form.days_of_week} onChange={v => setForm({ ...form, days_of_week: v })} />
+              <div className="text-[10px] text-muted-foreground mt-1.5">
+                {form.days_of_week.length === 0 ? '⚠️ Select at least one day' : `Runs ${form.days_of_week.map(d => DAY_FULL[d]).join(', ')}`}
+              </div>
+            </div>
+            <div><Label>Fee (per term)</Label><Input type="number" value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
+            <div><Label>Age Group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="6-14" /></div>
             <div><Label>Duration (months)</Label><Input type="number" value={form.duration_months} onChange={e => setForm({ ...form, duration_months: e.target.value })} /></div>
             <div><Label>Capacity</Label><Input type="number" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} /></div>
-            <div></div>
             <div><Label>Start Date</Label><Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} /></div>
             <div><Label>End Date</Label><Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} /></div>
           </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient">{editing ? 'Update' : 'Create'}</Button></DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient" disabled={form.days_of_week.length === 0}>{editing ? 'Update' : 'Create'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
@@ -1538,10 +1597,21 @@ function Attendance() {
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [marks, setMarks] = useState({});
   useEffect(() => { api('/students').then(r => setStudents(r.items)); api('/programs').then(r => setPrograms(r.items)); }, []);
-  const list = students.filter(s => (!program || s.program_id === program) && s.status === 'active');
+  const selectedProgram = programs.find(p => p.id === program);
+  const classDays = selectedProgram?.days_of_week || [];
+  const selectedDayOfWeek = new Date(date + 'T00:00:00').getDay();
+  const isValidClassDay = !selectedProgram || classDays.length === 0 || classDays.includes(selectedDayOfWeek);
+  const list = students.filter(s => {
+    if (s.status !== 'active') return false;
+    if (!program) return true;
+    const ids = s.program_ids && s.program_ids.length ? s.program_ids : (s.program_id ? [s.program_id] : []);
+    return ids.includes(program);
+  });
   const setMark = (id, v) => setMarks({ ...marks, [id]: v });
   const bulk = (v) => { const m = {}; list.forEach(s => m[s.id] = v); setMarks(m); };
   const save = async () => {
+    if (!program) { toast.error('Please pick a class first'); return; }
+    if (!isValidClassDay) { toast.error(`${DAY_FULL[selectedDayOfWeek]} is not a class day for ${selectedProgram.name}`); return; }
     try {
       const records = list.map(s => ({ student_id: s.id, status: marks[s.id] || 'present' }));
       await api('/attendance-bulk', { method: 'POST', body: JSON.stringify({ date, program_id: program, records }) });
@@ -1569,18 +1639,38 @@ function Attendance() {
       {/* Controls */}
       <div className="rounded-2xl glass p-4 flex flex-wrap gap-3 items-end">
         <div><Label className="text-[11px]">Date</Label><Input type="date" value={date} onChange={e => setDate(e.target.value)} /></div>
-        <div className="min-w-[220px]"><Label className="text-[11px]">Program</Label>
+        <div className="min-w-[240px]"><Label className="text-[11px]">Class</Label>
           <Select value={program} onValueChange={setProgram}>
-            <SelectTrigger><SelectValue placeholder="All programs" /></SelectTrigger>
+            <SelectTrigger><SelectValue placeholder="Select a class" /></SelectTrigger>
             <SelectContent>{programs.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
           </Select>
         </div>
+        {selectedProgram && (
+          <div className="flex flex-col">
+            <Label className="text-[11px]">Class days</Label>
+            <div className="flex gap-1 mt-1">
+              {DAY_LABELS.map((l, i) => (
+                <div key={i} className={`w-8 h-8 rounded-md text-[10px] font-semibold grid place-items-center ${classDays.includes(i) ? (i === selectedDayOfWeek ? 'ring-2 ring-primary bg-primary text-primary-foreground' : 'bg-primary/80 text-primary-foreground') : 'bg-muted text-muted-foreground/50'}`}>{l[0]}</div>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="ml-auto flex gap-2 flex-wrap">
-          <Button size="sm" variant="outline" onClick={() => bulk('present')}>Mark all Present</Button>
-          <Button size="sm" variant="outline" onClick={() => bulk('absent')}>Mark all Absent</Button>
-          <Button onClick={save} className="bg-saffron-gradient shadow">Save Attendance</Button>
+          <Button size="sm" variant="outline" onClick={() => bulk('present')} disabled={!isValidClassDay}>Mark all Present</Button>
+          <Button size="sm" variant="outline" onClick={() => bulk('absent')} disabled={!isValidClassDay}>Mark all Absent</Button>
+          <Button onClick={save} className="bg-saffron-gradient shadow" disabled={!isValidClassDay || !program}>Save Attendance</Button>
         </div>
       </div>
+
+      {selectedProgram && !isValidClassDay && (
+        <div className="rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-800 dark:text-rose-200 p-3 text-sm flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-rose-500 text-white grid place-items-center shrink-0">⚠</div>
+          <div>
+            <span className="font-semibold">{DAY_FULL[selectedDayOfWeek]} isn't a class day</span> for <b>{selectedProgram.name}</b>.
+            This class runs on <b>{classDays.map(d => DAY_FULL[d]).join(', ') || 'no days set'}</b>. Pick another date or edit the class schedule.
+          </div>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-4 gap-3">
@@ -1597,10 +1687,10 @@ function Attendance() {
         ))}
       </div>
 
-      {/* Roster */}
       <div className="rounded-2xl glass p-4">
-        {list.length === 0 ? <EmptyState text="No active students in this program" /> : (
-          <div className="space-y-1.5">
+        {!program ? <EmptyState text="Select a class to see enrolled students" /> :
+          list.length === 0 ? <EmptyState text="No students enrolled in this class" /> : (
+            <div className={`space-y-1.5 ${!isValidClassDay ? 'opacity-40 pointer-events-none' : ''}`}>
             {list.map(s => (
               <div key={s.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 transition">
                 <Avatar className="h-9 w-9">
@@ -2292,6 +2382,113 @@ function ParentPortal({ user, onLogout, dark, setDark }) {
               </div>
             )}
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================================================
+   BACKUP / RESTORE
+============================================================ */
+function Backup() {
+  const [exporting, setExporting] = useState(false);
+  const [restoring, setRestoring] = useState(false);
+  const [lastBackup, setLastBackup] = useState(null);
+  const fileRef = useRef(null);
+
+  const doExport = async () => {
+    setExporting(true);
+    try {
+      const data = await api('/backup/export');
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `gokulam360-backup-${stamp}.json`;
+      a.click();
+      setLastBackup({ at: new Date().toISOString(), counts: data.counts });
+      confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 }, colors: ['#7c3aed', '#22c55e', '#0ea5e9'] });
+      toast.success('Backup downloaded successfully 💾');
+    } catch (e) { toast.error(e.message); }
+    finally { setExporting(false); }
+  };
+
+  const onRestoreFile = async (e) => {
+    const file = e.target.files?.[0]; if (!file) return;
+    if (!confirm(`Restoring will REPLACE all current org data with the backup. Continue?`)) return;
+    setRestoring(true);
+    try {
+      const text = await file.text();
+      const backup = JSON.parse(text);
+      const res = await api('/backup/restore', { method: 'POST', body: JSON.stringify(backup) });
+      confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#7c3aed', '#22c55e'] });
+      toast.success(`Restored: ${Object.entries(res.restored).map(([k, v]) => `${v} ${k}`).join(' • ')}`);
+    } catch (e) { toast.error('Invalid backup file: ' + e.message); }
+    finally { setRestoring(false); e.target.value = ''; }
+  };
+
+  return (
+    <div className="space-y-5">
+      <PageHeader title="Data Backup" subtitle="Export or restore your organization's entire data" icon={Download} />
+
+      <div className="grid md:grid-cols-2 gap-4">
+        {/* Export card */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-3xl relative overflow-hidden p-6 text-white shadow-2xl"
+          style={{ background: 'linear-gradient(135deg, #4c1d95 0%, #6d28d9 55%, #a855f7 100%)' }}>
+          <div className="absolute -right-8 -bottom-8 opacity-15"><Download size={180} /></div>
+          <div className="relative">
+            <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur grid place-items-center mb-4"><Download size={22} /></div>
+            <div className="text-xl font-bold">Download Backup</div>
+            <div className="text-sm opacity-85 mt-1">One-click JSON export of every student, teacher, class, attendance record, fee, event & notification for this organization.</div>
+            <div className="mt-4 space-y-1.5 text-xs opacity-90">
+              <div className="flex items-center gap-2"><Check size={12} /> Includes all your data</div>
+              <div className="flex items-center gap-2"><Check size={12} /> Safe to email or store in cloud</div>
+              <div className="flex items-center gap-2"><Check size={12} /> Restore anytime</div>
+            </div>
+            <Button className="mt-5 bg-white text-violet-700 hover:bg-white/90" onClick={doExport} disabled={exporting}>
+              <Download size={15} className="mr-1.5" /> {exporting ? 'Preparing…' : 'Export as JSON'}
+            </Button>
+            {lastBackup && (
+              <div className="text-[11px] opacity-80 mt-3">
+                Last export: {timeAgo(lastBackup.at)} • {Object.entries(lastBackup.counts).map(([k, v]) => `${v} ${k}`).join(', ')}
+              </div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Restore card */}
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
+          className="rounded-3xl glass p-6">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-500 text-white grid place-items-center mb-4 shadow"><Upload size={22} /></div>
+          <div className="text-xl font-bold">Restore from Backup</div>
+          <div className="text-sm text-muted-foreground mt-1">Upload a Gokulam360 backup JSON to restore. This <b className="text-rose-600">replaces</b> all current data for your organization.</div>
+          <div className="mt-4 space-y-1.5 text-xs">
+            <div className="flex items-center gap-2 text-amber-600"><span className="w-1 h-1 rounded-full bg-amber-500" /> Destructive — take a fresh export first</div>
+            <div className="flex items-center gap-2 text-muted-foreground"><Check size={12} /> Idempotent — same file = same result</div>
+            <div className="flex items-center gap-2 text-muted-foreground"><Check size={12} /> Data stays scoped to your org</div>
+          </div>
+          <input ref={fileRef} type="file" accept=".json" hidden onChange={onRestoreFile} />
+          <Button variant="outline" className="mt-5 border-rose-300 text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-900/20" onClick={() => fileRef.current?.click()} disabled={restoring}>
+            <Upload size={15} className="mr-1.5" /> {restoring ? 'Restoring…' : 'Upload backup file'}
+          </Button>
+        </motion.div>
+      </div>
+
+      <div className="rounded-2xl glass p-5">
+        <div className="text-sm font-semibold mb-3 flex items-center gap-2"><Sparkles size={14} className="text-primary" /> Best practices</div>
+        <div className="grid md:grid-cols-3 gap-3 text-xs">
+          {[
+            { icon: CalendarIcon, title: 'Weekly cadence', desc: 'Download a backup every Sunday after class.' },
+            { icon: Building2, title: 'Off-site copy', desc: 'Keep at least one copy in Google Drive or email.' },
+            { icon: Rocket, title: 'Before big changes', desc: 'Export before term rollovers or bulk imports.' },
+          ].map(b => (
+            <div key={b.title} className="rounded-xl p-3 bg-white/40 dark:bg-white/5 border">
+              <div className="w-8 h-8 rounded-lg bg-saffron-gradient text-white grid place-items-center mb-2"><b.icon size={14} /></div>
+              <div className="font-semibold">{b.title}</div>
+              <div className="text-muted-foreground mt-0.5">{b.desc}</div>
+            </div>
+          ))}
         </div>
       </div>
     </div>

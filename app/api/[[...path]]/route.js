@@ -131,9 +131,9 @@ async function handleSeed() {
 
   // Programs
   const programs = [
-    { id: uuidv4(), organization_id: orgId, name: 'Sunday School', description: 'Weekly spiritual education for children', age_group: '6-14', duration_months: 4, capacity: 60, start_date: '2025-06-01', end_date: '2025-09-30', created_at: new Date().toISOString(), is_deleted: false },
-    { id: uuidv4(), organization_id: orgId, name: 'Bhagavad Gita Course', description: 'Foundation Gita course for youth', age_group: '15-25', duration_months: 6, capacity: 40, start_date: '2025-07-01', end_date: '2025-12-31', created_at: new Date().toISOString(), is_deleted: false },
-    { id: uuidv4(), organization_id: orgId, name: 'Gokulam Preschool', description: 'Krishna Conscious preschool', age_group: '3-5', duration_months: 12, capacity: 30, start_date: '2025-06-01', end_date: '2026-05-31', created_at: new Date().toISOString(), is_deleted: false },
+    { id: uuidv4(), organization_id: orgId, name: 'Sunday School', description: 'Weekly spiritual education for children', age_group: '6-14', duration_months: 4, capacity: 60, start_date: '2025-06-01', end_date: '2025-09-30', days_of_week: [0], fee_amount: 1500, created_at: new Date().toISOString(), is_deleted: false },
+    { id: uuidv4(), organization_id: orgId, name: 'Bhagavad Gita Course', description: 'Foundation Gita course for youth', age_group: '15-25', duration_months: 6, capacity: 40, start_date: '2025-07-01', end_date: '2025-12-31', days_of_week: [0, 6], fee_amount: 2000, created_at: new Date().toISOString(), is_deleted: false },
+    { id: uuidv4(), organization_id: orgId, name: 'Gokulam Preschool', description: 'Krishna Conscious preschool', age_group: '3-5', duration_months: 12, capacity: 30, start_date: '2025-06-01', end_date: '2026-05-31', days_of_week: [1, 2, 3, 4, 5], fee_amount: 3000, created_at: new Date().toISOString(), is_deleted: false },
   ];
   await db.collection('programs').insertMany(programs);
 
@@ -173,6 +173,7 @@ async function handleSeed() {
       counsellor: 'Nitai Das',
       temple: 'ISKCON Kochi',
       program_id: programs[i % programs.length].id,
+      program_ids: i % 4 === 0 ? [programs[0].id, programs[1].id] : [programs[i % programs.length].id],
       status,
       admission_date: '2025-06-0' + ((i % 9) + 1),
       created_at: new Date().toISOString(),
@@ -692,6 +693,64 @@ async function router(req, method) {
     // Collect all months in dataset
     const allMonths = Array.from(new Set(attendance.map(a => a.date.slice(0, 7)))).sort();
     return json({ months: allMonths, students: summary });
+  }
+
+  // Backup export - entire org data as JSON
+  if (resource === 'backup' && id === 'export' && method === 'GET') {
+    if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
+    const scope = { organization_id: user.organization_id };
+    const [organizations, students, teachers, programs, attendance, fees, events, notifications, activity] = await Promise.all([
+      user.role === 'super_admin' ? db.collection('organizations').find({}).toArray() : db.collection('organizations').find({ id: user.organization_id }).toArray(),
+      db.collection('students').find(scope).toArray(),
+      db.collection('teachers').find(scope).toArray(),
+      db.collection('programs').find(scope).toArray(),
+      db.collection('attendance').find(scope).toArray(),
+      db.collection('fees').find(scope).toArray(),
+      db.collection('events').find(scope).toArray(),
+      db.collection('notifications').find(scope).toArray(),
+      db.collection('activity').find(scope).toArray(),
+    ]);
+    return json({
+      exported_at: new Date().toISOString(),
+      exported_by: user.email,
+      organization_id: user.organization_id,
+      version: '1.0',
+      counts: { students: students.length, teachers: teachers.length, programs: programs.length, attendance: attendance.length, fees: fees.length, events: events.length, notifications: notifications.length },
+      data: {
+        organizations: organizations.map(stripId),
+        students: students.map(stripId),
+        teachers: teachers.map(stripId),
+        programs: programs.map(stripId),
+        attendance: attendance.map(stripId),
+        fees: fees.map(stripId),
+        events: events.map(stripId),
+        notifications: notifications.map(stripId),
+        activity: activity.map(stripId),
+      },
+    });
+  }
+
+  // Backup restore - accept JSON, replaces the org's data
+  if (resource === 'backup' && id === 'restore' && method === 'POST') {
+    if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
+    const body = await req.json();
+    const data = body.data || {};
+    const orgId = user.organization_id;
+    const collections = ['students', 'teachers', 'programs', 'attendance', 'fees', 'events', 'notifications'];
+    const counts = {};
+    for (const c of collections) {
+      const items = (data[c] || []).map(x => ({ ...x, organization_id: orgId, id: x.id || uuidv4() }));
+      // Wipe org's existing data in this collection
+      await db.collection(c).deleteMany({ organization_id: orgId });
+      if (items.length) await db.collection(c).insertMany(items);
+      counts[c] = items.length;
+    }
+    await db.collection('activity').insertOne({
+      id: uuidv4(), organization_id: orgId, kind: 'backup_restored',
+      title: `Data restored from backup: ${Object.values(counts).reduce((a, b) => a + b, 0)} records`,
+      actor: user.name || 'Admin', created_at: new Date().toISOString(),
+    });
+    return json({ restored: counts });
   }
 
   return json({ error: 'Not found', path: url.pathname, method }, 404);
