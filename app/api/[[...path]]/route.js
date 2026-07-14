@@ -1,0 +1,430 @@
+import { NextResponse } from 'next/server';
+import { MongoClient } from 'mongodb';
+import { v4 as uuidv4 } from 'uuid';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+
+const MONGO_URL = process.env.MONGO_URL;
+const DB_NAME = process.env.DB_NAME || 'gokulam360';
+const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+
+let cachedClient = null;
+async function getDb() {
+  if (!cachedClient) {
+    cachedClient = new MongoClient(MONGO_URL);
+    await cachedClient.connect();
+  }
+  return cachedClient.db(DB_NAME);
+}
+
+function json(data, status = 200) {
+  return NextResponse.json(data, { status });
+}
+
+function signToken(payload) {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
+}
+
+function verifyToken(req) {
+  const auth = req.headers.get('authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : null;
+  if (!token) return null;
+  try {
+    return jwt.verify(token, JWT_SECRET);
+  } catch (e) {
+    return null;
+  }
+}
+
+async function requireAuth(req, roles = null) {
+  const user = verifyToken(req);
+  if (!user) return { error: json({ error: 'Unauthorized' }, 401) };
+  if (roles && !roles.includes(user.role)) {
+    return { error: json({ error: 'Forbidden' }, 403) };
+  }
+  return { user };
+}
+
+// Scope filter: super_admin sees all; others limited to their org
+function orgScope(user, extra = {}) {
+  if (user.role === 'super_admin') return { ...extra };
+  return { organization_id: user.organization_id, ...extra };
+}
+
+function stripId(doc) {
+  if (!doc) return doc;
+  const { _id, password_hash, ...rest } = doc;
+  return rest;
+}
+
+// ========== SEED ==========
+async function handleSeed() {
+  const db = await getDb();
+  await db.collection('organizations').deleteMany({});
+  await db.collection('users').deleteMany({});
+  await db.collection('students').deleteMany({});
+  await db.collection('teachers').deleteMany({});
+  await db.collection('programs').deleteMany({});
+  await db.collection('attendance').deleteMany({});
+  await db.collection('fees').deleteMany({});
+  await db.collection('payments').deleteMany({});
+  await db.collection('events').deleteMany({});
+
+  const orgId = uuidv4();
+  const org = {
+    id: orgId,
+    name: 'ISKCON Gokulam Sunday School',
+    address: 'Temple Road, Vrindavan Colony, Kochi 682001',
+    contact_email: 'contact@iskcongokulam.org',
+    contact_phone: '+91 98765 43210',
+    logo_url: '',
+    currency: 'INR',
+    academic_year: '2025-26',
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+    is_deleted: false,
+  };
+  await db.collection('organizations').insertOne(org);
+
+  // Users
+  const passHash = await bcrypt.hash('password123', 10);
+  const users = [
+    { id: uuidv4(), email: 'super@gokulam360.com', password_hash: passHash, name: 'Super Admin', role: 'super_admin', organization_id: null, created_at: new Date().toISOString() },
+    { id: uuidv4(), email: 'admin@iskcongokulam.org', password_hash: passHash, name: 'Radha Devi Dasi', role: 'org_admin', organization_id: orgId, created_at: new Date().toISOString() },
+    { id: uuidv4(), email: 'teacher@iskcongokulam.org', password_hash: passHash, name: 'Govinda Das', role: 'teacher', organization_id: orgId, created_at: new Date().toISOString() },
+  ];
+  await db.collection('users').insertMany(users);
+
+  // Programs
+  const programs = [
+    { id: uuidv4(), organization_id: orgId, name: 'Sunday School', description: 'Weekly spiritual education for children', age_group: '6-14', duration_months: 4, capacity: 60, start_date: '2025-06-01', end_date: '2025-09-30', created_at: new Date().toISOString(), is_deleted: false },
+    { id: uuidv4(), organization_id: orgId, name: 'Bhagavad Gita Course', description: 'Foundation Gita course for youth', age_group: '15-25', duration_months: 6, capacity: 40, start_date: '2025-07-01', end_date: '2025-12-31', created_at: new Date().toISOString(), is_deleted: false },
+    { id: uuidv4(), organization_id: orgId, name: 'Gokulam Preschool', description: 'Krishna Conscious preschool', age_group: '3-5', duration_months: 12, capacity: 30, start_date: '2025-06-01', end_date: '2026-05-31', created_at: new Date().toISOString(), is_deleted: false },
+  ];
+  await db.collection('programs').insertMany(programs);
+
+  // Teachers
+  const teachers = [
+    { id: uuidv4(), organization_id: orgId, employee_id: 'T-001', name: 'Govinda Das', email: 'teacher@iskcongokulam.org', mobile: '+91 90000 11111', qualification: 'M.A. Sanskrit', skills: 'Gita teaching, Kirtan', address: 'Kochi', created_at: new Date().toISOString(), is_deleted: false },
+    { id: uuidv4(), organization_id: orgId, employee_id: 'T-002', name: 'Yashoda Devi Dasi', email: 'yashoda@iskcongokulam.org', mobile: '+91 90000 22222', qualification: 'B.Ed', skills: 'Preschool, Storytelling', address: 'Kochi', created_at: new Date().toISOString(), is_deleted: false },
+    { id: uuidv4(), organization_id: orgId, employee_id: 'T-003', name: 'Nitai Das', email: 'nitai@iskcongokulam.org', mobile: '+91 90000 33333', qualification: 'M.Sc.', skills: 'Youth mentoring', address: 'Kochi', created_at: new Date().toISOString(), is_deleted: false },
+  ];
+  await db.collection('teachers').insertMany(teachers);
+
+  // Students
+  const firstNames = ['Krishna', 'Radha', 'Arjun', 'Yashoda', 'Nitai', 'Gauranga', 'Tulsi', 'Madhava', 'Lila', 'Gopala', 'Sita', 'Bhakti'];
+  const lastNames = ['Nair', 'Menon', 'Iyer', 'Sharma', 'Das', 'Kumar', 'Pillai', 'Krishnan'];
+  const students = [];
+  for (let i = 0; i < 24; i++) {
+    const fn = firstNames[i % firstNames.length];
+    const ln = lastNames[i % lastNames.length];
+    const status = i % 10 === 9 ? 'inactive' : 'active';
+    students.push({
+      id: uuidv4(),
+      organization_id: orgId,
+      student_id: 'GK-2025-' + String(101 + i).padStart(4, '0'),
+      first_name: fn,
+      last_name: ln,
+      dob: '20' + (12 + (i % 8)) + '-0' + ((i % 9) + 1) + '-1' + (i % 9),
+      gender: i % 2 === 0 ? 'Male' : 'Female',
+      photo_url: '',
+      address: 'Kochi, Kerala',
+      mobile: '+91 98' + (100000000 + i * 137),
+      email: (fn + '.' + ln + i).toLowerCase() + '@example.com',
+      father_name: 'Sri ' + ln,
+      mother_name: 'Smt ' + fn + ' Devi',
+      guardian: 'Father',
+      emergency_contact: '+91 90' + (100000000 + i * 91),
+      initiated_name: i % 5 === 0 ? fn + ' Das' : '',
+      counsellor: 'Nitai Das',
+      temple: 'ISKCON Kochi',
+      program_id: programs[i % programs.length].id,
+      status,
+      admission_date: '2025-06-0' + ((i % 9) + 1),
+      created_at: new Date().toISOString(),
+      is_deleted: false,
+    });
+  }
+  await db.collection('students').insertMany(students);
+
+  // Fees
+  const fees = students.slice(0, 20).map((s, i) => ({
+    id: uuidv4(),
+    organization_id: orgId,
+    student_id: s.id,
+    fee_type: i % 2 === 0 ? 'Term Fee' : 'Admission Fee',
+    amount: i % 2 === 0 ? 1500 : 500,
+    paid_amount: i % 3 === 0 ? 0 : (i % 2 === 0 ? 1500 : 500),
+    status: i % 3 === 0 ? 'pending' : 'paid',
+    due_date: '2025-07-15',
+    created_at: new Date().toISOString(),
+  }));
+  await db.collection('fees').insertMany(fees);
+
+  // Attendance (last 4 weeks Sunday)
+  const attRecords = [];
+  const today = new Date();
+  for (let w = 0; w < 4; w++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - w * 7);
+    const dateStr = d.toISOString().slice(0, 10);
+    students.forEach((s, idx) => {
+      const rand = (idx + w) % 10;
+      let status = 'present';
+      if (rand === 0) status = 'absent';
+      else if (rand === 1) status = 'late';
+      else if (rand === 2) status = 'excused';
+      attRecords.push({
+        id: uuidv4(),
+        organization_id: orgId,
+        student_id: s.id,
+        program_id: s.program_id,
+        date: dateStr,
+        status,
+        marked_by: users[2].id,
+        created_at: new Date().toISOString(),
+      });
+    });
+  }
+  await db.collection('attendance').insertMany(attRecords);
+
+  // Events
+  const events = [
+    { id: uuidv4(), organization_id: orgId, name: 'Janmashtami Celebration', date: '2025-08-16', description: 'Grand celebration of Krishna Janmashtami', created_at: new Date().toISOString() },
+    { id: uuidv4(), organization_id: orgId, name: 'Gita Jayanti', date: '2025-12-11', description: 'Bhagavad Gita recital competition', created_at: new Date().toISOString() },
+    { id: uuidv4(), organization_id: orgId, name: 'Summer Camp', date: '2025-07-20', description: 'Week-long spiritual camp', created_at: new Date().toISOString() },
+  ];
+  await db.collection('events').insertMany(events);
+
+  return json({
+    ok: true,
+    message: 'Seed complete',
+    credentials: [
+      { role: 'super_admin', email: 'super@gokulam360.com', password: 'password123' },
+      { role: 'org_admin', email: 'admin@iskcongokulam.org', password: 'password123' },
+      { role: 'teacher', email: 'teacher@iskcongokulam.org', password: 'password123' },
+    ],
+  });
+}
+
+// ============ ROUTER ============
+async function router(req, method) {
+  const url = new URL(req.url);
+  const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
+  const [resource, id, sub] = parts;
+  const db = await getDb();
+
+  // ---- public ----
+  if (resource === 'health') return json({ ok: true, service: 'gokulam360' });
+
+  if (resource === 'seed' && method === 'POST') return handleSeed();
+
+  if (resource === 'auth') {
+    if (id === 'login' && method === 'POST') {
+      const body = await req.json();
+      const user = await db.collection('users').findOne({ email: body.email });
+      if (!user) return json({ error: 'Invalid credentials' }, 401);
+      const ok = await bcrypt.compare(body.password || '', user.password_hash);
+      if (!ok) return json({ error: 'Invalid credentials' }, 401);
+      const org = user.organization_id ? await db.collection('organizations').findOne({ id: user.organization_id }) : null;
+      const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role, organization_id: user.organization_id });
+      return json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, organization_id: user.organization_id }, organization: org ? stripId(org) : null });
+    }
+    if (id === 'me' && method === 'GET') {
+      const authRes = await requireAuth(req);
+      if (authRes.error) return authRes.error;
+      const u = authRes.user;
+      const org = u.organization_id ? await db.collection('organizations').findOne({ id: u.organization_id }) : null;
+      return json({ user: u, organization: org ? stripId(org) : null });
+    }
+  }
+
+  // ---- protected ----
+  const authRes = await requireAuth(req);
+  if (authRes.error) return authRes.error;
+  const user = authRes.user;
+
+  // Organizations
+  if (resource === 'organizations') {
+    if (method === 'GET' && !id) {
+      if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
+      const orgs = await db.collection('organizations').find({ is_deleted: { $ne: true } }).toArray();
+      return json({ items: orgs.map(stripId) });
+    }
+    if (method === 'POST' && !id) {
+      if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
+      const body = await req.json();
+      const doc = { id: uuidv4(), ...body, created_at: new Date().toISOString(), updated_at: new Date().toISOString(), is_deleted: false };
+      await db.collection('organizations').insertOne(doc);
+      // Create org admin if provided
+      if (body.admin_email && body.admin_password) {
+        const passHash = await bcrypt.hash(body.admin_password, 10);
+        await db.collection('users').insertOne({
+          id: uuidv4(), email: body.admin_email, password_hash: passHash, name: body.admin_name || 'Admin',
+          role: 'org_admin', organization_id: doc.id, created_at: new Date().toISOString()
+        });
+      }
+      return json(stripId(doc));
+    }
+    if (method === 'PUT' && id) {
+      if (user.role !== 'super_admin' && !(user.role === 'org_admin' && user.organization_id === id)) return json({ error: 'Forbidden' }, 403);
+      const body = await req.json();
+      await db.collection('organizations').updateOne({ id }, { $set: { ...body, updated_at: new Date().toISOString() } });
+      const doc = await db.collection('organizations').findOne({ id });
+      return json(stripId(doc));
+    }
+    if (method === 'DELETE' && id) {
+      if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
+      await db.collection('organizations').updateOne({ id }, { $set: { is_deleted: true } });
+      return json({ ok: true });
+    }
+  }
+
+  // Generic collection handler
+  const collectionRoutes = {
+    students: ['org_admin', 'teacher', 'super_admin'],
+    teachers: ['org_admin', 'super_admin'],
+    programs: ['org_admin', 'teacher', 'super_admin'],
+    fees: ['org_admin', 'super_admin'],
+    events: ['org_admin', 'teacher', 'super_admin'],
+    attendance: ['org_admin', 'teacher', 'super_admin'],
+  };
+
+  if (collectionRoutes[resource]) {
+    const allowed = collectionRoutes[resource];
+    if (!allowed.includes(user.role)) return json({ error: 'Forbidden' }, 403);
+    const col = db.collection(resource);
+
+    if (method === 'GET' && !id) {
+      const q = orgScope(user, { is_deleted: { $ne: true } });
+      // Support filter query params
+      const params = Object.fromEntries(url.searchParams.entries());
+      Object.keys(params).forEach(k => { q[k] = params[k]; });
+      const items = await col.find(q).sort({ created_at: -1 }).limit(500).toArray();
+      return json({ items: items.map(stripId) });
+    }
+    if (method === 'GET' && id) {
+      const doc = await col.findOne({ id, ...orgScope(user) });
+      if (!doc) return json({ error: 'Not found' }, 404);
+      return json(stripId(doc));
+    }
+    if (method === 'POST' && !id) {
+      const body = await req.json();
+      const doc = {
+        id: uuidv4(),
+        organization_id: user.organization_id || body.organization_id,
+        ...body,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        is_deleted: false,
+      };
+      await col.insertOne(doc);
+      return json(stripId(doc));
+    }
+    if (method === 'PUT' && id) {
+      const body = await req.json();
+      await col.updateOne({ id, ...orgScope(user) }, { $set: { ...body, updated_at: new Date().toISOString() } });
+      const doc = await col.findOne({ id });
+      return json(stripId(doc));
+    }
+    if (method === 'DELETE' && id) {
+      await col.updateOne({ id, ...orgScope(user) }, { $set: { is_deleted: true } });
+      return json({ ok: true });
+    }
+  }
+
+  // Bulk attendance
+  if (resource === 'attendance-bulk' && method === 'POST') {
+    const body = await req.json();
+    const { date, program_id, records } = body; // records: [{student_id, status}]
+    if (!Array.isArray(records)) return json({ error: 'records required' }, 400);
+    // Remove existing for this date+program+org
+    await db.collection('attendance').deleteMany({ organization_id: user.organization_id, date, program_id });
+    const docs = records.map(r => ({
+      id: uuidv4(),
+      organization_id: user.organization_id,
+      program_id,
+      date,
+      student_id: r.student_id,
+      status: r.status,
+      marked_by: user.id,
+      created_at: new Date().toISOString(),
+    }));
+    if (docs.length) await db.collection('attendance').insertMany(docs);
+    return json({ ok: true, count: docs.length });
+  }
+
+  // Dashboard stats
+  if (resource === 'dashboard' && method === 'GET') {
+    const scope = orgScope(user, { is_deleted: { $ne: true } });
+    const students = await db.collection('students').find(scope).toArray();
+    const teachers = await db.collection('teachers').find(scope).toArray();
+    const feesScope = user.role === 'super_admin' ? {} : { organization_id: user.organization_id };
+    const fees = await db.collection('fees').find(feesScope).toArray();
+    const events = await db.collection('events').find(feesScope).toArray();
+    const attendance = await db.collection('attendance').find(feesScope).toArray();
+
+    const activeStudents = students.filter(s => s.status === 'active').length;
+    const totalStudents = students.length;
+    const pendingFees = fees.filter(f => f.status === 'pending').reduce((sum, f) => sum + (f.amount - (f.paid_amount || 0)), 0);
+    const collectedFees = fees.reduce((sum, f) => sum + (f.paid_amount || 0), 0);
+    const attPresent = attendance.filter(a => a.status === 'present' || a.status === 'late').length;
+    const attTotal = attendance.length || 1;
+    const attendancePct = Math.round((attPresent / attTotal) * 100);
+
+    // Monthly admissions (last 6 months)
+    const monthly = {};
+    const now = new Date();
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = d.toLocaleString('en', { month: 'short' });
+      monthly[key] = 0;
+    }
+    students.forEach(s => {
+      const d = new Date(s.admission_date || s.created_at);
+      const key = d.toLocaleString('en', { month: 'short' });
+      if (key in monthly) monthly[key]++;
+    });
+    const monthlyAdmissions = Object.entries(monthly).map(([month, count]) => ({ month, count }));
+
+    // Attendance trend (by date)
+    const trend = {};
+    attendance.forEach(a => {
+      if (!trend[a.date]) trend[a.date] = { date: a.date, present: 0, absent: 0 };
+      if (a.status === 'present' || a.status === 'late') trend[a.date].present++;
+      else trend[a.date].absent++;
+    });
+    const attendanceTrend = Object.values(trend).sort((a, b) => a.date.localeCompare(b.date));
+
+    // Fee split
+    const feeSplit = [
+      { name: 'Collected', value: collectedFees },
+      { name: 'Pending', value: pendingFees },
+    ];
+
+    return json({
+      totalStudents,
+      activeStudents,
+      newAdmissions: students.filter(s => {
+        const d = new Date(s.admission_date || s.created_at);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      }).length,
+      attendancePct,
+      pendingFees,
+      collectedFees,
+      totalTeachers: teachers.length,
+      upcomingEvents: events.filter(e => new Date(e.date) >= new Date()).slice(0, 5),
+      monthlyAdmissions,
+      attendanceTrend,
+      feeSplit,
+    });
+  }
+
+  return json({ error: 'Not found', path: url.pathname, method }, 404);
+}
+
+export async function GET(req) { try { return await router(req, 'GET'); } catch (e) { console.error(e); return json({ error: e.message }, 500); } }
+export async function POST(req) { try { return await router(req, 'POST'); } catch (e) { console.error(e); return json({ error: e.message }, 500); } }
+export async function PUT(req) { try { return await router(req, 'PUT'); } catch (e) { console.error(e); return json({ error: e.message }, 500); } }
+export async function DELETE(req) { try { return await router(req, 'DELETE'); } catch (e) { console.error(e); return json({ error: e.message }, 500); } }
+export async function PATCH(req) { try { return await router(req, 'PUT'); } catch (e) { console.error(e); return json({ error: e.message }, 500); } }
