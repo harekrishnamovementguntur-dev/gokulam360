@@ -3,10 +3,44 @@ import { MongoClient } from 'mongodb';
 import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import twilio from 'twilio';
 
 const MONGO_URL = process.env.MONGO_URL;
 const DB_NAME = process.env.DB_NAME || 'gokulam360';
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+
+const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID;
+const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN;
+const TWILIO_SMS_FROM = process.env.TWILIO_SMS_FROM_NUMBER;
+const TWILIO_WA_FROM = process.env.TWILIO_WHATSAPP_FROM;
+const twilioClient = (TWILIO_SID && TWILIO_TOKEN && TWILIO_SID.startsWith('AC')) ? twilio(TWILIO_SID, TWILIO_TOKEN) : null;
+
+function normalizePhone(raw) {
+  if (!raw) return null;
+  let p = String(raw).trim().replace(/[\s\-()]/g, '');
+  if (!p.startsWith('+')) {
+    // Assume India if 10 digits
+    if (/^\d{10}$/.test(p)) p = '+91' + p;
+    else if (/^91\d{10}$/.test(p)) p = '+' + p;
+    else return null;
+  }
+  return p;
+}
+
+async function sendTwilioMessage(channel, to, message) {
+  if (!twilioClient) return { status: 'mock', error: 'Twilio not configured' };
+  const phone = normalizePhone(to);
+  if (!phone) return { status: 'failed', error: 'Invalid phone: ' + to };
+  try {
+    const payload = channel === 'whatsapp'
+      ? { from: `whatsapp:${TWILIO_WA_FROM}`, to: `whatsapp:${phone}`, body: message }
+      : { from: TWILIO_SMS_FROM, to: phone, body: message };
+    const msg = await twilioClient.messages.create(payload);
+    return { status: msg.status, sid: msg.sid };
+  } catch (e) {
+    return { status: 'failed', error: e.message };
+  }
+}
 
 let cachedClient = null;
 async function getDb() {
@@ -241,6 +275,9 @@ async function router(req, method) {
 
   // ---- public ----
   if (resource === 'health') return json({ ok: true, service: 'gokulam360' });
+  if (resource === 'config' && method === 'GET') {
+    return json({ twilio_configured: !!twilioClient, providers: { sms: !!twilioClient, whatsapp: !!twilioClient } });
+  }
 
   if (resource === 'seed' && method === 'POST') return handleSeed();
 
@@ -468,24 +505,39 @@ async function router(req, method) {
     if (method === 'POST' && !id) {
       const body = await req.json();
       // body: { channel: 'sms'|'whatsapp', recipients: [{name,phone}], message, kind }
+      const channel = body.channel || 'sms';
+      const recipients = body.recipients || [];
+      const message = body.message || '';
+
+      // Fan-out to Twilio (or mock)
+      const deliveries = [];
+      for (const r of recipients) {
+        const res = await sendTwilioMessage(channel, r.phone, message);
+        deliveries.push({ name: r.name, phone: r.phone, ...res });
+      }
+      const sentCount = deliveries.filter(d => d.status !== 'failed' && d.status !== 'mock').length;
+      const mockCount = deliveries.filter(d => d.status === 'mock').length;
+      const failCount = deliveries.filter(d => d.status === 'failed').length;
+
       const doc = {
         id: uuidv4(),
         organization_id: user.organization_id,
-        channel: body.channel || 'sms',
+        channel,
         kind: body.kind || 'custom',
-        message: body.message,
-        recipients: body.recipients || [],
-        status: 'sent', // MOCKED
-        provider: 'mock',
+        message,
+        recipients,
+        deliveries,
+        status: sentCount > 0 ? 'sent' : (mockCount === deliveries.length ? 'mock' : 'partial'),
+        provider: twilioClient ? 'twilio' : 'mock',
+        stats: { total: deliveries.length, sent: sentCount, failed: failCount, mock: mockCount },
         sent_by: user.id,
         created_at: new Date().toISOString(),
       };
       await col.insertOne(doc);
-      // Activity
       await db.collection('activity').insertOne({
         id: uuidv4(), organization_id: user.organization_id, kind: 'notification',
-        title: `${body.channel?.toUpperCase() || 'SMS'} sent to ${body.recipients?.length || 0} recipient(s)`,
-        meta: { channel: body.channel, kind: body.kind }, actor: user.name, created_at: new Date().toISOString(),
+        title: `${channel.toUpperCase()} sent to ${sentCount || mockCount} recipient(s)`,
+        meta: { channel, kind: body.kind }, actor: user.name, created_at: new Date().toISOString(),
       });
       return json(stripId(doc));
     }

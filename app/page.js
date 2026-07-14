@@ -63,7 +63,7 @@ function Counter({ value, format = (v) => Math.round(v).toLocaleString(), classN
 }
 
 /* ---------- Progress Ring ---------- */
-function ProgressRing({ value = 0, size = 96, stroke = 8, color = 'hsl(24 95% 53%)', label }) {
+function ProgressRing({ value = 0, size = 96, stroke = 8, color = 'hsl(262 83% 58%)', label }) {
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
   const [offset, setOffset] = useState(c);
@@ -195,7 +195,7 @@ function Login({ onLoggedIn }) {
             className="relative w-full max-w-lg">
             <div className="relative rounded-[2rem] overflow-hidden aurora-border shadow-2xl">
               <img src="https://images.unsplash.com/photo-1641730259879-ad98e7db7bcb" alt="" className="w-full h-[520px] object-cover" />
-              <div className="absolute inset-0 bg-gradient-to-tr from-orange-900/80 via-amber-800/40 to-transparent" />
+              <div className="absolute inset-0 bg-gradient-to-tr from-indigo-900/85 via-violet-800/50 to-transparent" />
               <div className="absolute bottom-0 left-0 right-0 p-8 text-white">
                 <div className="inline-flex items-center gap-2 rounded-full bg-white/15 backdrop-blur-md px-3 py-1 text-[11px] font-medium mb-4">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot" /> Serving Krishna's children
@@ -309,7 +309,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               );
             })}
           </nav>
-          <div className="mt-3 rounded-2xl p-3 bg-gradient-to-br from-orange-500/10 via-amber-500/10 to-rose-500/10 border border-orange-500/20">
+          <div className="mt-3 rounded-2xl p-3 bg-gradient-to-br from-primary/12 via-fuchsia-500/10 to-blue-500/10 border border-primary/20">
             <div className="flex items-center gap-2">
               <Avatar className="h-10 w-10 ring-2 ring-primary/30"><AvatarFallback className="bg-saffron-gradient text-white text-xs font-semibold">{initials(user.name)}</AvatarFallback></Avatar>
               <div className="min-w-0 flex-1">
@@ -438,16 +438,16 @@ function Dashboard({ user, org, onNav }) {
         className="relative overflow-hidden rounded-3xl p-6 md:p-8 bg-mesh-warm border">
         <div className="absolute -right-10 -top-10 w-64 h-64 rounded-full bg-white/30 blur-3xl" />
         <div className="absolute right-10 bottom-4 opacity-20 hidden md:block">
-          <Flame size={160} className="text-orange-600" />
+          <Flame size={160} className="text-violet-600" />
         </div>
         <div className="relative">
           <div className="inline-flex items-center gap-2 rounded-full bg-white/60 backdrop-blur px-3 py-1 text-[11px] font-medium mb-3">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot" /> Live • {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           </div>
-          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-orange-950 dark:text-orange-100">
+          <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-indigo-950 dark:text-indigo-100">
             {greet()}, <span className="text-gradient">{user.name.split(' ')[0]}</span> 🙏
           </h1>
-          <p className="text-orange-900/80 dark:text-orange-100/70 mt-2 max-w-xl">
+          <p className="text-indigo-900/75 dark:text-indigo-100/70 mt-2 max-w-xl">
             Here's a spiritual snapshot of <span className="font-semibold">{org?.name || 'your organization'}</span>. Every child served is Krishna served.
           </p>
           <div className="flex flex-wrap gap-2 mt-4">
@@ -500,15 +500,15 @@ function Dashboard({ user, org, onNav }) {
               <AreaChart data={stats.monthlyAdmissions}>
                 <defs>
                   <linearGradient id="admGrad" x1="0" x2="0" y1="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(24 95% 53%)" stopOpacity={0.6} />
-                    <stop offset="100%" stopColor="hsl(24 95% 53%)" stopOpacity={0.05} />
+                    <stop offset="0%" stopColor="hsl(262 83% 58%)" stopOpacity={0.6} />
+                    <stop offset="100%" stopColor="hsl(224 90% 58%)" stopOpacity={0.05} />
                   </linearGradient>
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted/40" vertical={false} />
                 <XAxis dataKey="month" fontSize={11} stroke="hsl(var(--muted-foreground))" />
                 <YAxis fontSize={11} allowDecimals={false} stroke="hsl(var(--muted-foreground))" />
                 <RTooltip contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 10px 30px rgba(0,0,0,0.1)' }} />
-                <Area type="monotone" dataKey="count" stroke="hsl(24 95% 53%)" strokeWidth={2.5} fill="url(#admGrad)" />
+                <Area type="monotone" dataKey="count" stroke="hsl(262 83% 58%)" strokeWidth={2.5} fill="url(#admGrad)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
@@ -585,7 +585,7 @@ function Dashboard({ user, org, onNav }) {
             <div className="grid md:grid-cols-2 gap-3">
               {stats.upcomingEvents.map((e, i) => (
                 <motion.div key={e.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                  className="rounded-xl p-3 bg-gradient-to-br from-orange-500/10 to-amber-500/5 border border-orange-500/20 card-lift">
+                  className="rounded-xl p-3 bg-gradient-to-br from-primary/10 to-blue-500/5 border border-primary/20 card-lift">
                   <div className="flex items-start gap-3">
                     <div className="rounded-lg bg-saffron-gradient text-white w-12 h-12 grid place-items-center text-center">
                       <div>
@@ -605,7 +605,7 @@ function Dashboard({ user, org, onNav }) {
         </motion.div>
 
         <motion.div className="rounded-2xl overflow-hidden relative p-5 text-white shadow-2xl" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.45 }}
-          style={{ background: 'linear-gradient(135deg, #7c2d12 0%, #ea580c 60%, #f97316 100%)' }}>
+          style={{ background: 'linear-gradient(135deg, #4c1d95 0%, #7c3aed 55%, #a855f7 100%)' }}>
           <div className="absolute -right-8 -bottom-8 opacity-20">
             <Heart size={140} />
           </div>
@@ -703,7 +703,7 @@ function timeAgo(iso) {
 function EmptyState({ text = 'Nothing here yet', small = false, action }) {
   return (
     <div className={`flex flex-col items-center justify-center text-center ${small ? 'py-4' : 'py-16'}`}>
-      <div className={`${small ? 'w-14 h-14' : 'w-24 h-24'} rounded-full bg-gradient-to-br from-orange-100 to-rose-100 dark:from-orange-900/30 dark:to-rose-900/30 grid place-items-center mb-3`}>
+      <div className={`${small ? 'w-14 h-14' : 'w-24 h-24'} rounded-full bg-gradient-to-br from-primary/20 to-blue-500/15 dark:from-primary/30 dark:to-blue-500/25 grid place-items-center mb-3`}>
         <Sparkles className="text-primary" size={small ? 18 : 36} />
       </div>
       <div className={`${small ? 'text-xs' : 'text-sm'} font-medium text-muted-foreground`}>{text}</div>
@@ -820,7 +820,7 @@ function Students({ students, setStudents }) {
       if (editing) await api(`/students/${editing.id}`, { method: 'PUT', body: JSON.stringify(form) });
       else await api('/students', { method: 'POST', body: JSON.stringify(form) });
       if (isNew) {
-        confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ['#f97316', '#f43f5e', '#eab308', '#22c55e'] });
+        confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#22c55e', '#0ea5e9'] });
         toast.success(`🎉 ${form.first_name} welcomed to ${org?.name || 'the school'}!`);
       } else toast.success('Student updated');
       setOpen(false); load();
@@ -933,7 +933,7 @@ function Students({ students, setStudents }) {
           <DialogHeader><DialogTitle>{editing ? 'Edit Student' : 'New Student'}</DialogTitle><DialogDescription>Fill personal, family & spiritual details.</DialogDescription></DialogHeader>
 
           {/* Photo uploader */}
-          <div className="flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-r from-orange-50 to-amber-50 dark:from-orange-900/20 dark:to-amber-900/10 border">
+          <div className="flex items-center gap-4 p-4 rounded-2xl bg-gradient-to-r from-primary/10 to-blue-500/10 dark:from-primary/20 dark:to-blue-500/15 border">
             <div className="relative">
               <Avatar className="h-20 w-20 ring-2 ring-primary/40">
                 {form.photo_url ? <AvatarImage src={form.photo_url} /> : <AvatarFallback className="bg-saffron-gradient text-white text-lg">{initials((form.first_name || 'S') + ' ' + (form.last_name || ''))}</AvatarFallback>}
@@ -1105,40 +1105,86 @@ function Teachers({ teachers, setTeachers }) {
 function Classes() {
   const [items, setItems] = useState([]);
   const [students, setStudents] = useState([]);
-  useEffect(() => { api('/programs').then(r => setItems(r.items)); api('/students').then(r => setStudents(r.items)); }, []);
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const empty = { name: '', description: '', age_group: '', duration_months: 4, capacity: 30, start_date: '', end_date: '' };
+  const [form, setForm] = useState(empty);
+  const load = () => api('/programs').then(r => setItems(r.items));
+  useEffect(() => { load(); api('/students').then(r => setStudents(r.items)); }, []);
+  const save = async () => {
+    try {
+      const payload = { ...form, duration_months: Number(form.duration_months) || 0, capacity: Number(form.capacity) || 0 };
+      if (editing) await api(`/programs/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      else await api('/programs', { method: 'POST', body: JSON.stringify(payload) });
+      confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7'] });
+      toast.success(editing ? 'Class updated' : 'Class created 🎉');
+      setOpen(false); load();
+    } catch (e) { toast.error(e.message); }
+  };
+  const del = async (p) => { if (!confirm(`Delete ${p.name}?`)) return; await api(`/programs/${p.id}`, { method: 'DELETE' }); toast.success('Deleted'); load(); };
+  const openNew = () => { setEditing(null); setForm(empty); setOpen(true); };
+  const openEdit = (p) => { setEditing(p); setForm({ ...empty, ...p }); setOpen(true); };
+
   return (
     <div className="space-y-5">
-      <PageHeader title="Classes & Batches" subtitle="Programs, sections, capacity, schedule" icon={School} />
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {items.map((p, i) => {
-          const enrolled = students.filter(s => s.program_id === p.id).length;
-          const pct = Math.min(100, Math.round((enrolled / (p.capacity || 1)) * 100));
-          return (
-            <motion.div key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-              className="rounded-2xl glass p-5 card-lift">
-              <div className="flex items-start justify-between">
-                <div className="w-11 h-11 rounded-2xl bg-saffron-gradient grid place-items-center shadow"><BookOpen className="text-white" size={18} /></div>
-                <Badge variant="secondary">{p.age_group}</Badge>
-              </div>
-              <div className="mt-3 font-semibold">{p.name}</div>
-              <div className="text-xs text-muted-foreground line-clamp-2 min-h-[32px]">{p.description}</div>
-              <div className="mt-3 grid grid-cols-3 text-center gap-2">
-                <div><div className="text-lg font-bold"><Counter value={enrolled} /></div><div className="text-[10px] text-muted-foreground">Enrolled</div></div>
-                <div><div className="text-lg font-bold">{p.capacity}</div><div className="text-[10px] text-muted-foreground">Capacity</div></div>
-                <div><div className="text-lg font-bold">{p.duration_months}m</div><div className="text-[10px] text-muted-foreground">Duration</div></div>
-              </div>
-              <div className="mt-3">
-                <div className="flex justify-between text-[10px] text-muted-foreground mb-1"><span>Fill rate</span><span>{pct}%</span></div>
-                <Progress value={pct} className="h-1.5" />
-              </div>
-              <div className="mt-3 text-[10px] text-muted-foreground flex justify-between">
-                <span>{p.start_date} → {p.end_date}</span>
-                <span className="text-primary font-semibold">Weekly · Sundays</span>
-              </div>
-            </motion.div>
-          );
-        })}
-      </div>
+      <PageHeader title="Classes & Batches" subtitle="Programs, sections, capacity, schedule" icon={School}
+        action={<Button className="bg-saffron-gradient shadow" onClick={openNew}><Plus size={15} className="mr-1" /> New Class</Button>} />
+
+      {items.length === 0 ? <EmptyState text="No classes yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openNew}><Plus size={14} className="mr-1" />Create first class</Button>} /> : (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {items.map((p, i) => {
+            const enrolled = students.filter(s => s.program_id === p.id).length;
+            const pct = Math.min(100, Math.round((enrolled / (p.capacity || 1)) * 100));
+            return (
+              <motion.div key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+                className="rounded-2xl glass p-5 card-lift group">
+                <div className="flex items-start justify-between">
+                  <div className="w-11 h-11 rounded-2xl bg-saffron-gradient grid place-items-center shadow"><BookOpen className="text-white" size={18} /></div>
+                  <div className="flex items-center gap-1">
+                    <Badge variant="secondary">{p.age_group}</Badge>
+                  </div>
+                </div>
+                <div className="mt-3 font-semibold">{p.name}</div>
+                <div className="text-xs text-muted-foreground line-clamp-2 min-h-[32px]">{p.description}</div>
+                <div className="mt-3 grid grid-cols-3 text-center gap-2">
+                  <div><div className="text-lg font-bold"><Counter value={enrolled} /></div><div className="text-[10px] text-muted-foreground">Enrolled</div></div>
+                  <div><div className="text-lg font-bold">{p.capacity}</div><div className="text-[10px] text-muted-foreground">Capacity</div></div>
+                  <div><div className="text-lg font-bold">{p.duration_months}m</div><div className="text-[10px] text-muted-foreground">Duration</div></div>
+                </div>
+                <div className="mt-3">
+                  <div className="flex justify-between text-[10px] text-muted-foreground mb-1"><span>Fill rate</span><span>{pct}%</span></div>
+                  <Progress value={pct} className="h-1.5" />
+                </div>
+                <div className="mt-3 text-[10px] text-muted-foreground flex justify-between">
+                  <span>{p.start_date} → {p.end_date}</span>
+                  <span className="text-primary font-semibold">Weekly · Sundays</span>
+                </div>
+                <div className="flex gap-1 mt-3 pt-3 border-t opacity-0 group-hover:opacity-100 transition">
+                  <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(p)}><Edit3 size={13} className="mr-1" /> Edit</Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(p)}><Trash2 size={13} /></Button>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>{editing ? 'Edit' : 'New'} Class / Batch</DialogTitle><DialogDescription>Define program details, capacity & duration.</DialogDescription></DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Sunday School Term 2" /></div>
+            <div className="col-span-2"><Label>Description</Label><Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short description of the program" /></div>
+            <div><Label>Age Group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="e.g. 6-14" /></div>
+            <div><Label>Duration (months)</Label><Input type="number" value={form.duration_months} onChange={e => setForm({ ...form, duration_months: e.target.value })} /></div>
+            <div><Label>Capacity</Label><Input type="number" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} /></div>
+            <div></div>
+            <div><Label>Start Date</Label><Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} /></div>
+            <div><Label>End Date</Label><Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} /></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient">{editing ? 'Update' : 'Create'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1255,7 +1301,7 @@ function Fees() {
   const markPaid = async (f) => {
     await api(`/fees/${f.id}`, { method: 'PUT', body: JSON.stringify({ status: 'paid', paid_amount: f.amount, paid_at: new Date().toISOString() }) });
     api('/fees').then(r => setItems(r.items));
-    confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 }, colors: ['#f97316', '#eab308'] });
+    confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 }, colors: ['#7c3aed', '#0ea5e9'] });
     toast.success('Payment received 💰');
   };
   return (
@@ -1317,11 +1363,13 @@ function Fees() {
 ============================================================ */
 function Notifications({ students }) {
   const [items, setItems] = useState([]);
+  const [config, setConfig] = useState({ twilio_configured: false });
   const [channel, setChannel] = useState('sms');
   const [kind, setKind] = useState('fee_reminder');
   const [message, setMessage] = useState('Namaste 🙏 Kindly complete your ward\'s pending fee at your convenience. Hare Krishna!');
-  const [target, setTarget] = useState('all_active');
-  useEffect(() => { api('/notifications').then(r => setItems(r.items)); }, []);
+  const [target, setTarget] = useState('sample');
+  const [sending, setSending] = useState(false);
+  useEffect(() => { api('/notifications').then(r => setItems(r.items)); api('/config').then(setConfig).catch(() => {}); }, []);
 
   const recipients = useMemo(() => {
     const src = students.filter(s => s.status === 'active');
@@ -1330,12 +1378,18 @@ function Notifications({ students }) {
   }, [students, target]);
 
   const send = async () => {
+    setSending(true);
     try {
-      await api('/notifications', { method: 'POST', body: JSON.stringify({ channel, kind, message, recipients }) });
-      confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#8b5cf6', '#ec4899'] });
-      toast.success(`Sent to ${recipients.length} recipients (mock)`);
+      const res = await api('/notifications', { method: 'POST', body: JSON.stringify({ channel, kind, message, recipients }) });
+      confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#0ea5e9'] });
+      if (res.provider === 'twilio') {
+        toast.success(`✅ Sent via Twilio: ${res.stats.sent} delivered, ${res.stats.failed} failed`);
+      } else {
+        toast.info(`Logged ${res.stats.mock} messages (mock mode — configure Twilio to send real messages)`);
+      }
       api('/notifications').then(r => setItems(r.items));
     } catch (e) { toast.error(e.message); }
+    finally { setSending(false); }
   };
 
   const kinds = {
@@ -1354,9 +1408,16 @@ function Notifications({ students }) {
   return (
     <div className="space-y-5">
       <PageHeader title="Notifications" subtitle="Reach parents via SMS or WhatsApp" icon={Bell} />
-      <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 p-3 text-xs">
-        ⚠️ <span className="font-semibold">Mock mode:</span> Notifications are stored & logged, not actually sent. Provide your SMS/WhatsApp provider credentials to enable real delivery.
-      </div>
+      {config.twilio_configured ? (
+        <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-800 dark:text-emerald-200 p-3 text-xs flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 pulse-dot" />
+          <span className="font-semibold">Twilio active</span> — messages will be delivered to real phone numbers. For WhatsApp testing, ensure recipients have joined your Twilio sandbox first.
+        </div>
+      ) : (
+        <div className="rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-900 dark:text-amber-200 p-3 text-xs">
+          ⚠️ <span className="font-semibold">Mock mode:</span> Add <code>TWILIO_ACCOUNT_SID</code>, <code>TWILIO_AUTH_TOKEN</code>, <code>TWILIO_SMS_FROM_NUMBER</code> to <code>/app/.env</code> to enable real delivery.
+        </div>
+      )}
 
       <div className="grid lg:grid-cols-3 gap-4">
         {/* Composer */}
@@ -1402,7 +1463,9 @@ function Notifications({ students }) {
             <Textarea rows={5} value={message} onChange={e => setMessage(e.target.value)} placeholder="Type message…" />
             <div className="text-[10px] text-muted-foreground mt-1">{message.length} chars • {Math.ceil(message.length / 160)} SMS</div>
           </div>
-          <Button className="w-full bg-saffron-gradient shadow" onClick={send}><Send size={14} className="mr-1.5" /> Send to {recipients.length} recipient(s)</Button>
+          <Button className="w-full bg-saffron-gradient shadow" onClick={send} disabled={sending || recipients.length === 0}>
+            <Send size={14} className="mr-1.5" /> {sending ? 'Sending…' : `Send to ${recipients.length} recipient(s)`}
+          </Button>
         </div>
 
         {/* Live preview */}
@@ -1534,31 +1597,69 @@ function Reports() {
 ============================================================ */
 function Events() {
   const [items, setItems] = useState([]);
-  useEffect(() => { api('/events').then(r => setItems(r.items)); }, []);
-  const covers = ['#f97316,#f43f5e', '#8b5cf6,#ec4899', '#14b8a6,#22d3ee', '#f59e0b,#ef4444'];
+  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(null);
+  const empty = { name: '', date: '', description: '' };
+  const [form, setForm] = useState(empty);
+  const load = () => api('/events').then(r => setItems(r.items));
+  useEffect(() => { load(); }, []);
+  const save = async () => {
+    try {
+      if (editing) await api(`/events/${editing.id}`, { method: 'PUT', body: JSON.stringify(form) });
+      else await api('/events', { method: 'POST', body: JSON.stringify(form) });
+      confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#ec4899'] });
+      toast.success(editing ? 'Event updated' : 'Event created 🎉');
+      setOpen(false); load();
+    } catch (e) { toast.error(e.message); }
+  };
+  const del = async (e) => { if (!confirm(`Delete ${e.name}?`)) return; await api(`/events/${e.id}`, { method: 'DELETE' }); load(); };
+  const openNew = () => { setEditing(null); setForm(empty); setOpen(true); };
+  const openEdit = (e) => { setEditing(e); setForm({ ...empty, ...e }); setOpen(true); };
+  const covers = ['#7c3aed,#ec4899', '#4f46e5,#0ea5e9', '#0891b2,#22d3ee', '#a855f7,#3b82f6', '#8b5cf6,#d946ef'];
+
   return (
     <div className="space-y-5">
-      <PageHeader title="Events" subtitle="Celebrations & festivals" icon={CalendarIcon} />
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {items.map((e, i) => (
-          <motion.div key={e.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-            className="rounded-2xl overflow-hidden glass card-lift">
-            <div className="h-28 relative" style={{ background: `linear-gradient(135deg, ${covers[i % covers.length]})` }}>
-              <div className="absolute inset-0 flex items-center justify-center">
-                <CalendarIcon className="text-white/90" size={40} />
+      <PageHeader title="Events" subtitle="Celebrations, festivals & activities" icon={CalendarIcon}
+        action={<Button className="bg-saffron-gradient shadow" onClick={openNew}><Plus size={15} className="mr-1" /> New Event</Button>} />
+      {items.length === 0 ? <EmptyState text="No events yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openNew}><Plus size={14} className="mr-1" />Create first event</Button>} /> : (
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {items.map((e, i) => (
+            <motion.div key={e.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+              className="rounded-2xl overflow-hidden glass card-lift group">
+              <div className="h-28 relative" style={{ background: `linear-gradient(135deg, ${covers[i % covers.length]})` }}>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <CalendarIcon className="text-white/90" size={40} />
+                </div>
+                <div className="absolute bottom-3 left-3 bg-white/20 backdrop-blur rounded-lg text-white text-center px-2 py-1 min-w-[54px]">
+                  <div className="text-[9px] uppercase">{new Date(e.date).toLocaleString('en', { month: 'short' })}</div>
+                  <div className="text-xl font-bold leading-none">{new Date(e.date).getDate()}</div>
+                </div>
               </div>
-              <div className="absolute bottom-3 left-3 bg-white/20 backdrop-blur rounded-lg text-white text-center px-2 py-1 min-w-[54px]">
-                <div className="text-[9px] uppercase">{new Date(e.date).toLocaleString('en', { month: 'short' })}</div>
-                <div className="text-xl font-bold leading-none">{new Date(e.date).getDate()}</div>
+              <div className="p-4">
+                <div className="font-bold">{e.name}</div>
+                <p className="text-xs text-muted-foreground mt-1 line-clamp-2 min-h-[32px]">{e.description}</p>
+                <div className="flex gap-1 mt-3 pt-3 border-t opacity-0 group-hover:opacity-100 transition">
+                  <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(e)}><Edit3 size={13} className="mr-1" /> Edit</Button>
+                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(e)}><Trash2 size={13} /></Button>
+                </div>
               </div>
-            </div>
-            <div className="p-4">
-              <div className="font-bold">{e.name}</div>
-              <p className="text-xs text-muted-foreground mt-1">{e.description}</p>
-            </div>
-          </motion.div>
-        ))}
-      </div>
+            </motion.div>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader><DialogTitle>{editing ? 'Edit' : 'New'} Event</DialogTitle><DialogDescription>Add festivals, competitions, camps and more.</DialogDescription></DialogHeader>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2"><Label>Event Name</Label><Input value={form.name} onChange={ev => setForm({ ...form, name: ev.target.value })} placeholder="e.g. Janmashtami Celebration" /></div>
+            <div><Label>Date</Label><Input type="date" value={form.date} onChange={ev => setForm({ ...form, date: ev.target.value })} /></div>
+            <div></div>
+            <div className="col-span-2"><Label>Description</Label><Textarea rows={3} value={form.description} onChange={ev => setForm({ ...form, description: ev.target.value })} placeholder="Details about the event" /></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient">{editing ? 'Update' : 'Create'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
