@@ -165,7 +165,27 @@ function Login({ onLoggedIn }) {
               </Button>
             </form>
 
-            
+            <div className="mt-5 rounded-2xl border bg-white/40 dark:bg-black/20 backdrop-blur p-4">
+              <div className="flex items-center justify-between mb-2">
+                <div className="text-xs font-semibold flex items-center gap-1.5"><Sparkles size={12} className="text-primary" /> Try demo accounts</div>
+                <button onClick={seed} disabled={seeding} className="text-[11px] text-primary hover:underline">{seeding ? 'Seeding…' : 'Reset demo'}</button>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {[
+                  { r: 'Super Admin', e: 'super@gokulam360.com' },
+                  { r: 'Org Admin', e: 'admin@iskcongokulam.org' },
+                  { r: 'Teacher', e: 'teacher@iskcongokulam.org' },
+                  { r: 'Parent', e: 'parent@iskcongokulam.org' },
+                ].map(x => (
+                  <button key={x.e} type="button" onClick={() => quickLogin(x.e)}
+                    className="text-left rounded-lg border bg-white/60 dark:bg-black/30 px-2.5 py-2 hover:bg-primary hover:text-primary-foreground transition">
+                    <div className="text-[10px] font-semibold opacity-70">{x.r}</div>
+                    <div className="text-[11px] truncate">{x.e}</div>
+                  </button>
+                ))}
+              </div>
+              <div className="text-[10px] text-muted-foreground mt-2">Password for all: <code className="font-mono">password123</code></div>
+            </div>
           </motion.div>
         </div>
 
