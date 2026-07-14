@@ -94,12 +94,16 @@ function stripId(doc) {
 function generateSessions(program) {
   const days = program.days_of_week || [];
   if (!days.length || !program.start_date || !program.end_date) return [];
+  const cancelled = new Set(program.cancelled_dates || []);
   const sessions = [];
   const start = new Date(program.start_date + 'T00:00:00');
   const end = new Date(program.end_date + 'T00:00:00');
   const cur = new Date(start);
   while (cur <= end) {
-    if (days.includes(cur.getDay())) sessions.push(cur.toISOString().slice(0, 10));
+    if (days.includes(cur.getDay())) {
+      const d = cur.toISOString().slice(0, 10);
+      if (!cancelled.has(d)) sessions.push(d);
+    }
     cur.setDate(cur.getDate() + 1);
   }
   return sessions;
@@ -208,6 +212,7 @@ async function handleSeed() {
       id: uuidv4(),
       organization_id: orgId,
       student_id: 'GK-2025-' + String(101 + i).padStart(4, '0'),
+      public_token: uuidv4(),
       first_name: fn,
       last_name: ln,
       dob: '20' + (12 + (i % 8)) + '-0' + ((i % 9) + 1) + '-1' + (i % 9),
@@ -352,6 +357,30 @@ async function router(req, method) {
 
   // ---- public ----
   if (resource === 'health') return json({ ok: true, service: 'gokulam360' });
+
+  // PUBLIC parent link — no auth required
+  if (resource === 'public' && id === 'student' && sub && method === 'GET') {
+    const student = await db.collection('students').findOne({ public_token: sub });
+    if (!student) return json({ error: 'Not found' }, 404);
+    const org = await db.collection('organizations').findOne({ id: student.organization_id });
+    const enrollments = await db.collection('enrollments').find({ student_id: student.id }).sort({ enrolled_at: -1 }).toArray();
+    const programs = await db.collection('programs').find({ id: { $in: enrollments.map(e => e.program_id) } }).toArray();
+    const pMap = Object.fromEntries(programs.map(p => [p.id, p]));
+    const att = await db.collection('attendance').find({ student_id: student.id }).sort({ date: -1 }).toArray();
+    const fees = await db.collection('fees').find({ student_id: student.id }).toArray();
+    const enrichedEnr = enrollments.map(e => {
+      const attended = att.filter(a => a.program_id === e.program_id && (a.status === 'present' || a.status === 'late') && a.date >= (e.enrolled_at || '').slice(0, 10)).length;
+      const credited = e.sessions_credited || 0;
+      return { ...stripId(e), program_name: pMap[e.program_id]?.name || '-', sessions_attended: attended, sessions_remaining: Math.max(0, credited - attended) };
+    });
+    return json({
+      student: { id: student.id, student_id: student.student_id, first_name: student.first_name, last_name: student.last_name, photo_url: student.photo_url, dob: student.dob, program_id: student.program_id },
+      organization: { name: org?.name, logo_url: org?.logo_url, contact_email: org?.contact_email, contact_phone: org?.contact_phone },
+      enrollments: enrichedEnr,
+      attendance: att.slice(0, 20).map(stripId),
+      fees: fees.map(stripId),
+    });
+  }
   if (resource === 'config' && method === 'GET') {
     return json({ twilio_configured: !!twilioClient, providers: { sms: !!twilioClient, whatsapp: !!twilioClient } });
   }
@@ -472,6 +501,8 @@ async function router(req, method) {
         updated_at: new Date().toISOString(),
         is_deleted: false,
       };
+      // Auto-generate public token for students
+      if (resource === 'students' && !doc.public_token) doc.public_token = uuidv4();
       // Generate sessions for programs
       if (resource === 'programs') doc.sessions = generateSessions(doc);
       await col.insertOne(doc);
@@ -908,6 +939,21 @@ async function router(req, method) {
       actor: user.name || 'Admin', created_at: new Date().toISOString(),
     });
     return json({ restored: counts });
+  }
+
+  // Cancel or restore a session
+  if (resource === 'programs' && id && sub === 'cancel-session' && method === 'POST') {
+    if (!['org_admin', 'super_admin', 'teacher'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
+    const body = await req.json(); // { date, reason?, action: 'cancel'|'restore' }
+    const prog = await db.collection('programs').findOne({ id, ...orgScope(user) });
+    if (!prog) return json({ error: 'Not found' }, 404);
+    const cancelled = new Set(prog.cancelled_dates || []);
+    if (body.action === 'restore') cancelled.delete(body.date);
+    else cancelled.add(body.date);
+    const updated = { cancelled_dates: [...cancelled] };
+    updated.sessions = generateSessions({ ...prog, cancelled_dates: updated.cancelled_dates });
+    await db.collection('programs').updateOne({ id }, { $set: updated });
+    return json({ ok: true, cancelled_dates: updated.cancelled_dates });
   }
 
   return json({ error: 'Not found', path: url.pathname, method }, 404);
