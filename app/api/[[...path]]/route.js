@@ -1,3 +1,7 @@
+Exit code: 0
+Wall time: 0.8 seconds
+Total output lines: 1015
+Output:
 import { NextResponse } from 'next/server';
 import { MongoClient } from 'mongodb';
 import { v4 as uuidv4 } from 'uuid';
@@ -373,6 +377,12 @@ async function router(req, method) {
     const pMap = Object.fromEntries(programs.map(p => [p.id, p]));
     const att = await db.collection('attendance').find({ student_id: student.id }).sort({ date: -1 }).toArray();
     const fees = await db.collection('fees').find({ student_id: student.id }).toArray();
+    const today = new Date().toISOString().slice(0, 10);
+    const events = await db.collection('events')
+      .find({ organization_id: student.organization_id, date: { $gte: today } })
+      .sort({ date: 1 })
+      .limit(6)
+      .toArray();
     const enrichedEnr = enrollments.map(e => {
       const attended = att.filter(a => a.program_id === e.program_id && (a.status === 'present' || a.status === 'late') && a.date >= (e.enrolled_at || '').slice(0, 10)).length;
       const credited = e.sessions_credited || 0;
@@ -384,6 +394,7 @@ async function router(req, method) {
       enrollments: enrichedEnr,
       attendance: att.slice(0, 20).map(stripId),
       fees: fees.map(stripId),
+      events: events.map(stripId),
     });
   }
   if (resource === 'config' && method === 'GET') {
@@ -420,216 +431,7 @@ async function router(req, method) {
       if (authRes.error) return authRes.error;
       const u = authRes.user;
       const org = u.organization_id ? await db.collection('organizations').findOne({ id: u.organization_id }) : null;
-      return json({ user: u, organization: org ? stripId(org) : null });
-    }
-  }
-
-  // ---- protected ----
-  const authRes = await requireAuth(req);
-  if (authRes.error) return authRes.error;
-  const user = authRes.user;
-
-  // Organizations
-  if (resource === 'organizations') {
-    if (method === 'GET' && !id) {
-      if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
-      const orgs = await db.collection('organizations').find({ is_deleted: { $ne: true } }).toArray();
-      return json({ items: orgs.map(stripId) });
-    }
-    if (method === 'POST' && !id) {
-      if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
-      const body = await req.json();
-      const doc = { id: uuidv4(), name: body.name, address: body.address, contact_email: body.contact_email, contact_phone: body.contact_phone, currency: body.currency || 'INR', academic_year: body.academic_year || '2025-26', logo_url: body.logo_url || '', created_at: new Date().toISOString(), updated_at: new Date().toISOString(), is_deleted: false };
-      await db.collection('organizations').insertOne(doc);
-      // Create org admin
-      if (body.admin_email && body.admin_password) {
-        const passHash = await bcrypt.hash(body.admin_password, 10);
-        await db.collection('users').insertOne({
-          id: uuidv4(), email: body.admin_email, password_hash: passHash, name: body.admin_name || 'Admin',
-          role: 'org_admin', organization_id: doc.id, created_at: new Date().toISOString()
-        });
-      }
-      // Create first program
-      if (body.first_program?.name) {
-        await db.collection('programs').insertOne({
-          id: uuidv4(), organization_id: doc.id, name: body.first_program.name,
-          description: body.first_program.description || '', age_group: body.first_program.age_group || '',
-          duration_months: Number(body.first_program.duration_months) || 4, capacity: Number(body.first_program.capacity) || 30,
-          start_date: body.first_program.start_date || '', end_date: body.first_program.end_date || '',
-          created_at: new Date().toISOString(), is_deleted: false,
-        });
-      }
-      // Log
-      await db.collection('activity').insertOne({
-        id: uuidv4(), organization_id: doc.id, kind: 'org_created',
-        title: `Organization "${doc.name}" created`, actor: user.name, created_at: new Date().toISOString(),
-      });
-      return json(stripId(doc));
-    }
-    if (method === 'PUT' && id) {
-      if (user.role !== 'super_admin' && !(user.role === 'org_admin' && user.organization_id === id)) return json({ error: 'Forbidden' }, 403);
-      const body = await req.json();
-      await db.collection('organizations').updateOne({ id }, { $set: { ...body, updated_at: new Date().toISOString() } });
-      const doc = await db.collection('organizations').findOne({ id });
-      return json(stripId(doc));
-    }
-    if (method === 'DELETE' && id) {
-      if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
-      await db.collection('organizations').updateOne({ id }, { $set: { is_deleted: true } });
-      return json({ ok: true });
-    }
-  }
-
-  // Generic collection handler
-  const collectionRoutes = {
-    students: ['org_admin', 'teacher', 'super_admin'],
-    teachers: ['org_admin', 'super_admin'],
-    programs: ['org_admin', 'teacher', 'super_admin'],
-    fees: ['org_admin', 'super_admin'],
-    events: ['org_admin', 'teacher', 'super_admin'],
-    attendance: ['org_admin', 'teacher', 'super_admin'],
-  };
-
-  if (collectionRoutes[resource]) {
-    const allowed = collectionRoutes[resource];
-    if (!allowed.includes(user.role)) return json({ error: 'Forbidden' }, 403);
-    const col = db.collection(resource);
-
-    if (method === 'GET' && !id) {
-       const q = orgScope(user, { is_deleted: { $ne: true } });
-       // Support filter query params
-       const params = Object.fromEntries(url.searchParams.entries());
-       // Never allow a client to replace tenant or lifecycle constraints.
-       Object.keys(params).forEach(k => {
-         if (!['organization_id', 'is_deleted', '_id'].includes(k)) q[k] = params[k];
-       });
-      const items = await col.find(q).sort({ created_at: -1 }).limit(500).toArray();
-      return json({ items: items.map(stripId) });
-    }
-    if (method === 'GET' && id && !sub) {
-      const doc = await col.findOne({ id, ...orgScope(user) });
-      if (!doc) return json({ error: 'Not found' }, 404);
-      return json(stripId(doc));
-    }
-    if (method === 'POST' && !id) {
-       const body = await req.json();
-       const organizationId = user.role === 'super_admin' ? body.organization_id : user.organization_id;
-       if (!organizationId) return json({ error: 'organization_id is required' }, 400);
-       const doc = {
-         id: uuidv4(),
-         ...body,
-         // Tenant ownership is always decided by the server.
-         organization_id: organizationId,
-         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        is_deleted: false,
-      };
-      // Auto-generate public token for students
-      if (resource === 'students' && !doc.public_token) doc.public_token = uuidv4();
-      // Generate sessions for programs
-      if (resource === 'programs') doc.sessions = generateSessions(doc);
-      await col.insertOne(doc);
-      // Handle student enrollments
-      if (resource === 'students' && doc.program_ids?.length) {
-        await syncEnrollments(db, doc, []);
-      }
-      // Log activity for known resources
-      if (['students', 'teachers', 'events', 'programs'].includes(resource)) {
-        const titleMap = {
-          students: `New admission: ${doc.first_name || ''} ${doc.last_name || ''}`.trim(),
-          teachers: `Teacher added: ${doc.name || ''}`,
-          events: `Event scheduled: ${doc.name || ''}`,
-          programs: `Program created: ${doc.name || ''}`,
-        };
-        await db.collection('activity').insertOne({
-          id: uuidv4(), organization_id: user.organization_id, kind: resource.slice(0, -1) + '_added',
-          title: titleMap[resource], actor: user.name || 'Admin', created_at: new Date().toISOString(),
-        });
-      }
-      return json(stripId(doc));
-    }
-    if (method === 'PUT' && id) {
-       const body = await req.json();
-       const before = await col.findOne({ id, ...orgScope(user) });
-       if (!before) return json({ error: 'Not found' }, 404);
-       // Do not let callers move records between tenants or alter server-owned fields.
-       const { id: ignoredId, organization_id: ignoredOrganizationId, created_at: ignoredCreatedAt, updated_at: ignoredUpdatedAt, is_deleted: ignoredDeleted, ...changes } = body;
-       const updated = { ...changes, updated_at: new Date().toISOString() };
-      if (resource === 'programs') updated.sessions = generateSessions({ ...before, ...body });
-      await col.updateOne({ id, ...orgScope(user) }, { $set: updated });
-       const doc = await col.findOne({ id, ...orgScope(user) });
-      // Sync student enrollments diff
-      if (resource === 'students' && body.program_ids) {
-        await syncEnrollments(db, doc, before?.program_ids || []);
-      }
-      return json(stripId(doc));
-    }
-    if (method === 'DELETE' && id) {
-      await col.updateOne({ id, ...orgScope(user) }, { $set: { is_deleted: true } });
-      return json({ ok: true });
-    }
-  }
-
-  // Enrollments endpoints
-  if (resource === 'enrollments') {
-    if (method === 'GET') {
-      const q = orgScope(user);
-      const url2 = new URL(req.url);
-      if (url2.searchParams.get('student_id')) q.student_id = url2.searchParams.get('student_id');
-      if (url2.searchParams.get('program_id')) q.program_id = url2.searchParams.get('program_id');
-      const items = await db.collection('enrollments').find(q).sort({ enrolled_at: -1 }).toArray();
-      const progIds = [...new Set(items.map(e => e.program_id))];
-      const progs = await db.collection('programs').find({ id: { $in: progIds } }).toArray();
-      const pMap = Object.fromEntries(progs.map(p => [p.id, p]));
-      // compute attendance-based sessions_attended per enrollment
-      const attRecs = await db.collection('attendance').find({ organization_id: user.organization_id }).toArray();
-      const enriched = items.map(e => {
-        const enrolledDate = (e.enrolled_at || '').slice(0, 10);
-        const attended = attRecs.filter(a => a.student_id === e.student_id && a.program_id === e.program_id && (a.status === 'present' || a.status === 'late') && a.date >= enrolledDate).length;
-        const credited = e.sessions_credited || (pMap[e.program_id]?.sessions?.length || 0);
-        const remaining = Math.max(0, credited - attended);
-        return { ...stripId(e), program_name: pMap[e.program_id]?.name || '-', program: pMap[e.program_id] ? stripId(pMap[e.program_id]) : null, sessions_credited: credited, sessions_attended: attended, sessions_remaining: remaining };
-      });
-      return json({ items: enriched });
-    }
-    // Renew an enrollment: create a fresh one with a new quota
-    if (method === 'POST' && id === 'renew') {
-      const body = await req.json(); // { enrollment_id }
-      const old = await db.collection('enrollments').findOne({ id: body.enrollment_id, organization_id: user.organization_id });
-      if (!old) return json({ error: 'Enrollment not found' }, 404);
-      const prog = await db.collection('programs').findOne({ id: old.program_id });
-      const credited = prog?.sessions?.length || 16;
-      const now = new Date().toISOString();
-      // Mark previous as completed
-      await db.collection('enrollments').updateOne({ id: old.id }, { $set: { status: 'completed', left_at: now } });
-      const fresh = {
-        id: uuidv4(), organization_id: user.organization_id, student_id: old.student_id, program_id: old.program_id,
-        enrolled_at: now, left_at: null, status: 'active', sessions_credited: credited,
-        renewed_from: old.id, created_at: now,
-      };
-      await db.collection('enrollments').insertOne(fresh);
-      if (prog?.fee_amount) {
-        await db.collection('fees').insertOne({
-          id: uuidv4(), organization_id: user.organization_id, student_id: old.student_id, program_id: old.program_id,
-          fee_type: 'Term Fee (Renewal)', amount: prog.fee_amount, paid_amount: 0, status: 'pending',
-          due_date: now.slice(0, 10), created_at: now,
-        });
-      }
-      return json(stripId(fresh));
-    }
-  }
-
-  // Sessions for a program
-  if (resource === 'programs' && id && sub === 'sessions' && method === 'GET') {
-    const prog = await db.collection('programs').findOne({ id, ...orgScope(user) });
-    if (!prog) return json({ error: 'Not found' }, 404);
-    let sessions = prog.sessions;
-    if (!sessions || !sessions.length) sessions = generateSessions(prog);
-    // Attach attendance count per session
-    const att = await db.collection('attendance').find({ program_id: id, organization_id: user.organization_id }).toArray();
-    const byDate = {};
-    att.forEach(a => { if (!byDate[a.date]) byDate[a.date] = { total: 0, present: 0 }; byDate[a.date].total++; if (a.status === 'present' || a.status === 'late') byDate[a.date].present++; });
-    const enriched = sessions.map(d => ({
+      return json({ user: u, organization: org ? str…2793 tokens truncated…hed = sessions.map(d => ({
       date: d, day_name: new Date(d + 'T00:00:00').toLocaleDateString('en', { weekday: 'long' }),
       marked: !!byDate[d], present: byDate[d]?.present || 0, total: byDate[d]?.total || 0,
       is_past: new Date(d) < new Date().setHours(0, 0, 0, 0),
