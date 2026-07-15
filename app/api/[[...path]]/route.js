@@ -7,7 +7,12 @@ import twilio from 'twilio';
 
 const MONGO_URL = process.env.MONGO_URL;
 const DB_NAME = process.env.DB_NAME || 'gokulam360';
-const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
+const JWT_SECRET = process.env.JWT_SECRET;
+
+// Authentication must never silently fall back to a publicly known secret.
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET must be configured');
+}
 
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN;
@@ -358,7 +363,7 @@ async function router(req, method) {
   // ---- public ----
   if (resource === 'health') return json({ ok: true, service: 'gokulam360' });
 
-  // PUBLIC parent link — no auth required
+  // PUBLIC parent link â€” no auth required
   if (resource === 'public' && id === 'student' && sub && method === 'GET') {
     const student = await db.collection('students').findOne({ public_token: sub });
     if (!student) return json({ error: 'Not found' }, 404);
@@ -385,7 +390,19 @@ async function router(req, method) {
     return json({ twilio_configured: !!twilioClient, providers: { sms: !!twilioClient, whatsapp: !!twilioClient } });
   }
 
-  if (resource === 'seed' && method === 'POST') return handleSeed();
+  if (resource === 'seed' && method === 'POST') {
+    // Seeding is destructive and is only available for an explicitly enabled
+    // local demo environment. Once users exist, a super admin must authorize it.
+    if (process.env.NODE_ENV === 'production' || process.env.ALLOW_DEMO_SEED !== 'true') {
+      return json({ error: 'Not found' }, 404);
+    }
+    const hasUsers = await db.collection('users').countDocuments({}, { limit: 1 });
+    if (hasUsers) {
+      const seedAuth = await requireAuth(req, ['super_admin']);
+      if (seedAuth.error) return seedAuth.error;
+    }
+    return handleSeed();
+  }
 
   if (resource === 'auth') {
     if (id === 'login' && method === 'POST') {
@@ -479,10 +496,13 @@ async function router(req, method) {
     const col = db.collection(resource);
 
     if (method === 'GET' && !id) {
-      const q = orgScope(user, { is_deleted: { $ne: true } });
-      // Support filter query params
-      const params = Object.fromEntries(url.searchParams.entries());
-      Object.keys(params).forEach(k => { q[k] = params[k]; });
+       const q = orgScope(user, { is_deleted: { $ne: true } });
+       // Support filter query params
+       const params = Object.fromEntries(url.searchParams.entries());
+       // Never allow a client to replace tenant or lifecycle constraints.
+       Object.keys(params).forEach(k => {
+         if (!['organization_id', 'is_deleted', '_id'].includes(k)) q[k] = params[k];
+       });
       const items = await col.find(q).sort({ created_at: -1 }).limit(500).toArray();
       return json({ items: items.map(stripId) });
     }
@@ -492,12 +512,15 @@ async function router(req, method) {
       return json(stripId(doc));
     }
     if (method === 'POST' && !id) {
-      const body = await req.json();
-      const doc = {
-        id: uuidv4(),
-        organization_id: user.organization_id || body.organization_id,
-        ...body,
-        created_at: new Date().toISOString(),
+       const body = await req.json();
+       const organizationId = user.role === 'super_admin' ? body.organization_id : user.organization_id;
+       if (!organizationId) return json({ error: 'organization_id is required' }, 400);
+       const doc = {
+         id: uuidv4(),
+         ...body,
+         // Tenant ownership is always decided by the server.
+         organization_id: organizationId,
+         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
         is_deleted: false,
       };
@@ -526,12 +549,15 @@ async function router(req, method) {
       return json(stripId(doc));
     }
     if (method === 'PUT' && id) {
-      const body = await req.json();
-      const before = await col.findOne({ id, ...orgScope(user) });
-      const updated = { ...body, updated_at: new Date().toISOString() };
+       const body = await req.json();
+       const before = await col.findOne({ id, ...orgScope(user) });
+       if (!before) return json({ error: 'Not found' }, 404);
+       // Do not let callers move records between tenants or alter server-owned fields.
+       const { id: ignoredId, organization_id: ignoredOrganizationId, created_at: ignoredCreatedAt, updated_at: ignoredUpdatedAt, is_deleted: ignoredDeleted, ...changes } = body;
+       const updated = { ...changes, updated_at: new Date().toISOString() };
       if (resource === 'programs') updated.sessions = generateSessions({ ...before, ...body });
       await col.updateOne({ id, ...orgScope(user) }, { $set: updated });
-      const doc = await col.findOne({ id });
+       const doc = await col.findOne({ id, ...orgScope(user) });
       // Sync student enrollments diff
       if (resource === 'students' && body.program_ids) {
         await syncEnrollments(db, doc, before?.program_ids || []);
@@ -614,9 +640,19 @@ async function router(req, method) {
 
   // Bulk attendance
   if (resource === 'attendance-bulk' && method === 'POST') {
+    if (!['org_admin', 'teacher', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
     const body = await req.json();
     const { date, program_id, records } = body; // records: [{student_id, status}]
-    if (!Array.isArray(records)) return json({ error: 'records required' }, 400);
+    const validStatuses = new Set(['present', 'absent', 'late', 'excused']);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !program_id || !Array.isArray(records) || !records.length) {
+      return json({ error: 'date, program_id, and non-empty records are required' }, 400);
+    }
+    if (records.some(r => !r?.student_id || !validStatuses.has(r.status))) return json({ error: 'Invalid attendance record' }, 400);
+    const program = await db.collection('programs').findOne({ id: program_id, ...orgScope(user) });
+    if (!program) return json({ error: 'Program not found' }, 404);
+    const studentIds = [...new Set(records.map(r => r.student_id))];
+    const matchingStudents = await db.collection('students').countDocuments({ id: { $in: studentIds }, ...orgScope(user), is_deleted: { $ne: true } });
+    if (matchingStudents !== studentIds.length) return json({ error: 'One or more students do not belong to this organization' }, 400);
     // Remove existing for this date+program+org
     await db.collection('attendance').deleteMany({ organization_id: user.organization_id, date, program_id });
     const docs = records.map(r => ({
@@ -701,6 +737,7 @@ async function router(req, method) {
 
   // Notifications (mock sender)
   if (resource === 'notifications') {
+    if (!['org_admin', 'teacher', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
     const col = db.collection('notifications');
     if (method === 'GET' && !id) {
       const items = await col.find(orgScope(user)).sort({ created_at: -1 }).limit(200).toArray();
@@ -709,9 +746,13 @@ async function router(req, method) {
     if (method === 'POST' && !id) {
       const body = await req.json();
       // body: { channel: 'sms'|'whatsapp', recipients: [{name,phone}], message, kind }
-      const channel = body.channel || 'sms';
-      const recipients = body.recipients || [];
-      const message = body.message || '';
+       const channel = body.channel || 'sms';
+       const recipients = body.recipients || [];
+       const message = body.message || '';
+       if (!['sms', 'whatsapp'].includes(channel)) return json({ error: 'Invalid channel' }, 400);
+       if (!Array.isArray(recipients) || !recipients.length || recipients.length > 200) return json({ error: '1 to 200 recipients are required' }, 400);
+       if (typeof message !== 'string' || !message.trim() || message.length > 1000) return json({ error: 'A message up to 1000 characters is required' }, 400);
+       if (recipients.some(r => !r || typeof r.name !== 'string' || !normalizePhone(r.phone))) return json({ error: 'Every recipient needs a valid phone number' }, 400);
 
       // Fan-out to Twilio (or mock)
       const deliveries = [];
@@ -964,3 +1005,4 @@ export async function POST(req) { try { return await router(req, 'POST'); } catc
 export async function PUT(req) { try { return await router(req, 'PUT'); } catch (e) { console.error(e); return json({ error: e.message }, 500); } }
 export async function DELETE(req) { try { return await router(req, 'DELETE'); } catch (e) { console.error(e); return json({ error: e.message }, 500); } }
 export async function PATCH(req) { try { return await router(req, 'PUT'); } catch (e) { console.error(e); return json({ error: e.message }, 500); } }
+
