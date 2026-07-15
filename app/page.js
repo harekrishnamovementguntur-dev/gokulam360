@@ -1121,6 +1121,8 @@ function Students({ students, setStudents }) {
   const [editing, setEditing] = useState(null);
   const [cardOf, setCardOf] = useState(null);
   const [historyOf, setHistoryOf] = useState(null);
+  const [deleteOf, setDeleteOf] = useState(null);
+  const [deleting, setDeleting] = useState(false);
   const [org, setOrg] = useState(null);
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -1153,7 +1155,20 @@ function Students({ students, setStudents }) {
       setOpen(false); load();
     } catch (e) { toast.error(e.message); }
   };
-  const del = async (s) => { if (!confirm(`Remove ${s.first_name}?`)) return; await api(`/students/${s.id}`, { method: 'DELETE' }); toast.success('Removed'); load(); };
+  const del = async () => {
+    if (!deleteOf) return;
+    setDeleting(true);
+    try {
+      const result = await api(`/students/${deleteOf.id}`, { method: 'DELETE' });
+      toast.success(`Student removed. ${result.deleted_fee_records || 0} fee record(s) removed.`);
+      setDeleteOf(null);
+      load();
+    } catch (e) {
+      toast.error(e.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const handlePhoto = (e) => {
     const file = e.target.files?.[0]; if (!file) return;
@@ -1269,7 +1284,7 @@ function Students({ students, setStudents }) {
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setHistoryOf(s)}><Activity size={13} className="mr-1" /> History</Button>
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setCardOf(s)}><IdCard size={13} className="mr-1" /> ID Card</Button>
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(s)}><Edit3 size={13} className="mr-1" /> Edit</Button>
-                <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(s)}><Trash2 size={13} /></Button>
+                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteOf(s)} aria-label={`Delete ${s.first_name} ${s.last_name}`}><Trash2 size={13} /></Button>
               </div>
             </motion.div>
           ))}
@@ -1356,6 +1371,21 @@ function Students({ students, setStudents }) {
             </TabsContent>
           </Tabs>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient">{editing ? 'Update' : 'Create'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteOf} onOpenChange={v => !v && !deleting && setDeleteOf(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete student?</DialogTitle>
+            <DialogDescription>
+              This will remove {deleteOf?.first_name} {deleteOf?.last_name} and permanently delete all of this student's paid and unpaid fee records. This cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOf(null)} disabled={deleting}>Cancel</Button>
+            <Button variant="destructive" onClick={del} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete student'}</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
