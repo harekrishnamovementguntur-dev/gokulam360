@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useState, use } from 'react';
 import { motion } from 'framer-motion';
-import { Flame, BookOpen } from 'lucide-react';
+import { Flame, BookOpen, Calendar } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -22,18 +22,19 @@ function PublicPage({ params }) {
   if (err) return (
     <div className="min-h-screen bg-aurora grid place-items-center p-6">
       <div className="rounded-2xl glass p-8 text-center max-w-md">
-        <div className="text-3xl mb-3">😔</div>
+        <div className="text-3xl mb-3">ðŸ˜”</div>
         <div className="font-bold text-lg">Link not found</div>
         <div className="text-sm text-muted-foreground mt-1">This parent link is invalid or has expired.</div>
       </div>
     </div>
   );
-  if (!data) return <div className="min-h-screen bg-aurora grid place-items-center text-muted-foreground">Loading…</div>;
+  if (!data) return <div className="min-h-screen bg-aurora grid place-items-center text-muted-foreground">Loadingâ€¦</div>;
 
   const s = data.student;
   const attPct = data.attendance.length ? Math.round((data.attendance.filter(a => a.status === 'present' || a.status === 'late').length / data.attendance.length) * 100) : 0;
   const feeDue = data.fees.filter(f => f.status !== 'paid').reduce((a, f) => a + (f.amount - (f.paid_amount || 0)), 0);
   const feePaid = data.fees.reduce((a, f) => a + (f.paid_amount || 0), 0);
+  const events = data.events || [];
 
   return (
     <div className="min-h-screen bg-aurora relative">
@@ -56,7 +57,7 @@ function PublicPage({ params }) {
               {s.photo_url ? <AvatarImage src={s.photo_url} /> : <AvatarFallback className="bg-saffron-gradient text-white text-2xl">{initials(s.first_name + ' ' + s.last_name)}</AvatarFallback>}
             </Avatar>
             <div>
-              <div className="text-xs text-indigo-900/70">Namaste 🙏</div>
+              <div className="text-xs text-indigo-900/70">Namaste ðŸ™</div>
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-indigo-950">{s.first_name} {s.last_name}</h1>
               <div className="text-sm text-indigo-900/70 mt-1 font-mono">{s.student_id}</div>
             </div>
@@ -111,8 +112,13 @@ function PublicPage({ params }) {
           </div>
         </div>
 
+        <section className="rounded-2xl glass overflow-hidden">
+          <div className="px-5 py-4 border-b flex items-center gap-2"><Calendar size={16} className="text-primary" /><div><div className="font-semibold text-sm">Temple Events</div><div className="text-xs text-muted-foreground">Upcoming celebrations and activities</div></div></div>
+          {events.length ? <div className="divide-y">{events.map(event => <article key={event.id} className="p-4 flex gap-4"><div className="w-16 shrink-0 rounded-xl bg-saffron-gradient text-white text-center grid place-items-center py-2"><div className="text-[10px] uppercase">{new Date(event.date + 'T00:00:00').toLocaleString('en', { month: 'short' })}</div><div className="text-2xl font-bold leading-none">{new Date(event.date + 'T00:00:00').getDate()}</div></div>{event.image_url && <img src={event.image_url} alt="" className="h-20 w-28 rounded-xl object-cover border" />}<div className="min-w-0"><div className="font-semibold">{event.name}</div><p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p></div></article>)}</div> : <div className="p-5 text-sm text-muted-foreground">No upcoming temple events at the moment.</div>}
+        </section>
+
         <div className="text-center text-[11px] text-muted-foreground pb-6">
-          Contact: {data.organization.contact_email} · {data.organization.contact_phone}
+          Contact: {data.organization.contact_email} Â· {data.organization.contact_phone}
         </div>
       </div>
     </div>
@@ -120,3 +126,4 @@ function PublicPage({ params }) {
 }
 
 export default PublicPage;
+
