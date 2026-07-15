@@ -2308,13 +2308,15 @@ function Reports() {
     doc.setFillColor(234, 88, 12); doc.rect(0, 0, 300, 20, 'F');
     doc.setTextColor(255); doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.text('Gokulam360', 14, 13);
     doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(`${tab.toUpperCase()} REPORT${dateRangeSuffix ? ` — ${fromDate || 'Start'} to ${toDate || 'Today'}` : ''} — ${new Date().toLocaleDateString()}`, 100, 13);
+    const pdfColumns = tab === 'attendance-summary' ? ['student_id', 'name', 'overall', 'total_sessions', 'present'] : columns;
+    const pdfRows = tab === 'attendance-summary' ? (attSummary?.students || []).map(student => ({ ...student, overall: student.overall + '%' })) : rows;
     doc.setTextColor(30);
     let y = 28;
     doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-    columns.forEach((c, i) => doc.text(c.replace(/_/g, ' ').toUpperCase(), 14 + i * 40, y));
+    pdfColumns.forEach((c, i) => doc.text(c.replace(/_/g, ' ').toUpperCase(), 14 + i * 40, y));
     y += 5; doc.setFont('helvetica', 'normal');
-    rows.slice(0, 30).forEach(r => {
-      columns.forEach((c, i) => doc.text(String(r[c] ?? '').slice(0, 22), 14 + i * 40, y));
+    pdfRows.slice(0, 30).forEach(r => {
+      pdfColumns.forEach((c, i) => doc.text(String(r[c] ?? '').slice(0, 22), 14 + i * 40, y));
       y += 5.5; if (y > 195) { doc.addPage(); y = 20; }
     });
     doc.save(`${tab}-report${dateRangeSuffix}.pdf`);
