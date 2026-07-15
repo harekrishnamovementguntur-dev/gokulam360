@@ -2501,7 +2501,7 @@ function Events() {
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const empty = { name: '', date: '', description: '', image_url: '' };
+  const empty = { name: '', date: '', description: '', image_url: '', is_announcement: false };
   const [form, setForm] = useState(empty);
   const load = () => api('/events').then(r => setItems(r.items));
   useEffect(() => { load(); }, []);
@@ -2527,10 +2527,12 @@ function Events() {
     reader.readAsDataURL(file);
   };
   const covers = ['#7c3aed,#ec4899', '#4f46e5,#0ea5e9', '#0891b2,#22d3ee', '#a855f7,#3b82f6', '#8b5cf6,#d946ef'];
+  const announcementCount = items.filter(event => event.is_announcement).length;
+  const canSelectAnnouncement = !!form.is_announcement || announcementCount < 3;
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Events" subtitle="Celebrations, festivals & activities" icon={CalendarIcon}
+      <PageHeader title="Events" subtitle={`Celebrations, festivals & activities · ${announcementCount}/3 shown to parents`} icon={CalendarIcon}
         action={<Button className="bg-saffron-gradient shadow" onClick={openNew}><Plus size={15} className="mr-1" /> New Event</Button>} />
       {items.length === 0 ? <EmptyState text="No events yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openNew}><Plus size={14} className="mr-1" />Create first event</Button>} /> : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2547,7 +2549,7 @@ function Events() {
                 </div>
               </div>
               <div className="p-4">
-                <div className="font-bold">{e.name}</div>
+                <div className="flex items-center gap-2"><div className="font-bold">{e.name}</div>{e.is_announcement && <Badge className="bg-primary text-[9px]">Announcement</Badge>}</div>
                 <p className="text-xs text-muted-foreground mt-1 line-clamp-2 min-h-[32px]">{e.description}</p>
                 <div className="flex gap-1 mt-3 pt-3 border-t opacity-0 group-hover:opacity-100 transition">
                   <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(e)}><Edit3 size={13} className="mr-1" /> Edit</Button>
@@ -2567,6 +2569,10 @@ function Events() {
             <div><Label>Date</Label><Input type="date" value={form.date} onChange={ev => setForm({ ...form, date: ev.target.value })} /></div>
             <div></div>
             <div className="col-span-2"><Label>Description</Label><Textarea rows={3} value={form.description} onChange={ev => setForm({ ...form, description: ev.target.value })} placeholder="Details about the event" /></div>
+            <label className={`col-span-2 flex items-start gap-3 rounded-xl border p-3 ${canSelectAnnouncement ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
+              <input type="checkbox" checked={!!form.is_announcement} disabled={!canSelectAnnouncement} onChange={ev => setForm({ ...form, is_announcement: ev.target.checked })} className="mt-1 accent-primary" />
+              <span><span className="block text-sm font-medium">Show on parent announcements</span><span className="block text-xs text-muted-foreground">Select up to 3 events to display on the parent QR page. {announcementCount}/3 currently selected.</span></span>
+            </label>
             <div className="col-span-2 space-y-2"><Label>Advertisement image <span className="text-muted-foreground font-normal">(optional, max 2 MB)</span></Label><Input type="file" accept="image/*" onChange={selectImage} />{form.image_url && <div className="flex items-center gap-3"><img src={form.image_url} alt="Event preview" className="h-16 w-24 rounded-lg object-cover border" /><Button type="button" variant="ghost" size="sm" onClick={() => setForm({ ...form, image_url: '' })}>Remove image</Button></div>}</div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient">{editing ? 'Update' : 'Create'}</Button></DialogFooter>
@@ -2889,8 +2895,8 @@ function PublicParentView({ token }) {
         </div>
 
         <section className="rounded-2xl glass overflow-hidden">
-          <div className="px-5 py-4 border-b flex items-center gap-2"><CalendarIcon size={16} className="text-primary" /><div><div className="font-semibold text-sm">Temple Events</div><div className="text-xs text-muted-foreground">Upcoming celebrations and activities</div></div></div>
-          {events.length ? <div className="divide-y">{events.map(event => <article key={event.id} className="p-4"><div className="flex gap-4"><div className="w-16 shrink-0 rounded-xl bg-saffron-gradient text-white text-center grid place-items-center py-2"><div className="text-[10px] uppercase">{new Date(event.date + 'T00:00:00').toLocaleString('en', { month: 'short' })}</div><div className="text-2xl font-bold leading-none">{new Date(event.date + 'T00:00:00').getDate()}</div></div><div className="min-w-0"><div className="font-semibold">{event.name}</div><p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p></div></div>{event.image_url && <img src={event.image_url} alt="Event advertisement" className="mt-4 w-full max-h-[420px] rounded-xl border bg-muted/30 object-contain" />}</article>)}</div> : <div className="p-5 text-sm text-muted-foreground">No upcoming temple events at the moment.</div>}
+          <div className="px-5 py-4 border-b flex items-center gap-2"><CalendarIcon size={16} className="text-primary" /><div><div className="font-semibold text-sm">Announcements</div><div className="text-xs text-muted-foreground">Updates selected by the temple</div></div></div>
+          {events.length ? <div className="divide-y">{events.map(event => <article key={event.id} className="p-4"><div className="flex gap-4"><div className="w-16 shrink-0 rounded-xl bg-saffron-gradient text-white text-center grid place-items-center py-2"><div className="text-[10px] uppercase">{new Date(event.date + 'T00:00:00').toLocaleString('en', { month: 'short' })}</div><div className="text-2xl font-bold leading-none">{new Date(event.date + 'T00:00:00').getDate()}</div></div><div className="min-w-0"><div className="font-semibold">{event.name}</div><p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p></div></div>{event.image_url && <img src={event.image_url} alt="Event advertisement" className="mt-4 w-full max-h-[420px] rounded-xl border bg-muted/30 object-contain" />}</article>)}</div> : <div className="p-5 text-sm text-muted-foreground">No announcements at the moment.</div>}
         </section>
 
         <div className="text-center text-[11px] text-muted-foreground">
