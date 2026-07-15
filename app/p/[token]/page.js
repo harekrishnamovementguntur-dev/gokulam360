@@ -22,13 +22,13 @@ function PublicPage({ params }) {
   if (err) return (
     <div className="min-h-screen bg-aurora grid place-items-center p-6">
       <div className="rounded-2xl glass p-8 text-center max-w-md">
-        <div className="text-3xl mb-3">ðŸ˜”</div>
+        <div className="text-3xl mb-3">😔</div>
         <div className="font-bold text-lg">Link not found</div>
         <div className="text-sm text-muted-foreground mt-1">This parent link is invalid or has expired.</div>
       </div>
     </div>
   );
-  if (!data) return <div className="min-h-screen bg-aurora grid place-items-center text-muted-foreground">Loadingâ€¦</div>;
+  if (!data) return <div className="min-h-screen bg-aurora grid place-items-center text-muted-foreground">Loading…</div>;
 
   const s = data.student;
   const attPct = data.attendance.length ? Math.round((data.attendance.filter(a => a.status === 'present' || a.status === 'late').length / data.attendance.length) * 100) : 0;
@@ -57,7 +57,7 @@ function PublicPage({ params }) {
               {s.photo_url ? <AvatarImage src={s.photo_url} /> : <AvatarFallback className="bg-saffron-gradient text-white text-2xl">{initials(s.first_name + ' ' + s.last_name)}</AvatarFallback>}
             </Avatar>
             <div>
-              <div className="text-xs text-indigo-900/70">Namaste ðŸ™</div>
+              <div className="text-xs text-indigo-900/70">Namaste 🙏</div>
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-indigo-950">{s.first_name} {s.last_name}</h1>
               <div className="text-sm text-indigo-900/70 mt-1 font-mono">{s.student_id}</div>
             </div>
@@ -118,7 +118,7 @@ function PublicPage({ params }) {
         </section>
 
         <div className="text-center text-[11px] text-muted-foreground pb-6">
-          Contact: {data.organization.contact_email} Â· {data.organization.contact_phone}
+          Contact: {data.organization.contact_email} · {data.organization.contact_phone}
         </div>
       </div>
     </div>
@@ -126,4 +126,3 @@ function PublicPage({ params }) {
 }
 
 export default PublicPage;
-
