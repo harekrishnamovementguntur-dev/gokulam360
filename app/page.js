@@ -2441,7 +2441,7 @@ function Events() {
   const [items, setItems] = useState([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const empty = { name: '', date: '', description: '' };
+  const empty = { name: '', date: '', description: '', image_url: '' };
   const [form, setForm] = useState(empty);
   const load = () => api('/events').then(r => setItems(r.items));
   useEffect(() => { load(); }, []);
@@ -2457,6 +2457,15 @@ function Events() {
   const del = async (e) => { if (!confirm(`Delete ${e.name}?`)) return; await api(`/events/${e.id}`, { method: 'DELETE' }); load(); };
   const openNew = () => { setEditing(null); setForm(empty); setOpen(true); };
   const openEdit = (e) => { setEditing(e); setForm({ ...empty, ...e }); setOpen(true); };
+  const selectImage = (ev) => {
+    const file = ev.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return toast.error('Please choose an image file');
+    if (file.size > 2 * 1024 * 1024) return toast.error('Please choose an image smaller than 2 MB');
+    const reader = new FileReader();
+    reader.onload = () => setForm(current => ({ ...current, image_url: reader.result }));
+    reader.readAsDataURL(file);
+  };
   const covers = ['#7c3aed,#ec4899', '#4f46e5,#0ea5e9', '#0891b2,#22d3ee', '#a855f7,#3b82f6', '#8b5cf6,#d946ef'];
 
   return (
@@ -2469,9 +2478,9 @@ function Events() {
             <motion.div key={e.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
               className="rounded-2xl overflow-hidden glass card-lift group">
               <div className="h-28 relative" style={{ background: `linear-gradient(135deg, ${covers[i % covers.length]})` }}>
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <CalendarIcon className="text-white/90" size={40} />
-                </div>
+                {e.image_url ? <img src={e.image_url} alt="" className="absolute inset-0 h-full w-full object-cover" /> : (
+                  <div className="absolute inset-0 flex items-center justify-center"><CalendarIcon className="text-white/90" size={40} /></div>
+                )}
                 <div className="absolute bottom-3 left-3 bg-white/20 backdrop-blur rounded-lg text-white text-center px-2 py-1 min-w-[54px]">
                   <div className="text-[9px] uppercase">{new Date(e.date).toLocaleString('en', { month: 'short' })}</div>
                   <div className="text-xl font-bold leading-none">{new Date(e.date).getDate()}</div>
@@ -2498,6 +2507,7 @@ function Events() {
             <div><Label>Date</Label><Input type="date" value={form.date} onChange={ev => setForm({ ...form, date: ev.target.value })} /></div>
             <div></div>
             <div className="col-span-2"><Label>Description</Label><Textarea rows={3} value={form.description} onChange={ev => setForm({ ...form, description: ev.target.value })} placeholder="Details about the event" /></div>
+            <div className="col-span-2 space-y-2"><Label>Advertisement image <span className="text-muted-foreground font-normal">(optional, max 2 MB)</span></Label><Input type="file" accept="image/*" onChange={selectImage} />{form.image_url && <div className="flex items-center gap-3"><img src={form.image_url} alt="Event preview" className="h-16 w-24 rounded-lg object-cover border" /><Button type="button" variant="ghost" size="sm" onClick={() => setForm({ ...form, image_url: '' })}>Remove image</Button></div>}</div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient">{editing ? 'Update' : 'Create'}</Button></DialogFooter>
         </DialogContent>
@@ -2746,6 +2756,7 @@ function PublicParentView({ token }) {
   const attPct = data.attendance.length ? Math.round((data.attendance.filter(a => a.status === 'present' || a.status === 'late').length / data.attendance.length) * 100) : 0;
   const feeDue = data.fees.filter(f => f.status !== 'paid').reduce((a, f) => a + (f.amount - (f.paid_amount || 0)), 0);
   const feePaid = data.fees.reduce((a, f) => a + (f.paid_amount || 0), 0);
+  const events = data.events || [];
 
   return (
     <div className="min-h-screen bg-aurora relative">
@@ -2816,6 +2827,11 @@ function PublicParentView({ token }) {
             ))}
           </div>
         </div>
+
+        <section className="rounded-2xl glass overflow-hidden">
+          <div className="px-5 py-4 border-b flex items-center gap-2"><CalendarIcon size={16} className="text-primary" /><div><div className="font-semibold text-sm">Temple Events</div><div className="text-xs text-muted-foreground">Upcoming celebrations and activities</div></div></div>
+          {events.length ? <div className="divide-y">{events.map(event => <article key={event.id} className="p-4 flex gap-4"><div className="w-16 shrink-0 rounded-xl bg-saffron-gradient text-white text-center grid place-items-center py-2"><div className="text-[10px] uppercase">{new Date(event.date + 'T00:00:00').toLocaleString('en', { month: 'short' })}</div><div className="text-2xl font-bold leading-none">{new Date(event.date + 'T00:00:00').getDate()}</div></div>{event.image_url && <img src={event.image_url} alt="" className="h-20 w-28 rounded-xl object-cover border" />}<div className="min-w-0"><div className="font-semibold">{event.name}</div><p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p></div></article>)}</div> : <div className="p-5 text-sm text-muted-foreground">No upcoming temple events at the moment.</div>}
+        </section>
 
         <div className="text-center text-[11px] text-muted-foreground">
           Contact: {data.organization.contact_email} · {data.organization.contact_phone}

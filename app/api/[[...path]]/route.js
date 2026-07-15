@@ -373,6 +373,12 @@ async function router(req, method) {
     const pMap = Object.fromEntries(programs.map(p => [p.id, p]));
     const att = await db.collection('attendance').find({ student_id: student.id }).sort({ date: -1 }).toArray();
     const fees = await db.collection('fees').find({ student_id: student.id }).toArray();
+    const today = new Date().toISOString().slice(0, 10);
+    const events = await db.collection('events')
+      .find({ organization_id: student.organization_id, date: { $gte: today } })
+      .sort({ date: 1 })
+      .limit(6)
+      .toArray();
     const enrichedEnr = enrollments.map(e => {
       const attended = att.filter(a => a.program_id === e.program_id && (a.status === 'present' || a.status === 'late') && a.date >= (e.enrolled_at || '').slice(0, 10)).length;
       const credited = e.sessions_credited || 0;
@@ -384,6 +390,7 @@ async function router(req, method) {
       enrollments: enrichedEnr,
       attendance: att.slice(0, 20).map(stripId),
       fees: fees.map(stripId),
+      events: events.map(stripId),
     });
   }
   if (resource === 'config' && method === 'GET') {
