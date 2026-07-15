@@ -817,25 +817,37 @@ async function router(req, method) {
   if (resource === 'reports' && method === 'GET') {
     const type = id;
     const scope = orgScope(user);
+    const from = url.searchParams.get('from') || '';
+    const to = url.searchParams.get('to') || '';
+    const isDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value);
+    if ((from && !isDate(from)) || (to && !isDate(to)) || (from && to && from > to)) {
+      return json({ error: 'Invalid date range' }, 400);
+    }
+    const dateFilter = field => {
+      const bounds = {};
+      if (from) bounds.$gte = from;
+      if (to) bounds.$lte = to;
+      return Object.keys(bounds).length ? { [field]: bounds } : {};
+    };
     if (type === 'students') {
       const items = await db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray();
       return json({ items: items.map(stripId) });
     }
     if (type === 'attendance') {
-      const items = await db.collection('attendance').find(scope).sort({ date: -1 }).toArray();
+      const items = await db.collection('attendance').find({ ...scope, ...dateFilter('date') }).sort({ date: -1 }).toArray();
       const students = await db.collection('students').find(scope).toArray();
       const sMap = Object.fromEntries(students.map(s => [s.id, `${s.first_name} ${s.last_name}`]));
       return json({ items: items.map(a => ({ ...stripId(a), student_name: sMap[a.student_id] || '-' })) });
     }
     if (type === 'fees') {
-      const items = await db.collection('fees').find(scope).toArray();
+      const items = await db.collection('fees').find({ ...scope, ...dateFilter('due_date') }).toArray();
       const students = await db.collection('students').find(scope).toArray();
       const sMap = Object.fromEntries(students.map(s => [s.id, `${s.first_name} ${s.last_name}`]));
       return json({ items: items.map(f => ({ ...stripId(f), student_name: sMap[f.student_id] || '-' })) });
     }
     if (type === 'attendance-summary') {
       const students = await db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray();
-      const attendance = await db.collection('attendance').find(scope).toArray();
+      const attendance = await db.collection('attendance').find({ ...scope, ...dateFilter('date') }).toArray();
       const summary = students.map(s => {
         const sRecs = attendance.filter(a => a.student_id === s.id);
         const months = {};
