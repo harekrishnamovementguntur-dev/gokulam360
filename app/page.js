@@ -1929,6 +1929,8 @@ function Attendance() {
 function Fees() {
   const [items, setItems] = useState([]);
   const [students, setStudents] = useState([]);
+  const [noteDrafts, setNoteDrafts] = useState({});
+  const [savingNote, setSavingNote] = useState(null);
   useEffect(() => { api('/fees').then(r => setItems(r.items)); api('/students').then(r => setStudents(r.items)); }, []);
   const sMap = Object.fromEntries(students.map(s => [s.id, s]));
   const pending = items.filter(f => f.status === 'pending');
@@ -1940,6 +1942,18 @@ function Fees() {
     api('/fees').then(r => setItems(r.items));
     confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 }, colors: ['#7c3aed', '#0ea5e9'] });
     toast.success('Payment received 💰');
+  };
+  const saveNote = async (f) => {
+    const notes = noteDrafts[f.id] ?? f.notes ?? '';
+    setSavingNote(f.id);
+    try {
+      await api(`/fees/${f.id}`, { method: 'PUT', body: JSON.stringify({ notes }) });
+      setItems(current => current.map(item => item.id === f.id ? { ...item, notes } : item));
+      setNoteDrafts(current => ({ ...current, [f.id]: undefined }));
+      toast.success('Fee note saved');
+    } finally {
+      setSavingNote(null);
+    }
   };
   return (
     <div className="space-y-5">
@@ -1965,7 +1979,7 @@ function Fees() {
       </div>
       <div className="rounded-2xl glass overflow-hidden">
         <Table>
-          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead><TableHead></TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead><TableHead className="min-w-[240px]">Notes</TableHead><TableHead></TableHead></TableRow></TableHeader>
           <TableBody>
             {items.map(f => {
               const s = sMap[f.student_id];
@@ -1984,6 +1998,7 @@ function Fees() {
                   <TableCell>{fmtINR(f.paid_amount)}</TableCell>
                   <TableCell><Badge className={f.status === 'paid' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-rose-500 hover:bg-rose-600'}>{f.status}</Badge></TableCell>
                   <TableCell className="text-xs text-muted-foreground">{f.due_date}</TableCell>
+                  <TableCell><div className="flex items-end gap-2"><Textarea rows={2} value={noteDrafts[f.id] ?? f.notes ?? ''} onChange={e => setNoteDrafts(current => ({ ...current, [f.id]: e.target.value }))} placeholder="Add a note…" className="min-h-[52px] text-xs" /><Button size="sm" variant="outline" onClick={() => saveNote(f)} disabled={savingNote === f.id}>{savingNote === f.id ? 'Saving…' : 'Save'}</Button></div></TableCell>
                   <TableCell className="text-right">{f.status !== 'paid' && <Button size="sm" className="bg-saffron-gradient" onClick={() => markPaid(f)}>Mark Paid</Button>}</TableCell>
                 </TableRow>
               );
@@ -2239,14 +2254,21 @@ function Reports() {
   const [rows, setRows] = useState([]);
   const [attSummary, setAttSummary] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const dateRangeSuffix = fromDate || toDate ? `-${fromDate || 'start'}-to-${toDate || 'end'}` : '';
   useEffect(() => {
     setLoading(true);
+    const params = new URLSearchParams();
+    if (fromDate) params.set('from', fromDate);
+    if (toDate) params.set('to', toDate);
+    const query = params.toString() ? `?${params.toString()}` : '';
     if (tab === 'attendance-summary') {
-      api('/reports/attendance-summary').then(setAttSummary).finally(() => setLoading(false));
+      api(`/reports/attendance-summary${query}`).then(setAttSummary).finally(() => setLoading(false));
     } else {
-      api(`/reports/${tab}`).then(r => setRows(r.items)).finally(() => setLoading(false));
+      api(`/reports/${tab}${query}`).then(r => setRows(r.items)).finally(() => setLoading(false));
     }
-  }, [tab]);
+  }, [tab, fromDate, toDate]);
 
   const columns = {
     students: ['student_id', 'first_name', 'last_name', 'gender', 'mobile', 'email', 'status'],
@@ -2260,12 +2282,12 @@ function Reports() {
       const lines = attSummary.students.map(s => [s.student_id, s.name, s.overall + '%', s.total_sessions, s.present, ...attSummary.months.map(m => (s.monthly[m] ?? '-') + (s.monthly[m] !== undefined ? '%' : ''))]);
       const csv = [headers.join(','), ...lines.map(l => l.map(v => `"${v}"`).join(','))].join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
-      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'attendance-summary.csv'; a.click();
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `attendance-summary${dateRangeSuffix}.csv`; a.click();
       return;
     }
     const csv = [columns.join(','), ...rows.map(r => columns.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
-    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${tab}-report.csv`; a.click();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${tab}-report${dateRangeSuffix}.csv`; a.click();
   };
   const exportXLSX = async () => {
     const XLSX = await import('xlsx');
@@ -2278,24 +2300,26 @@ function Reports() {
       ws = XLSX.utils.json_to_sheet(rows.map(r => Object.fromEntries(columns.map(c => [c, r[c] ?? '']))));
     }
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, sheet);
-    XLSX.writeFile(wb, `${sheet}-report.xlsx`);
+    XLSX.writeFile(wb, `${sheet}-report${dateRangeSuffix}.xlsx`);
   };
   const exportPDF = async () => {
     const { jsPDF } = await import('jspdf');
     const doc = new jsPDF({ orientation: 'landscape' });
     doc.setFillColor(234, 88, 12); doc.rect(0, 0, 300, 20, 'F');
     doc.setTextColor(255); doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.text('Gokulam360', 14, 13);
-    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(`${tab.toUpperCase()} REPORT — ${new Date().toLocaleDateString()}`, 100, 13);
+    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(`${tab.toUpperCase()} REPORT${dateRangeSuffix ? ` — ${fromDate || 'Start'} to ${toDate || 'Today'}` : ''} — ${new Date().toLocaleDateString()}`, 100, 13);
+    const pdfColumns = tab === 'attendance-summary' ? ['student_id', 'name', 'overall', 'total_sessions', 'present'] : columns;
+    const pdfRows = tab === 'attendance-summary' ? (attSummary?.students || []).map(student => ({ ...student, overall: student.overall + '%' })) : rows;
     doc.setTextColor(30);
     let y = 28;
     doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-    columns.forEach((c, i) => doc.text(c.replace(/_/g, ' ').toUpperCase(), 14 + i * 40, y));
+    pdfColumns.forEach((c, i) => doc.text(c.replace(/_/g, ' ').toUpperCase(), 14 + i * 40, y));
     y += 5; doc.setFont('helvetica', 'normal');
-    rows.slice(0, 30).forEach(r => {
-      columns.forEach((c, i) => doc.text(String(r[c] ?? '').slice(0, 22), 14 + i * 40, y));
+    pdfRows.slice(0, 30).forEach(r => {
+      pdfColumns.forEach((c, i) => doc.text(String(r[c] ?? '').slice(0, 22), 14 + i * 40, y));
       y += 5.5; if (y > 195) { doc.addPage(); y = 20; }
     });
-    doc.save(`${tab}-report.pdf`);
+    doc.save(`${tab}-report${dateRangeSuffix}.pdf`);
   };
 
   return (
@@ -2306,6 +2330,12 @@ function Reports() {
           <Button variant="outline" onClick={exportXLSX}><FileSpreadsheet size={14} className="mr-1" /> Excel</Button>
           <Button className="bg-saffron-gradient" onClick={exportPDF}><FileText size={14} className="mr-1" /> PDF</Button>
         </div>} />
+
+      {tab !== 'students' && <div className="rounded-2xl glass p-4 flex flex-wrap items-end gap-3">
+        <div><Label className="text-xs">From date</Label><Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="mt-1 w-[170px]" /></div>
+        <div><Label className="text-xs">To date</Label><Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} min={fromDate || undefined} className="mt-1 w-[170px]" /></div>
+        {(fromDate || toDate) && <Button variant="ghost" size="sm" onClick={() => { setFromDate(''); setToDate(''); }}>Clear dates</Button>}
+      </div>}
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
@@ -2830,7 +2860,7 @@ function PublicParentView({ token }) {
 
         <section className="rounded-2xl glass overflow-hidden">
           <div className="px-5 py-4 border-b flex items-center gap-2"><CalendarIcon size={16} className="text-primary" /><div><div className="font-semibold text-sm">Temple Events</div><div className="text-xs text-muted-foreground">Upcoming celebrations and activities</div></div></div>
-          {events.length ? <div className="divide-y">{events.map(event => <article key={event.id} className="p-4 flex gap-4"><div className="w-16 shrink-0 rounded-xl bg-saffron-gradient text-white text-center grid place-items-center py-2"><div className="text-[10px] uppercase">{new Date(event.date + 'T00:00:00').toLocaleString('en', { month: 'short' })}</div><div className="text-2xl font-bold leading-none">{new Date(event.date + 'T00:00:00').getDate()}</div></div>{event.image_url && <img src={event.image_url} alt="" className="h-20 w-28 rounded-xl object-cover border" />}<div className="min-w-0"><div className="font-semibold">{event.name}</div><p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p></div></article>)}</div> : <div className="p-5 text-sm text-muted-foreground">No upcoming temple events at the moment.</div>}
+          {events.length ? <div className="divide-y">{events.map(event => <article key={event.id} className="p-4"><div className="flex gap-4"><div className="w-16 shrink-0 rounded-xl bg-saffron-gradient text-white text-center grid place-items-center py-2"><div className="text-[10px] uppercase">{new Date(event.date + 'T00:00:00').toLocaleString('en', { month: 'short' })}</div><div className="text-2xl font-bold leading-none">{new Date(event.date + 'T00:00:00').getDate()}</div></div><div className="min-w-0"><div className="font-semibold">{event.name}</div><p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p></div></div>{event.image_url && <img src={event.image_url} alt="Event advertisement" className="mt-4 w-full max-h-[420px] rounded-xl border bg-muted/30 object-contain" />}</article>)}</div> : <div className="p-5 text-sm text-muted-foreground">No upcoming temple events at the moment.</div>}
         </section>
 
         <div className="text-center text-[11px] text-muted-foreground">
