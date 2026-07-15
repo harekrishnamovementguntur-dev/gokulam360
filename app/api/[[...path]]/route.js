@@ -373,11 +373,10 @@ async function router(req, method) {
     const pMap = Object.fromEntries(programs.map(p => [p.id, p]));
     const att = await db.collection('attendance').find({ student_id: student.id }).sort({ date: -1 }).toArray();
     const fees = await db.collection('fees').find({ student_id: student.id }).toArray();
-    const today = new Date().toISOString().slice(0, 10);
     const events = await db.collection('events')
-      .find({ organization_id: student.organization_id, date: { $gte: today } })
-      .sort({ date: 1 })
-      .limit(6)
+      .find({ organization_id: student.organization_id, is_announcement: true, is_deleted: { $ne: true } })
+      .sort({ date: -1 })
+      .limit(3)
       .toArray();
     const enrichedEnr = enrollments.map(e => {
       const attended = att.filter(a => a.program_id === e.program_id && (a.status === 'present' || a.status === 'late') && a.date >= (e.enrolled_at || '').slice(0, 10)).length;
@@ -533,6 +532,10 @@ async function router(req, method) {
       };
       // Auto-generate public token for students
       if (resource === 'students' && !doc.public_token) doc.public_token = uuidv4();
+      if (resource === 'events' && doc.is_announcement) {
+        const selectedCount = await db.collection('events').countDocuments({ organization_id: organizationId, is_announcement: true, is_deleted: { $ne: true } });
+        if (selectedCount >= 3) return json({ error: 'Only 3 announcements can be shown to parents at a time' }, 400);
+      }
       // Generate sessions for programs
       if (resource === 'programs') doc.sessions = generateSessions(doc);
       await col.insertOne(doc);
@@ -562,6 +565,10 @@ async function router(req, method) {
        // Do not let callers move records between tenants or alter server-owned fields.
        const { id: ignoredId, organization_id: ignoredOrganizationId, created_at: ignoredCreatedAt, updated_at: ignoredUpdatedAt, is_deleted: ignoredDeleted, ...changes } = body;
        const updated = { ...changes, updated_at: new Date().toISOString() };
+      if (resource === 'events' && changes.is_announcement === true && !before.is_announcement) {
+        const selectedCount = await db.collection('events').countDocuments({ organization_id: before.organization_id, is_announcement: true, is_deleted: { $ne: true }, id: { $ne: id } });
+        if (selectedCount >= 3) return json({ error: 'Only 3 announcements can be shown to parents at a time' }, 400);
+      }
       if (resource === 'programs') updated.sessions = generateSessions({ ...before, ...body });
       await col.updateOne({ id, ...orgScope(user) }, { $set: updated });
        const doc = await col.findOne({ id, ...orgScope(user) });
