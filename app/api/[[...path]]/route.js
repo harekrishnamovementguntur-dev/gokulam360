@@ -572,7 +572,20 @@ async function router(req, method) {
       return json(stripId(doc));
     }
     if (method === 'DELETE' && id) {
-      await col.updateOne({ id, ...orgScope(user) }, { $set: { is_deleted: true } });
+      const existing = await col.findOne({ id, ...orgScope(user) });
+      if (!existing) return json({ error: 'Not found' }, 404);
+      if (resource === 'students') {
+        const fees = await db.collection('fees').deleteMany({ student_id: id, ...orgScope(user) });
+        await col.updateOne({ id, ...orgScope(user) }, { $set: { is_deleted: true, updated_at: new Date().toISOString() } });
+        await db.collection('activity').insertOne({
+          id: uuidv4(), organization_id: existing.organization_id, kind: 'student_deleted',
+          title: `Student deleted: ${existing.first_name || ''} ${existing.last_name || ''}`.trim(),
+          meta: { student_id: id, deleted_fee_records: fees.deletedCount || 0 },
+          actor: user.name || 'Admin', created_at: new Date().toISOString(),
+        });
+        return json({ ok: true, deleted_fee_records: fees.deletedCount || 0 });
+      }
+      await col.updateOne({ id, ...orgScope(user) }, { $set: { is_deleted: true, updated_at: new Date().toISOString() } });
       return json({ ok: true });
     }
   }
