@@ -113,13 +113,13 @@ function Login({ onLoggedIn }) {
     try {
       const { token, user } = await api('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) });
       store.token = token;
-      toast.success(`Welcome back, ${user.name.split(' ')[0]} 🙏`);
+      toast.success(`Welcome back, ${user.name.split(' ')[0]} ðŸ™`);
       onLoggedIn(user);
     } catch (e) { toast.error(e.message); } finally { setLoading(false); }
   };
   const seed = async () => {
     setSeeding(true);
-    try { await fetch(`${API}/seed`, { method: 'POST' }); toast.success('Demo data ready ✨'); }
+    try { await fetch(`${API}/seed`, { method: 'POST' }); toast.success('Demo data ready âœ¨'); }
     catch { toast.error('Seed failed'); } finally { setSeeding(false); }
   };
 
@@ -142,12 +142,12 @@ function Login({ onLoggedIn }) {
               </motion.div>
               <div>
                 <div className="text-2xl font-bold tracking-tight">Gokulam<span className="text-gradient">360</span></div>
-                <div className="text-xs text-muted-foreground">Sunday School • Multi-tenant SaaS</div>
+                <div className="text-xs text-muted-foreground">Sunday School â€¢ Multi-tenant SaaS</div>
               </div>
             </div>
 
             <div className="mb-6">
-              <h1 className="text-3xl font-bold tracking-tight">Welcome back 🙏</h1>
+              <h1 className="text-3xl font-bold tracking-tight">Welcome back ðŸ™</h1>
               <p className="text-muted-foreground mt-1">Sign in to your organization dashboard.</p>
             </div>
 
@@ -161,7 +161,7 @@ function Login({ onLoggedIn }) {
                 <Input type="password" value={password} onChange={e => setPassword(e.target.value)} className="h-11 bg-white/60 dark:bg-black/20" required />
               </div>
               <Button type="submit" className="w-full h-11 bg-saffron-gradient hover:opacity-95 shadow-lg" disabled={loading}>
-                {loading ? 'Signing in…' : <>Sign in <ArrowUpRight size={16} className="ml-1" /></>}
+                {loading ? 'Signing inâ€¦' : <>Sign in <ArrowUpRight size={16} className="ml-1" /></>}
               </Button>
             </form>
 
@@ -181,7 +181,7 @@ function Login({ onLoggedIn }) {
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 pulse-dot" /> Serving Krishna's children
                 </div>
                 <h2 className="text-3xl font-bold leading-tight text-shadow-warm">Manage with devotion.<br/>Scale with grace.</h2>
-                <p className="text-white/85 text-sm mt-3">A premium platform for Hare Krishna Gokulam Schools — students, teachers, attendance, fees, ID cards & more.</p>
+                <p className="text-white/85 text-sm mt-3">A premium platform for Hare Krishna Gokulam Schools â€” students, teachers, attendance, fees, ID cards & more.</p>
               </div>
             </div>
             {/* Floating stat cards */}
@@ -192,7 +192,7 @@ function Login({ onLoggedIn }) {
                 <div className="text-xs text-muted-foreground">Active Students</div>
               </div>
               <div className="text-2xl font-bold">1,240+</div>
-              <div className="text-[10px] text-emerald-600">▲ 12% this month</div>
+              <div className="text-[10px] text-emerald-600">â–² 12% this month</div>
             </motion.div>
             <motion.div animate={{ y: [0, 12, 0] }} transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
               className="absolute -right-4 bottom-24 rounded-2xl glass-strong p-4 w-48 shadow-xl">
@@ -313,14 +313,15 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
           </div>
           <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
             <span className="opacity-70">{org?.name || 'Platform'}</span>
-            <ChevronRight size={13} />
+            <ChevronRight size={13} 
+/>
             <span className="font-semibold text-foreground capitalize">{nav.find(n => n.key === view)?.label || view}</span>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <button onClick={() => setCmdOpen(true)}
               className="hidden md:flex items-center gap-2 h-9 px-3 rounded-lg bg-white/40 dark:bg-white/5 hover:bg-white/60 border text-sm text-muted-foreground transition">
-              <Search size={14} /> <span>Search…</span>
-              <kbd className="ml-6 text-[10px] px-1.5 py-0.5 rounded bg-muted border font-mono">⌘K</kbd>
+              <Search size={14} /> <span>Searchâ€¦</span>
+              <kbd className="ml-6 text-[10px] px-1.5 py-0.5 rounded bg-muted border font-mono">âŒ˜K</kbd>
             </button>
             <Button size="icon" variant="ghost" className="rounded-lg" onClick={() => setDark(!dark)}>
               {dark ? <Sun size={16} /> : <Moon size={16} />}
@@ -349,7 +350,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
 
       {/* Command palette */}
       <CommandDialog open={cmdOpen} onOpenChange={setCmdOpen}>
-        <CommandInput placeholder="Search students, teachers, or jump to a page…" />
+        <CommandInput placeholder="Search students, teachers, or jump to a pageâ€¦" />
         <CommandList>
           <CommandEmpty>No results found.</CommandEmpty>
           <CommandGroup heading="Navigate">
@@ -424,10 +425,10 @@ function Dashboard({ user, org, onNav }) {
         </div>
         <div className="relative">
           <div className="inline-flex items-center gap-2 rounded-full bg-white/60 backdrop-blur px-3 py-1 text-[11px] font-medium mb-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot" /> Live • {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot" /> Live â€¢ {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           </div>
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-indigo-950 dark:text-indigo-100">
-            {greet()}, <span className="text-gradient">{user.name.split(' ')[0]}</span> 🙏
+            {greet()}, <span className="text-gradient">{user.name.split(' ')[0]}</span> ðŸ™
           </h1>
           <p className="text-indigo-900/75 dark:text-indigo-100/70 mt-2 max-w-xl">
             Here's a spiritual snapshot of <span className="font-semibold">{org?.name || 'your organization'}</span>. Every child served is Krishna served.
@@ -455,7 +456,7 @@ function Dashboard({ user, org, onNav }) {
                   <Icon className="text-white" size={20} />
                 </div>
                 <div className="text-3xl font-bold tracking-tight">
-                  {k.isMoney ? <><span className="text-xl">₹</span><Counter value={k.value} format={v => Math.round(v).toLocaleString('en-IN')} /></>
+                  {k.isMoney ? <><span className="text-xl">â‚¹</span><Counter value={k.value} format={v => Math.round(v).toLocaleString('en-IN')} /></>
                     : k.isPct ? <><Counter value={k.value} /><span className="text-xl">%</span></>
                     : <Counter value={k.value} />}
                 </div>
@@ -521,7 +522,7 @@ function Dashboard({ user, org, onNav }) {
           <div className="flex items-center justify-between mb-4">
             <div>
               <div className="text-sm font-semibold flex items-center gap-1.5"><Activity size={14} className="text-primary" /> Attendance Heatmap</div>
-              <div className="text-[11px] text-muted-foreground">Last 12 weeks • darker = higher attendance</div>
+              <div className="text-[11px] text-muted-foreground">Last 12 weeks â€¢ darker = higher attendance</div>
             </div>
           </div>
           <Heatmap trend={stats.attendanceTrend} />
@@ -551,7 +552,7 @@ function Dashboard({ user, org, onNav }) {
                 </div>
                 <div className="flex-1 min-w-0 pb-2">
                   <div className="text-xs font-medium leading-tight">{a.title}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">{a.actor} • {timeAgo(a.created_at)}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">{a.actor} â€¢ {timeAgo(a.created_at)}</div>
                 </div>
               </motion.div>
             ))}
@@ -596,7 +597,7 @@ function Dashboard({ user, org, onNav }) {
               <Sparkles size={10} /> DAILY INSPIRATION
             </div>
             <div className="text-lg font-semibold leading-snug">"For those who take pleasure in the self, whose human life is one of self-realization, there is no duty."</div>
-            <div className="text-xs opacity-80 mt-2">— Bhagavad Gita 3.17</div>
+            <div className="text-xs opacity-80 mt-2">â€” Bhagavad Gita 3.17</div>
             <div className="mt-4 flex items-center gap-2 text-[11px] opacity-85">
               <PartyPopper size={12} /> Every child taught is a soul awakened
             </div>
@@ -620,7 +621,8 @@ function DashboardSkeleton() {
 }
 
 function Heatmap({ trend }) {
-  // Generate a 12-week grid: rows are days of week (Sun..Sat), columns weeks
+  // Generate a 12-week grid: rows are da
+ys of week (Sun..Sat), columns weeks
   const weeks = 12;
   const map = {};
   (trend || []).forEach(t => { map[t.date] = t.present / Math.max(1, t.present + t.absent); });
@@ -651,7 +653,7 @@ function Heatmap({ trend }) {
         {cells.map((col, ci) => (
           <div key={ci} className="flex flex-col gap-1">
             {col.map(c => (
-              <div key={c.key} title={`${c.key} • ${c.v === undefined ? 'no data' : Math.round(c.v * 100) + '%'}`}
+              <div key={c.key} title={`${c.key} â€¢ ${c.v === undefined ? 'no data' : Math.round(c.v * 100) + '%'}`}
                 className={`w-4 h-4 rounded-sm ${intensity(c.v)}`} />
             ))}
           </div>
@@ -743,7 +745,7 @@ function ImportStudents({ programs, onImported }) {
     try {
       const res = await api('/students-import', { method: 'POST', body: JSON.stringify({ rows }) });
       confetti({ particleCount: Math.min(200, res.imported * 4), spread: 90, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#22c55e'] });
-      toast.success(`🎉 Imported ${res.imported} students${res.errors.length ? ` • ${res.errors.length} skipped` : ''}`);
+      toast.success(`ðŸŽ‰ Imported ${res.imported} students${res.errors.length ? ` â€¢ ${res.errors.length} skipped` : ''}`);
       setOpen(false); setRows([]); setFileName('');
       onImported && onImported();
     } catch (e) { toast.error(e.message); }
@@ -767,7 +769,7 @@ function ImportStudents({ programs, onImported }) {
               <div className="rounded-2xl border-2 border-dashed border-primary/30 bg-primary/5 p-8 text-center hover:bg-primary/10 transition cursor-pointer" onClick={() => fileRef.current?.click()}>
                 <div className="w-14 h-14 rounded-2xl bg-saffron-gradient text-white grid place-items-center mx-auto mb-3 shadow-lg"><Upload size={22} /></div>
                 <div className="font-semibold">Drop your file here or click to browse</div>
-                <div className="text-xs text-muted-foreground mt-1">.csv, .xlsx, .xls — up to 500 students</div>
+                <div className="text-xs text-muted-foreground mt-1">.csv, .xlsx, .xls â€” up to 500 students</div>
                 <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" hidden onChange={onFile} />
               </div>
               <div className="flex items-center gap-2 justify-center">
@@ -801,14 +803,14 @@ function ImportStudents({ programs, onImported }) {
                     ))}
                   </TableBody>
                 </Table>
-                {rows.length > 50 && <div className="text-center text-[11px] text-muted-foreground py-2">…and {rows.length - 50} more rows</div>}
+                {rows.length > 50 && <div className="text-center text-[11px] text-muted-foreground py-2">â€¦and {rows.length - 50} more rows</div>}
               </div>
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
             <Button className="bg-saffron-gradient" onClick={submit} disabled={importing || rows.length === 0}>
-              {importing ? 'Importing…' : `Import ${rows.length} students`}
+              {importing ? 'Importingâ€¦' : `Import ${rows.length} students`}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -899,7 +901,7 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
     try {
       await api('/organizations', { method: 'POST', body: JSON.stringify(form) });
       confetti({ particleCount: 250, spread: 100, origin: { y: 0.5 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#22c55e', '#f43f5e'] });
-      toast.success(`🎉 ${form.name} is live!`);
+      toast.success(`ðŸŽ‰ ${form.name} is live!`);
       onCreated();
       // Reset
       setStep(0);
@@ -948,7 +950,8 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
                   <div className="w-11 h-11 rounded-2xl bg-saffron-gradient text-white grid place-items-center shadow-lg"><StepIcon size={18} /></div>
                   <div>
                     <div className="text-xl font-bold tracking-tight">{s.title}</div>
-                    <div className="text-xs text-muted-foreground">{s.subtitle}</div>
+                    <div className="text-xs text-muted-foregr
+ound">{s.subtitle}</div>
                   </div>
                 </div>
 
@@ -960,7 +963,7 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
                     </motion.div>
                     <div className="text-2xl font-bold">Welcome to Gokulam<span className="text-gradient">360</span></div>
                     <div className="text-sm text-muted-foreground max-w-md mx-auto">
-                      In just 6 quick steps you'll launch a fully-configured Sunday School — with an admin account, first program, and everything ready for enrolments.
+                      In just 6 quick steps you'll launch a fully-configured Sunday School â€” with an admin account, first program, and everything ready for enrolments.
                     </div>
                     <div className="flex justify-center gap-3 pt-3">
                       {[
@@ -990,7 +993,7 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
                     <div><Label>Primary Email *</Label><Input type="email" value={form.contact_email} onChange={e => set({ contact_email: e.target.value })} placeholder="contact@yourorg.org" /></div>
                     <div><Label>Phone</Label><Input value={form.contact_phone} onChange={e => set({ contact_phone: e.target.value })} placeholder="+91 98765 43210" /></div>
                     <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 text-[11px] text-muted-foreground">
-                      💡 This is displayed on ID cards, receipts and parent communications.
+                      ðŸ’¡ This is displayed on ID cards, receipts and parent communications.
                     </div>
                   </div>
                 )}
@@ -1001,11 +1004,11 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
                       <Select value={form.currency} onValueChange={v => set({ currency: v })}>
                         <SelectTrigger><SelectValue /></SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="INR">₹ INR — Indian Rupee</SelectItem>
-                          <SelectItem value="USD">$ USD — US Dollar</SelectItem>
-                          <SelectItem value="GBP">£ GBP — British Pound</SelectItem>
-                          <SelectItem value="EUR">€ EUR — Euro</SelectItem>
-                          <SelectItem value="AUD">A$ AUD — Australian Dollar</SelectItem>
+                          <SelectItem value="INR">â‚¹ INR â€” Indian Rupee</SelectItem>
+                          <SelectItem value="USD">$ USD â€” US Dollar</SelectItem>
+                          <SelectItem value="GBP">Â£ GBP â€” British Pound</SelectItem>
+                          <SelectItem value="EUR">â‚¬ EUR â€” Euro</SelectItem>
+                          <SelectItem value="AUD">A$ AUD â€” Australian Dollar</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -1033,7 +1036,7 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
 
                 {s.key === 'program' && (
                   <div className="space-y-3">
-                    <div className="text-[11px] text-muted-foreground">Add your first class — you can add more later.</div>
+                    <div className="text-[11px] text-muted-foreground">Add your first class â€” you can add more later.</div>
                     <div><Label>Program Name</Label><Input value={form.first_program.name} onChange={e => setProgram({ name: e.target.value })} placeholder="Sunday School" /></div>
                     <div><Label>Description</Label><Textarea rows={2} value={form.first_program.description} onChange={e => setProgram({ description: e.target.value })} /></div>
                     <div className="grid grid-cols-3 gap-2">
@@ -1053,11 +1056,11 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
                         <div className="text-xs opacity-90 mt-0.5">{form.address}</div>
                       </div>
                       <div className="p-4 bg-white/50 dark:bg-white/5 space-y-2 text-xs">
-                        <ReviewRow icon={MessageSquare} label="Contact" value={`${form.contact_email} • ${form.contact_phone || '—'}`} />
-                        <ReviewRow icon={Palette} label="Currency" value={`${form.currency} • ${form.academic_year}`} />
+                        <ReviewRow icon={MessageSquare} label="Contact" value={`${form.contact_email} â€¢ ${form.contact_phone || 'â€”'}`} />
+                        <ReviewRow icon={Palette} label="Currency" value={`${form.currency} â€¢ ${form.academic_year}`} />
                         <ReviewRow icon={UserPlus} label="Admin" value={`${form.admin_name} <${form.admin_email}>`} />
-                        <ReviewRow icon={BookOpen} label="First program" value={`${form.first_program.name} • ${form.first_program.age_group} • ${form.first_program.capacity} seats`} />
-                        <ReviewRow icon={Wallet} label="Fee defaults" value={`Admission ${form.currency} ${form.fees.admission} • Term ${form.currency} ${form.fees.term}`} />
+                        <ReviewRow icon={BookOpen} label="First program" value={`${form.first_program.name} â€¢ ${form.first_program.age_group} â€¢ ${form.first_program.capacity} seats`} />
+                        <ReviewRow icon={Wallet} label="Fee defaults" value={`Admission ${form.currency} ${form.fees.admission} â€¢ Term ${form.currency} ${form.fees.term}`} />
                       </div>
                     </div>
                     <div className="text-[11px] text-muted-foreground text-center">Click <b>Launch</b> to create the organization and admin login instantly.</div>
@@ -1074,7 +1077,7 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
                   <Button className="bg-saffron-gradient" onClick={next}>Continue <ChevronRight size={14} className="ml-1" /></Button>
                 ) : (
                   <Button className="bg-saffron-gradient" onClick={submit} disabled={saving}>
-                    <Rocket size={14} className="mr-1" /> {saving ? 'Launching…' : 'Launch Organization'}
+                    <Rocket size={14} className="mr-1" /> {saving ? 'Launchingâ€¦' : 'Launch Organization'}
                   </Button>
                 )}
               </div>
@@ -1126,7 +1129,7 @@ function Students({ students, setStudents }) {
   const [org, setOrg] = useState(null);
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const empty = { first_name: '', last_name: '', dob: '', gender: 'Male', address: '', mobile: '', email: '', father_name: '', mother_name: '', emergency_contact: '', initiated_name: '', counsellor: '', temple: '', program_id: '', program_ids: [], eligible_sessions: {}, status: 'active', student_id: '', photo_url: '' };
+  const empty = { first_name: '', last_name: '', dob: '', gender: 'Male', address: '', mobile: '', email: '', father_name: '', mother_name: '', emergency_contact: '', initiated_name: '', counsellor: '', temple: '', program_id: '', program_ids: [], status: 'active', student_id: '', photo_url: '' };
   const [form, setForm] = useState(empty);
   const fileRef = useRef(null);
 
@@ -1145,15 +1148,12 @@ function Students({ students, setStudents }) {
   const save = async () => {
     try {
       const isNew = !editing;
-      const eligibleSessions = Object.fromEntries(Object.entries(form.eligible_sessions || {})
-        .map(([programId, value]) => [programId, Number(value)])
-        .filter(([, value]) => Number.isFinite(value) && value > 0));
-      const payload = { ...form, eligible_sessions: eligibleSessions, program_id: form.program_ids?.[0] || form.program_id }; // keep legacy
+      const payload = { ...form, program_id: form.program_ids?.[0] || form.program_id }; // keep legacy
       if (editing) await api(`/students/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       else await api('/students', { method: 'POST', body: JSON.stringify(payload) });
       if (isNew) {
         confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#22c55e', '#0ea5e9'] });
-        toast.success(`🎉 ${form.first_name} welcomed to ${org?.name || 'the school'}!`);
+        toast.success(`ðŸŽ‰ ${form.first_name} welcomed to ${org?.name || 'the school'}!`);
       } else toast.success('Student updated');
       setOpen(false); load();
     } catch (e) { toast.error(e.message); }
@@ -1205,13 +1205,13 @@ function Students({ students, setStudents }) {
     if (qrDataUrl) { try { doc.addImage(qrDataUrl, 'PNG', 4, 45, 20, 20); } catch {} }
     doc.setFontSize(5.5); doc.setTextColor(80);
     doc.text('Scan for parent portal', 14, 68, { align: 'center' });
-    doc.text('Attendance • Fees • Progress', 14, 71, { align: 'center' });
+    doc.text('Attendance â€¢ Fees â€¢ Progress', 14, 71, { align: 'center' });
     // Program list on right
     doc.setFontSize(6); doc.setTextColor(30);
     doc.setFont('helvetica', 'bold'); doc.text('ENROLLED IN', 26, 47);
     doc.setFont('helvetica', 'normal');
     const progs = (cardOf.program_ids && cardOf.program_ids.length ? cardOf.program_ids : [cardOf.program_id]).map(pid => programs.find(p => p.id === pid)?.name).filter(Boolean);
-    progs.slice(0, 3).forEach((n, i) => doc.text('• ' + n.slice(0, 20), 26, 51 + i * 3.5));
+    progs.slice(0, 3).forEach((n, i) => doc.text('â€¢ ' + n.slice(0, 20), 26, 51 + i * 3.5));
     doc.setFillColor(196, 181, 253); doc.rect(0, 80, 54, 6, 'F');
     doc.setTextColor(76, 29, 149); doc.setFontSize(6); doc.text('Hare Krishna \u2022 Serve with devotion', 27, 84, { align: 'center' });
     doc.save(`idcard-${cardOf.student_id}.pdf`);
@@ -1238,11 +1238,12 @@ function Students({ students, setStudents }) {
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[220px] max-w-md">
           <Search size={14} className="absolute left-3 top-3 text-muted-foreground" />
-          <Input placeholder="Search by name, ID, email…" value={q} onChange={e => setQ(e.target.value)} className="pl-9 h-10 glass" />
+          <Input placeholder="Search by name, ID, emailâ€¦" value={q} onChange={e => setQ(e.target.value)} className="pl-9 h-10 glass" />
         </div>
         <div className="flex gap-1 p-1 rounded-xl glass">
           {[
-            { k: 'all', l: 'All', c: counts.all },
+            { k: 'all', 
+l: 'All', c: counts.all },
             { k: 'active', l: 'Active', c: counts.active },
             { k: 'inactive', l: 'Inactive', c: counts.inactive },
             { k: 'discontinued', l: 'Left', c: counts.discontinued },
@@ -1312,7 +1313,7 @@ function Students({ students, setStudents }) {
             </div>
             <div>
               <div className="text-sm font-semibold">Student photo</div>
-              <div className="text-[11px] text-muted-foreground">JPG/PNG • Max 800KB. Will appear on ID cards.</div>
+              <div className="text-[11px] text-muted-foreground">JPG/PNG â€¢ Max 800KB. Will appear on ID cards.</div>
               {form.photo_url && <Button size="sm" variant="ghost" className="mt-1 h-7 text-[11px]" onClick={() => setForm({ ...form, photo_url: '' })}>Remove</Button>}
             </div>
           </div>
@@ -1353,26 +1354,16 @@ function Students({ students, setStudents }) {
                       <label key={p.id} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-xs transition ${selected ? 'bg-primary/15 border border-primary/40' : 'bg-white/50 dark:bg-white/5 border border-transparent hover:border-primary/30'}`}>
                         <input type="checkbox" className="accent-primary" checked={!!selected} onChange={() => {
                           const ids = form.program_ids || [];
-                          const eligibleSessions = { ...(form.eligible_sessions || {}) };
-                          if (selected) delete eligibleSessions[p.id];
-                          setForm({ ...form, program_ids: selected ? ids.filter(x => x !== p.id) : [...ids, p.id], eligible_sessions: eligibleSessions });
+                          setForm({ ...form, program_ids: selected ? ids.filter(x => x !== p.id) : [...ids, p.id] });
                         }} />
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{p.name}</div>
-                          <div className="text-[9px] text-muted-foreground">{(p.days_of_week || []).map(d => DAY_LABELS[d]).join(', ')} · {fmtINR(p.fee_amount || 0)}</div>
+                          <div className="text-[9px] text-muted-foreground">{(p.days_of_week || []).map(d => DAY_LABELS[d]).join(', ')} Â· {fmtINR(p.fee_amount || 0)}</div>
                         </div>
                       </label>
                     );
                   })}
                 </div>
-                {(form.program_ids || []).length > 0 && <div className="mt-3 rounded-xl border bg-primary/5 p-3 space-y-2">
-                  <div className="text-xs font-medium">Eligible sessions for new enrollment</div>
-                  <div className="text-[10px] text-muted-foreground">Use this when a student joins mid-term. Leave blank to use the remaining sessions in the current term. Unused credits carry into the next renewal.</div>
-                  {programs.filter(p => form.program_ids?.includes(p.id)).map(p => {
-                    const remaining = (p.sessions || []).filter(date => date >= new Date().toISOString().slice(0, 10)).length;
-                    return <div key={p.id} className="flex items-center gap-3"><div className="flex-1 text-xs truncate">{p.name}<span className="ml-1 text-muted-foreground">({remaining || 'term'} remaining)</span></div><Input type="number" min="1" value={form.eligible_sessions?.[p.id] ?? ''} onChange={e => setForm({ ...form, eligible_sessions: { ...(form.eligible_sessions || {}), [p.id]: e.target.value } })} placeholder={remaining ? String(remaining) : 'Sessions'} className="h-8 w-24" /></div>;
-                  })}
-                </div>}
                 <div className="text-[10px] text-muted-foreground mt-1">{(form.program_ids || []).length} class(es) selected</div>
               </div>
             </TabsContent>
@@ -1397,7 +1388,7 @@ function Students({ students, setStudents }) {
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteOf(null)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={del} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete student'}</Button>
+            <Button variant="destructive" onClick={del} disabled={deleting}>{deleting ? 'Deletingâ€¦' : 'Delete student'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -1426,7 +1417,7 @@ function Students({ students, setStudents }) {
                     <div><span className="font-bold text-[10px] uppercase text-muted-foreground">Emergency</span><br />{cardOf.emergency_contact}</div>
                   </div>
                 </div>
-                <div className="bg-amber-200 text-amber-900 text-[10px] text-center py-1.5 font-semibold tracking-wide">Hare Krishna • Serve with devotion</div>
+                <div className="bg-amber-200 text-amber-900 text-[10px] text-center py-1.5 font-semibold tracking-wide">Hare Krishna â€¢ Serve with devotion</div>
               </motion.div>
               <Button onClick={printCard} className="bg-saffron-gradient"><Download size={14} className="mr-1.5" /> Download PDF</Button>
             </div>
@@ -1456,7 +1447,7 @@ function EnrollmentHistoryDialog({ student, onClose, onChange }) {
     try {
       await api('/enrollments/renew', { method: 'POST', body: JSON.stringify({ enrollment_id: e.id }) });
       confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 }, colors: ['#7c3aed', '#22c55e'] });
-      toast.success('Enrollment renewed 🎉');
+      toast.success('Enrollment renewed ðŸŽ‰');
       api(`/enrollments?student_id=${student.id}`).then(r => setEnrollments(r.items));
       onChange && onChange();
     } catch (e) { toast.error(e.message); }
@@ -1464,8 +1455,8 @@ function EnrollmentHistoryDialog({ student, onClose, onChange }) {
 
   if (!student) return null;
 
-  const active = enrollments.filter(e => e.status === 'active' && !e.left_at);
-  const past = enrollments.filter(e => e.status !== 'active' || e.left_at);
+  const active = enrollments.filter(e => !e.left_at || e.status === 'active');
+  const past = enrollments.filter(e => e.left_at && e.status !== 'active');
 
   return (
     <Dialog open={!!student} onOpenChange={v => !v && onClose()}>
@@ -1480,7 +1471,7 @@ function EnrollmentHistoryDialog({ student, onClose, onChange }) {
               <div className="text-[10px] font-mono text-muted-foreground font-normal">{student.student_id}</div>
             </div>
           </DialogTitle>
-          <DialogDescription>Enrollment history · session credits · renewals</DialogDescription>
+          <DialogDescription>Enrollment history Â· session credits Â· renewals</DialogDescription>
         </DialogHeader>
 
         {loading ? (
@@ -1500,7 +1491,7 @@ function EnrollmentHistoryDialog({ student, onClose, onChange }) {
               <div>
                 <div className="text-[11px] uppercase tracking-widest text-muted-foreground mb-2 font-semibold">History ({past.length})</div>
                 <div className="space-y-2">
-                  {past.map(e => <EnrollmentCard key={e.id} e={e} past onRenew={renew} />)}
+                  {past.map(e => <EnrollmentCard key={e.id} e={e} past />)}
                 </div>
               </div>
             )}
@@ -1523,10 +1514,11 @@ function EnrollmentCard({ e, onRenew, past = false }) {
           <div className="w-10 h-10 rounded-xl bg-saffron-gradient text-white grid place-items-center"><BookOpen size={16} /></div>
           <div>
             <div className="font-semibold text-sm">{e.program_name}</div>
-            <div className="text-[10px] text-muted-foreground">
+            <div className="text-[10px] text-muted-foreg
+round">
               Enrolled {new Date(e.enrolled_at).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })}
-              {e.left_at && <> · Left {new Date(e.left_at).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })}</>}
-              {e.renewed_from && <> · Renewal</>}{e.carryover_sessions > 0 && <> · +{e.carryover_sessions} carried over</>}
+              {e.left_at && <> Â· Left {new Date(e.left_at).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })}</>}
+              {e.renewed_from && <> Â· Renewal</>}
             </div>
           </div>
         </div>
@@ -1545,21 +1537,21 @@ function EnrollmentCard({ e, onRenew, past = false }) {
           <div className={`h-full rounded-full transition-all ${exhausted ? 'bg-rose-500' : usedPct > 75 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${usedPct}%` }} />
         </div>
         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-          <span>Started {e.program?.start_date || '—'}</span>
+          <span>Started {e.program?.start_date || 'â€”'}</span>
           <span>{e.sessions_remaining} sessions remaining</span>
         </div>
       </div>
 
-      {(exhausted || carryover) && (!past || e.status === 'completed') && (
+      {(exhausted || carryover) && !past && (
         <div className="mt-3 flex items-center gap-2">
           {exhausted && (
             <div className="text-[11px] text-rose-600 flex items-center gap-1">
-              ⚠ Quota exhausted
+              âš  Quota exhausted
             </div>
           )}
           {carryover && !exhausted && (
             <div className="text-[11px] text-primary flex items-center gap-1">
-              📚 {e.sessions_remaining} unused sessions carrying over from previous term
+              ðŸ“š {e.sessions_remaining} unused sessions carrying over from previous term
             </div>
           )}
           {onRenew && <Button size="sm" className="ml-auto bg-saffron-gradient text-white h-7 text-[11px]" onClick={() => onRenew(e)}>Renew term</Button>}
@@ -1659,23 +1651,24 @@ function Classes() {
   const [students, setStudents] = useState([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const empty = { name: '', description: '', age_group: '', duration_months: 4, capacity: 30, start_date: '', end_date: '', days_of_week: [0], fee_amount: 1500 };
+  const empty = { name: '', description: '', age_group: '', duration_months: 4, capacity: 30, start_date: '', end_date: '', days_of_week: [0], fee_amount: 1500, billing_policy: { type: 'term', amount: 1500, currency: 'INR', interval_count: 1, interval_unit: 'term', grace_period_days: 0, late_fee: { mode: 'none', value: 0 }, carry_forward_remaining_classes: false, classes_per_term: 16 } };
   const [form, setForm] = useState(empty);
   const load = () => api('/programs').then(r => setItems(r.items));
   useEffect(() => { load(); api('/students').then(r => setStudents(r.items)); }, []);
   const save = async () => {
     try {
-      const payload = { ...form, duration_months: Number(form.duration_months) || 0, capacity: Number(form.capacity) || 0, fee_amount: Number(form.fee_amount) || 0 };
+      const policy = { ...form.billing_policy, amount: Number(form.billing_policy?.amount ?? form.fee_amount) || 0, interval_count: Number(form.billing_policy?.interval_count) || 1, grace_period_days: Number(form.billing_policy?.grace_period_days) || 0, classes_per_term: Number(form.billing_policy?.classes_per_term) || 16, late_fee: { ...form.billing_policy?.late_fee, value: Number(form.billing_policy?.late_fee?.value) || 0 } };
+      const payload = { ...form, duration_months: Number(form.duration_months) || 0, capacity: Number(form.capacity) || 0, fee_amount: policy.amount, billing_policy: policy };
       if (editing) await api(`/programs/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       else await api('/programs', { method: 'POST', body: JSON.stringify(payload) });
       confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7'] });
-      toast.success(editing ? 'Class updated' : 'Class created 🎉');
+      toast.success(editing ? 'Class updated' : 'Class created ðŸŽ‰');
       setOpen(false); load();
     } catch (e) { toast.error(e.message); }
   };
   const del = async (p) => { if (!confirm(`Delete ${p.name}?`)) return; await api(`/programs/${p.id}`, { method: 'DELETE' }); toast.success('Deleted'); load(); };
   const openNew = () => { setEditing(null); setForm(empty); setOpen(true); };
-  const openEdit = (p) => { setEditing(p); setForm({ ...empty, ...p, days_of_week: p.days_of_week || [0] }); setOpen(true); };
+  const openEdit = (p) => { setEditing(p); setForm({ ...empty, ...p, days_of_week: p.days_of_week || [0], billing_policy: { ...empty.billing_policy, ...(p.billing_policy || { amount: p.fee_amount, type: 'term' }) } }); setOpen(true); };
 
   const enrolledCount = (p) => students.filter(s => (s.program_ids || [s.program_id]).includes(p.id)).length;
 
@@ -1710,14 +1703,14 @@ function Classes() {
                 <div className="mt-3 grid grid-cols-3 text-center gap-2">
                   <div><div className="text-lg font-bold"><Counter value={enrolled} /></div><div className="text-[10px] text-muted-foreground">Enrolled</div></div>
                   <div><div className="text-lg font-bold">{p.capacity}</div><div className="text-[10px] text-muted-foreground">Capacity</div></div>
-                  <div><div className="text-lg font-bold">{fmtINR(p.fee_amount || 0)}</div><div className="text-[10px] text-muted-foreground">Fee</div></div>
+                  <div><div className="text-lg font-bold">{fmtINR(p.billing_policy?.amount ?? p.fee_amount ?? 0)}</div><div className="text-[10px] text-muted-foreground">{p.billing_policy?.name || p.billing_policy?.type || 'Term'} fee</div></div>
                 </div>
                 <div className="mt-3">
                   <div className="flex justify-between text-[10px] text-muted-foreground mb-1"><span>Fill rate</span><span>{pct}%</span></div>
                   <Progress value={pct} className="h-1.5" />
                 </div>
                 <div className="mt-3 text-[10px] text-muted-foreground flex justify-between">
-                  <span>{p.start_date} → {p.end_date}</span>
+                  <span>{p.start_date} â†’ {p.end_date}</span>
                   <span className="text-primary font-semibold">{days.length} day{days.length !== 1 ? 's' : ''}/wk</span>
                 </div>
                 <div className="flex gap-1 mt-3 pt-3 border-t opacity-0 group-hover:opacity-100 transition">
@@ -1740,10 +1733,23 @@ function Classes() {
               <Label>Class Days *</Label>
               <DaysPicker value={form.days_of_week} onChange={v => setForm({ ...form, days_of_week: v })} />
               <div className="text-[10px] text-muted-foreground mt-1.5">
-                {form.days_of_week.length === 0 ? '⚠️ Select at least one day' : `Runs ${form.days_of_week.map(d => DAY_FULL[d]).join(', ')}`}
+                {form.days_of_week.length === 0 ? 'âš ï¸ Select at least one day' : `Runs ${form.days_of_week.map(d => DAY_FULL[d]).join(', ')}`}
               </div>
             </div>
-            <div><Label>Fee (per term)</Label><Input type="number" value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
+            <div className="col-span-2 rounded-xl border bg-primary/5 p-3 space-y-3">
+              <div><div className="font-medium text-sm">Billing policy</div><div className="text-[10px] text-muted-foreground">Each program owns its configuration; future policies can be added without changing enrollments.</div></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Policy</Label><Select value={form.billing_policy.type} onValueChange={type => { const units = { one_time: 'enrollment', monthly: 'month', quarterly: 'month', term: 'term', course: 'course', custom: 'month' }; const counts = { quarterly: 3 }; setForm({ ...form, billing_policy: { ...form.billing_policy, type, interval_unit: units[type], interval_count: counts[type] || 1 } }); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{[['one_time','One-Time Fee'],['monthly','Monthly Fee'],['quarterly','Quarterly Fee'],['term','Term Fee'],['course','Course Fee'],['custom','Custom Billing']].map(([v,l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}</SelectContent></Select></div>
+                <div><Label>Amount</Label><Input type="number" value={form.billing_policy.amount} onChange={e => setForm({ ...form, billing_policy: { ...form.billing_policy, amount: e.target.value } })} /></div>
+                <div><Label>Currency</Label><Input value={form.billing_policy.currency} onChange={e => setForm({ ...form, billing_policy: { ...form.billing_policy, currency: e.target.value.toUpperCase() } })} /></div>
+                <div><Label>Grace period (days)</Label><Input type="number" min="0" value={form.billing_policy.grace_period_days} onChange={e => setForm({ ...form, billing_policy: { ...form.billing_policy, grace_period_days: e.target.value } })} /></div>
+                {form.billing_policy.type === 'custom' && <><div><Label>Every</Label><Input type="number" min="1" value={form.billing_policy.interval_count} onChange={e => setForm({ ...form, billing_policy: { ...form.billing_policy, interval_count: e.target.value } })} /></div><div><Label>Unit</Label><Select value={form.billing_policy.interval_unit} onValueChange={interval_unit => setForm({ ...form, billing_policy: { ...form.billing_policy, interval_unit } })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="day">Days</SelectItem><SelectItem value="week">Weeks</SelectItem><SelectItem value="month">Months</SelectItem></SelectContent></Select></div></>}
+                <div><Label>Late fee</Label><Input type="number" min="0" value={form.billing_policy.late_fee?.value || ''} placeholder="0" onChange={e => setForm({ ...form, billing_policy: { ...form.billing_policy, late_fee: { mode: 'flat', value: e.target.value } } })} /></div>
+              </div>
+              <label className="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" checked={!!form.
+billing_policy.carry_forward_remaining_classes} onChange={e => setForm({ ...form, billing_policy: { ...form.billing_policy, carry_forward_remaining_classes: e.target.checked } })} /> Carry forward remaining classes (16-Sunday term model)</label>
+              {form.billing_policy.carry_forward_remaining_classes && <div><Label>Classes per term</Label><Input className="mt-1" type="number" min="1" value={form.billing_policy.classes_per_term} onChange={e => setForm({ ...form, billing_policy: { ...form.billing_policy, classes_per_term: e.target.value } })} /></div>}
+            </div>
             <div><Label>Age Group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="6-14" /></div>
             <div><Label>Duration (months)</Label><Input type="number" value={form.duration_months} onChange={e => setForm({ ...form, duration_months: e.target.value })} /></div>
             <div><Label>Capacity</Label><Input type="number" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} /></div>
@@ -1792,11 +1798,11 @@ function Attendance() {
 
   const selectedProgram = programs.find(p => p.id === program);
   const selectedSession = sessions.find(s => s.date === date);
-  const list = students.filter(student => {
-    if (student.status !== 'active') return false;
+  const list = students.filter(s => {
+    if (s.status !== 'active') return false;
     if (!program) return true;
-    const enrollment = enrollments.find(item => item.student_id === student.id && item.program_id === program && item.status === 'active' && !item.left_at);
-    return !!enrollment && enrollment.sessions_remaining > 0;
+    const ids = s.program_ids && s.program_ids.length ? s.program_ids : (s.program_id ? [s.program_id] : []);
+    return ids.includes(program);
   });
   const setMark = (id, v) => setMarks({ ...marks, [id]: v });
   const bulk = (v) => { const m = {}; list.forEach(s => m[s.id] = v); setMarks(m); };
@@ -1809,7 +1815,6 @@ function Attendance() {
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#22c55e', '#7c3aed'] });
       toast.success(`Attendance saved for ${records.length} students`);
       api(`/programs/${program}/sessions`).then(r => setSessions(r.sessions || []));
-      api(`/enrollments?program_id=${program}`).then(r => setEnrollments(r.items));
     } catch (e) { toast.error(e.message); }
   };
 
@@ -1828,7 +1833,7 @@ function Attendance() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Attendance" subtitle="Session-based marking · scheduled auto-generated" icon={ClipboardCheck} />
+      <PageHeader title="Attendance" subtitle="Session-based marking Â· scheduled auto-generated" icon={ClipboardCheck} />
 
       {/* Class picker */}
       <div className="rounded-2xl glass p-4 flex flex-wrap gap-3 items-end">
@@ -1840,8 +1845,8 @@ function Attendance() {
         </div>
         {selectedProgram && (
           <div className="text-[11px] text-muted-foreground">
-            <div>Runs on <b className="text-primary">{(selectedProgram.days_of_week || []).map(d => DAY_FULL[d]).join(', ') || '—'}</b></div>
-            <div>{sessions.length} sessions scheduled · {sessions.filter(s => s.marked).length} marked</div>
+            <div>Runs on <b className="text-primary">{(selectedProgram.days_of_week || []).map(d => DAY_FULL[d]).join(', ') || 'â€”'}</b></div>
+            <div>{sessions.length} sessions scheduled Â· {sessions.filter(s => s.marked).length} marked</div>
           </div>
         )}
         <div className="ml-auto flex gap-2">
@@ -1856,7 +1861,7 @@ function Attendance() {
         <div className="rounded-2xl glass p-4">
           <div className="flex items-center justify-between mb-3">
             <div className="text-sm font-semibold flex items-center gap-1.5"><CalendarIcon size={14} className="text-primary" /> Sessions</div>
-            <div className="text-[11px] text-muted-foreground">Scroll to pick a session · today's session is auto-selected</div>
+            <div className="text-[11px] text-muted-foreground">Scroll to pick a session Â· today's session is auto-selected</div>
           </div>
           <div className="flex gap-2 overflow-x-auto pb-2">
             {sessions.map(s => {
@@ -1886,7 +1891,7 @@ function Attendance() {
                   </button>
                   {!s.marked && !s.is_past && (
                     <button onClick={cancelSession}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[9px] opacity-0 group-hover:opacity-100 transition hover:bg-rose-600" title="Cancel this session">✕</button>
+                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[9px] opacity-0 group-hover:opacity-100 transition hover:bg-rose-600" title="Cancel this session">âœ•</button>
                   )}
                 </div>
               );
@@ -1903,7 +1908,7 @@ function Attendance() {
           <div>
             <div className="font-semibold">{selectedSession.day_name}, {new Date(date + 'T00:00:00').toLocaleDateString('en', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
             <div className="text-[11px] opacity-80">
-              {selectedSession.marked ? `Already marked · ${selectedSession.present}/${selectedSession.total} present · saving will overwrite` : 'Not yet marked · ready to record'}
+              {selectedSession.marked ? `Already marked Â· ${selectedSession.present}/${selectedSession.total} present Â· saving will overwrite` : 'Not yet marked Â· ready to record'}
             </div>
           </div>
         </div>
@@ -1926,7 +1931,7 @@ function Attendance() {
       <div className="rounded-2xl glass p-4">
         {!program ? <EmptyState text="Select a class to see enrolled students" /> :
           !date ? <EmptyState text="Pick a session from the strip above" /> :
-          list.length === 0 ? <EmptyState text="No students with eligible sessions in this class" /> : (
+          list.length === 0 ? <EmptyState text="No students enrolled in this class" /> : (
             <div className="space-y-1.5">
               {list.map(s => {
                 const enr = enrollments.find(e => e.student_id === s.id && !e.left_at);
@@ -1947,7 +1952,7 @@ function Attendance() {
                       <span className="font-mono">{s.student_id}</span>
                       {remaining !== null && (
                         <span className={`inline-flex items-center gap-1 ${exhausted ? 'text-rose-600' : remaining <= 3 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                          · <b>{remaining}</b>/{credited} sessions left
+                          Â· <b>{remaining}</b>/{credited} sessions left
                         </span>
                       )}
                     </div>
@@ -1973,19 +1978,25 @@ function Attendance() {
 function Fees() {
   const [items, setItems] = useState([]);
   const [students, setStudents] = useState([]);
+  const [programs, setPrograms] = useState([]);
+  const [report, setReport] = useState(null);
   const [noteDrafts, setNoteDrafts] = useState({});
   const [savingNote, setSavingNote] = useState(null);
-  useEffect(() => { api('/fees').then(r => setItems(r.items)); api('/students').then(r => setStudents(r.items)); }, []);
+  const load = () => api('/fees').then(r => setItems(r.items));
+  useEffect(() => { load(); api('/students').then(r => setStudents(r.items)); api('/programs').then(r => setPrograms(r.items)); api('/billing-report').then(setReport); }, []);
   const sMap = Object.fromEntries(students.map(s => [s.id, s]));
+  const pMap = Object.fromEntries(programs.map(p => [p.id, p]));
   const pending = items.filter(f => f.status === 'pending');
   const paid = items.filter(f => f.status === 'paid');
   const totalPending = pending.reduce((a, f) => a + (f.amount - (f.paid_amount || 0)), 0);
   const totalPaid = paid.reduce((a, f) => a + (f.paid_amount || 0), 0);
+  const today = new Date().toISOString().slice(0, 10);
+  const overdue = pending.filter(f => (f.grace_until || f.due_date) < today);
   const markPaid = async (f) => {
     await api(`/fees/${f.id}`, { method: 'PUT', body: JSON.stringify({ status: 'paid', paid_amount: f.amount, paid_at: new Date().toISOString() }) });
-    api('/fees').then(r => setItems(r.items));
+    load();
     confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 }, colors: ['#7c3aed', '#0ea5e9'] });
-    toast.success('Payment received 💰');
+    toast.success('Payment received ðŸ’°');
   };
   const saveNote = async (f) => {
     const notes = noteDrafts[f.id] ?? f.notes ?? '';
@@ -2002,17 +2013,17 @@ function Fees() {
   return (
     <div className="space-y-5">
       <PageHeader title="Fees" subtitle="Track collections & pending dues" icon={IndianRupee} />
-      <div className="grid md:grid-cols-3 gap-4">
+      <div className="grid md:grid-cols-4 gap-4">
         <div className="rounded-2xl relative overflow-hidden p-5 text-white shadow-xl" style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}>
           <div className="absolute -right-4 -bottom-4 opacity-20"><IndianRupee size={80} /></div>
           <div className="text-xs opacity-85">Total Collected</div>
-          <div className="text-3xl font-bold mt-1">₹<Counter value={totalPaid} format={v => Math.round(v).toLocaleString('en-IN')} /></div>
+          <div className="text-3xl font-bold mt-1">â‚¹<Counter value={totalPaid} format={v => Math.round(v).toLocaleString('en-IN')} /></div>
           <div className="text-[11px] opacity-80 mt-1">{paid.length} paid records</div>
         </div>
         <div className="rounded-2xl relative overflow-hidden p-5 text-white shadow-xl" style={{ background: 'linear-gradient(135deg,#e11d48,#f43f5e)' }}>
           <div className="absolute -right-4 -bottom-4 opacity-20"><IndianRupee size={80} /></div>
           <div className="text-xs opacity-85">Pending Dues</div>
-          <div className="text-3xl font-bold mt-1">₹<Counter value={totalPending} format={v => Math.round(v).toLocaleString('en-IN')} /></div>
+          <div className="text-3xl font-bold mt-1">â‚¹<Counter value={totalPending} format={v => Math.round(v).toLocaleString('en-IN')} /></div>
           <div className="text-[11px] opacity-80 mt-1">{pending.length} pending</div>
         </div>
         <div className="rounded-2xl glass p-5">
@@ -2020,10 +2031,18 @@ function Fees() {
           <div className="text-3xl font-bold mt-1"><Counter value={Math.round((totalPaid / Math.max(1, totalPaid + totalPending)) * 100)} format={v => Math.round(v)} />%</div>
           <Progress className="mt-3 h-2" value={Math.round((totalPaid / Math.max(1, totalPaid + totalPending)) * 100)} />
         </div>
+        <div className="rounded-
+2xl glass p-5 border-rose-500/20">
+          <div className="text-xs text-muted-foreground">Overdue fees</div>
+          <div className="text-3xl font-bold mt-1 text-rose-600"><Counter value={overdue.length} /></div>
+          <div className="text-[11px] text-muted-foreground mt-1">{fmtINR(overdue.reduce((sum, f) => sum + (f.amount - (f.paid_amount || 0)), 0))} outstanding</div>
+        </div>
       </div>
+      <div className="rounded-2xl glass p-4"><div className="text-xs font-semibold mb-2">Program-wise revenue</div><div className="flex flex-wrap gap-2">{programs.map(p => { const revenue = items.filter(f => f.program_id === p.id).reduce((a, f) => a + (f.paid_amount || 0), 0); return <Badge key={p.id} variant="secondary">{p.name}: {fmtINR(revenue)}</Badge>; })}</div></div>
+      {report && <div className="grid md:grid-cols-2 gap-4"><div className="rounded-2xl glass p-4"><div className="text-xs font-semibold mb-2">Monthly revenue report</div>{report.monthly_revenue.length ? report.monthly_revenue.map(r => <div key={r.month} className="flex justify-between text-xs py-1 border-b last:border-0"><span>{r.month}</span><span className="font-medium">{fmtINR(r.amount)}</span></div>) : <div className="text-xs text-muted-foreground">No payments recorded yet.</div>}</div><div className="rounded-2xl glass p-4"><div className="text-xs font-semibold mb-2">Carry-forward class report</div>{report.carry_forward.length ? report.carry_forward.map(r => <div key={`${r.student_id}-${r.program_id}`} className="flex justify-between text-xs py-1 border-b last:border-0"><span>{r.program_name}</span><span className="font-medium">{r.remaining_classes} classes remaining</span></div>) : <div className="text-xs text-muted-foreground">No active carry-forward balances.</div>}</div></div>}
       <div className="rounded-2xl glass overflow-hidden">
         <Table>
-          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead><TableHead className="min-w-[240px]">Notes</TableHead><TableHead></TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Program / Policy</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Status</TableHead><TableHead>Due / Next Due</TableHead><TableHead className="min-w-[240px]">Notes</TableHead><TableHead></TableHead></TableRow></TableHeader>
           <TableBody>
             {items.map(f => {
               const s = sMap[f.student_id];
@@ -2037,12 +2056,12 @@ function Fees() {
                       <div className="text-sm font-medium">{s ? `${s.first_name} ${s.last_name}` : '-'}</div>
                     </div>
                   </TableCell>
-                  <TableCell>{f.fee_type}</TableCell>
+                  <TableCell><div className="text-xs font-medium">{pMap[f.program_id]?.name || '-'}</div><div className="text-[10px] text-muted-foreground">{f.billing_policy?.name || f.fee_type}</div></TableCell>
                   <TableCell>{fmtINR(f.amount)}</TableCell>
                   <TableCell>{fmtINR(f.paid_amount)}</TableCell>
-                  <TableCell><Badge className={f.status === 'paid' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-rose-500 hover:bg-rose-600'}>{f.status}</Badge></TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{f.due_date}</TableCell>
-                  <TableCell><div className="flex items-end gap-2"><Textarea rows={2} value={noteDrafts[f.id] ?? f.notes ?? ''} onChange={e => setNoteDrafts(current => ({ ...current, [f.id]: e.target.value }))} placeholder="Add a note…" className="min-h-[52px] text-xs" /><Button size="sm" variant="outline" onClick={() => saveNote(f)} disabled={savingNote === f.id}>{savingNote === f.id ? 'Saving…' : 'Save'}</Button></div></TableCell>
+                  <TableCell><Badge className={f.status === 'paid' ? 'bg-emerald-500 hover:bg-emerald-600' : (f.grace_until || f.due_date) < today ? 'bg-rose-500 hover:bg-rose-600' : 'bg-amber-500 hover:bg-amber-600'}>{f.status === 'pending' && (f.grace_until || f.due_date) < today ? 'overdue' : f.status}</Badge></TableCell>
+                  <TableCell className="text-xs text-muted-foreground">{f.due_date}<br />{f.next_due_date && <>Next: {f.next_due_date}</>}</TableCell>
+                  <TableCell><div className="flex items-end gap-2"><Textarea rows={2} value={noteDrafts[f.id] ?? f.notes ?? ''} onChange={e => setNoteDrafts(current => ({ ...current, [f.id]: e.target.value }))} placeholder="Add a noteâ€¦" className="min-h-[52px] text-xs" /><Button size="sm" variant="outline" onClick={() => saveNote(f)} disabled={savingNote === f.id}>{savingNote === f.id ? 'Savingâ€¦' : 'Save'}</Button></div></TableCell>
                   <TableCell className="text-right">{f.status !== 'paid' && <Button size="sm" className="bg-saffron-gradient" onClick={() => markPaid(f)}>Mark Paid</Button>}</TableCell>
                 </TableRow>
               );
@@ -2055,7 +2074,7 @@ function Fees() {
 }
 
 /* ============================================================
-   NOTIFICATIONS — FREE via wa.me deep-links
+   NOTIFICATIONS â€” FREE via wa.me deep-links
 ============================================================ */
 function Notifications({ students }) {
   const [items, setItems] = useState([]);
@@ -2063,7 +2082,7 @@ function Notifications({ students }) {
   const [kind, setKind] = useState('fee_reminder');
   const [target, setTarget] = useState('all_active');
   const [customIds, setCustomIds] = useState([]);
-  const [message, setMessage] = useState('Namaste 🙏 Kindly complete your ward\'s pending fee at your convenience. Hare Krishna!');
+  const [message, setMessage] = useState('Namaste ðŸ™ Kindly complete your ward\'s pending fee at your convenience. Hare Krishna!');
   const [sentIds, setSentIds] = useState(new Set());
   useEffect(() => {
     api('/notifications').then(r => setItems(r.items)).catch(() => {});
@@ -2079,11 +2098,11 @@ function Notifications({ students }) {
     custom: 'Custom message',
   };
   const templates = {
-    fee_reminder: 'Namaste 🙏 Kindly complete your ward\'s pending fee at your convenience. Hare Krishna!',
-    birthday: '🎂 Wishing your dear child a very Happy Birthday! May Krishna\'s blessings be always upon them. — Gokulam Sunday School',
-    event: '🌸 Upcoming: Janmashtami Celebration on Aug 16. Please join us with your family for kirtan, prasadam and cultural programs.',
-    attendance: 'Dear Parent, this is a gentle reminder about your child\'s recent attendance. Please encourage regular participation. 🙏',
-    low_quota: 'Namaste 🙏 Your child has only a few sessions left in their current term at Gokulam Sunday School. Please renew soon to continue the spiritual education journey. Hare Krishna!',
+    fee_reminder: 'Namaste ðŸ™ Kindly complete your ward\'s pending fee at your convenience. Hare Krishna!',
+    birthday: 'ðŸŽ‚ Wishing your dear child a very Happy Birthday! May Krishna\'s blessings be always upon them. â€” Gokulam Sunday School',
+    event: 'ðŸŒ¸ Upcoming: Janmashtami Celebration on Aug 16. Please join us with your family for kirtan, prasadam and cultural programs.',
+    attendance: 'Dear Parent, this is a gentle reminder about your child\'s recent attendance. Please encourage regular participation. ðŸ™',
+    low_quota: 'Namaste ðŸ™ Your child has only a few sessions left in their current term at Gokulam Sunday School. Please renew soon to continue the spiritual education journey. Hare Krishna!',
     custom: '',
   };
 
@@ -2138,7 +2157,7 @@ function Notifications({ students }) {
   const openAll = async () => {
     if (validRecipients.length === 0) { toast.error('No valid recipients'); return; }
     if (validRecipients.length > 15 && !confirm(`This will open ${validRecipients.length} WhatsApp tabs. Continue?`)) return;
-    toast.info(`Opening ${validRecipients.length} WhatsApp chats… allow popups if blocked`);
+    toast.info(`Opening ${validRecipients.length} WhatsApp chatsâ€¦ allow popups if blocked`);
     confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#25D366', '#128C7E', '#7c3aed'] });
     for (let i = 0; i < validRecipients.length; i++) {
       const r = validRecipients[i];
@@ -2159,7 +2178,7 @@ function Notifications({ students }) {
       <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-900 dark:text-emerald-200 p-3 text-xs flex items-start gap-2">
         <div className="w-6 h-6 rounded-full bg-emerald-500 grid place-items-center text-white shrink-0"><MessageSquare size={12} /></div>
         <div>
-          <div className="font-semibold">100% free — no API keys, no monthly fees.</div>
+          <div className="font-semibold">100% free â€” no API keys, no monthly fees.</div>
           Clicking "Send" opens WhatsApp Web / WhatsApp app on your device with the message pre-filled to each parent's number. You just hit send. Works on desktop, mobile, and iPad.
         </div>
       </div>
@@ -2200,7 +2219,7 @@ function Notifications({ students }) {
 
           <div>
             <Label className="text-[11px]">Message</Label>
-            <Textarea rows={5} value={message} onChange={e => setMessage(e.target.value)} placeholder="Type message…" />
+            <Textarea rows={5} value={message} onChange={e => setMessage(e.target.value)} placeholder="Type messageâ€¦" />
             <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
               <span>{message.length} characters</span>
               <button onClick={copyMessage} className="hover:text-primary">Copy message</button>
@@ -2214,7 +2233,7 @@ function Notifications({ students }) {
           </div>
           {invalidCount > 0 && (
             <div className="text-[11px] text-amber-600 dark:text-amber-400">
-              ⚠️ {invalidCount} recipient(s) skipped — invalid or missing phone number.
+              âš ï¸ {invalidCount} recipient(s) skipped â€” invalid or missing phone number.
             </div>
           )}
         </div>
@@ -2225,12 +2244,12 @@ function Notifications({ students }) {
           <div className="rounded-3xl bg-black text-white p-1 shadow-2xl mx-auto max-w-[260px]">
             <div className="rounded-[22px] p-4 h-[420px] flex flex-col relative overflow-hidden"
               style={{ background: 'linear-gradient(180deg,#0b1416 0%,#0e1a1d 100%)' }}>
-              <div className="text-center text-[10px] text-slate-400 mb-2">WhatsApp • {new Date().toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })}</div>
+              <div className="text-center text-[10px] text-slate-400 mb-2">WhatsApp â€¢ {new Date().toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })}</div>
               <div className="self-start max-w-[85%] rounded-2xl px-3 py-2 text-xs shadow" style={{ background: '#005c4b' }}>
-                {message || <span className="text-slate-400">Your message will appear here…</span>}
-                <div className="text-[9px] text-slate-300 text-right mt-1">{new Date().toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })} ✓✓</div>
+                {message || <span className="text-slate-400">Your message will appear hereâ€¦</span>}
+                <div className="text-[9px] text-slate-300 text-right mt-1">{new Date().toLocaleTimeString('en', { hour: '2-digit', minute: '2-digit' })} âœ“âœ“</div>
               </div>
-              <div className="mt-auto text-center text-[9px] text-slate-500">via Gokulam360 • {kinds[kind]}</div>
+              <div className="mt-auto text-center text-[9px] text-slate-500">via Gokulam360 â€¢ {kinds[kind]}</div>
             </div>
           </div>
         </div>
@@ -2258,7 +2277,7 @@ function Notifications({ students }) {
                   </div>
                   {invalid ? <Badge variant="destructive" className="text-[9px]">invalid</Badge> :
                     <Button size="sm" variant={sent ? 'ghost' : 'default'} className={`h-7 text-[11px] ${sent ? 'text-emerald-600' : 'bg-emerald-gradient text-white'}`} onClick={() => openOne(r)}>
-                      {sent ? '✓ Sent' : <><MessageSquare size={11} className="mr-1" /> Send</>}
+                      {sent ? 'âœ“ Sent' : <><MessageSquare size={11} className="mr-1" /> Send</>}
                     </Button>
                   }
                 </div>
@@ -2278,7 +2297,7 @@ function Notifications({ students }) {
                 <div className="w-9 h-9 rounded-lg grid place-items-center text-white bg-emerald-gradient"><MessageSquare size={15} /></div>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium line-clamp-1">{n.message}</div>
-                  <div className="text-[10px] text-muted-foreground mt-0.5">To {n.recipients?.[0]?.name || 'recipients'} • {kinds[n.kind] || n.kind} • {timeAgo(n.created_at)}</div>
+                  <div className="text-[10px] text-muted-foreground mt-0.5">To {n.recipients?.[0]?.name || 'recipients'} â€¢ {kinds[n.kind] || n.kind} â€¢ {timeAgo(n.created_at)}</div>
                 </div>
                 <Badge className="bg-emerald-500">sent</Badge>
               </div>
@@ -2304,7 +2323,8 @@ function Reports() {
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (fromDate) params.set('from', fromDate);
+    if (fromDate) params.set('from', fromDat
+e);
     if (toDate) params.set('to', toDate);
     const query = params.toString() ? `?${params.toString()}` : '';
     if (tab === 'attendance-summary') {
@@ -2351,7 +2371,7 @@ function Reports() {
     const doc = new jsPDF({ orientation: 'landscape' });
     doc.setFillColor(234, 88, 12); doc.rect(0, 0, 300, 20, 'F');
     doc.setTextColor(255); doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.text('Gokulam360', 14, 13);
-    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(`${tab.toUpperCase()} REPORT${dateRangeSuffix ? ` — ${fromDate || 'Start'} to ${toDate || 'Today'}` : ''} — ${new Date().toLocaleDateString()}`, 100, 13);
+    doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(`${tab.toUpperCase()} REPORT${dateRangeSuffix ? ` â€” ${fromDate || 'Start'} to ${toDate || 'Today'}` : ''} â€” ${new Date().toLocaleDateString()}`, 100, 13);
     const pdfColumns = tab === 'attendance-summary' ? ['student_id', 'name', 'overall', 'total_sessions', 'present'] : columns;
     const pdfRows = tab === 'attendance-summary' ? (attSummary?.students || []).map(student => ({ ...student, overall: student.overall + '%' })) : rows;
     doc.setTextColor(30);
@@ -2495,7 +2515,7 @@ function AttendanceSummaryTable({ data, loading }) {
                     <TableCell key={m} className="text-center">
                       {s.monthly[m] !== undefined ? (
                         <div className={`inline-flex w-11 h-6 items-center justify-center rounded text-[11px] font-semibold ${pctColor(s.monthly[m])}`}>{s.monthly[m]}%</div>
-                      ) : <span className="text-muted-foreground text-xs">—</span>}
+                      ) : <span className="text-muted-foreground text-xs">â€”</span>}
                     </TableCell>
                   ))}
                 </TableRow>
@@ -2524,7 +2544,7 @@ function Events() {
       if (editing) await api(`/events/${editing.id}`, { method: 'PUT', body: JSON.stringify(form) });
       else await api('/events', { method: 'POST', body: JSON.stringify(form) });
       confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#ec4899'] });
-      toast.success(editing ? 'Event updated' : 'Event created 🎉');
+      toast.success(editing ? 'Event updated' : 'Event created ðŸŽ‰');
       setOpen(false); load();
     } catch (e) { toast.error(e.message); }
   };
@@ -2546,7 +2566,7 @@ function Events() {
 
   return (
     <div className="space-y-5">
-      <PageHeader title="Events" subtitle={`Celebrations, festivals & activities · ${announcementCount}/3 shown to parents`} icon={CalendarIcon}
+      <PageHeader title="Events" subtitle={`Celebrations, festivals & activities Â· ${announcementCount}/3 shown to parents`} icon={CalendarIcon}
         action={<Button className="bg-saffron-gradient shadow" onClick={openNew}><Plus size={15} className="mr-1" /> New Event</Button>} />
       {items.length === 0 ? <EmptyState text="No events yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openNew}><Plus size={14} className="mr-1" />Create first event</Button>} /> : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -2585,7 +2605,8 @@ function Events() {
             <div className="col-span-2"><Label>Description</Label><Textarea rows={3} value={form.description} onChange={ev => setForm({ ...form, description: ev.target.value })} placeholder="Details about the event" /></div>
             <label className={`col-span-2 flex items-start gap-3 rounded-xl border p-3 ${canSelectAnnouncement ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
               <input type="checkbox" checked={!!form.is_announcement} disabled={!canSelectAnnouncement} onChange={ev => setForm({ ...form, is_announcement: ev.target.checked })} className="mt-1 accent-primary" />
-              <span><span className="block text-sm font-medium">Show on parent announcements</span><span className="block text-xs text-muted-foreground">Select up to 3 events to display on the parent QR page. {announcementCount}/3 currently selected.</span></span>
+              <span><span className="block text-sm font-medium">Show on par
+ent announcements</span><span className="block text-xs text-muted-foreground">Select up to 3 events to display on the parent QR page. {announcementCount}/3 currently selected.</span></span>
             </label>
             <div className="col-span-2 space-y-2"><Label>Advertisement image <span className="text-muted-foreground font-normal">(optional, max 2 MB)</span></Label><Input type="file" accept="image/*" onChange={selectImage} />{form.image_url && <div className="flex items-center gap-3"><img src={form.image_url} alt="Event preview" className="h-16 w-24 rounded-lg object-cover border" /><Button type="button" variant="ghost" size="sm" onClick={() => setForm({ ...form, image_url: '' })}>Remove image</Button></div>}</div>
           </div>
@@ -2602,7 +2623,7 @@ function Events() {
 function ParentPortal({ user, onLogout, dark, setDark }) {
   const [data, setData] = useState(null);
   useEffect(() => { api('/parent/me').then(setData).catch(e => toast.error(e.message)); }, []);
-  if (!data) return <div className="min-h-screen grid place-items-center text-muted-foreground">Loading…</div>;
+  if (!data) return <div className="min-h-screen grid place-items-center text-muted-foreground">Loadingâ€¦</div>;
   const s = data.student;
   const attRecent = data.attendance.slice(0, 10);
   const presentCount = data.attendance.filter(a => a.status === 'present' || a.status === 'late').length;
@@ -2640,6 +2661,14 @@ function ParentPortal({ user, onLogout, dark, setDark }) {
           </div>
         </motion.div>
 
+        <div className="rounded-2xl glass p-5">
+          <div className="text-sm font-semibold mb-3">Program billing</div>
+          <div className="grid md:grid-cols-2 gap-3">
+            {(data.billing_summary || []).map(b => <div key={b.program_id} className="rounded-xl border p-3 text-xs"><div className="font-semibold">{b.program_name}</div><div className="text-muted-foreground mt-1">{b.billing_policy?.name} Â· {b.billing_policy?.currency} {b.billing_policy?.amount}</div><div className="mt-2 flex flex-wrap gap-x-3 gap-y-1"><span className={b.fee_status === 'overdue' ? 'text-rose-600 font-medium' : 'text-emerald-600 font-medium'}>{b.fee_status}</span><span>Paid: {b.fee_paid_date ? new Date(b.fee_paid_date).toLocaleDateString() : 'â€”'}</span><span>Next due: {b.next_due_date || 'â€”'}</span>{b.remaining_classes !== null && <span>Remaining classes: {b.remaining_classes}</span>}<span>Outstanding: {fmtINR(b.outstanding_amount)}</span></div></div>)}
+            {(data.billing_summary || []).length === 0 && <div className="text-xs text-muted-foreground">No active program billing details.</div>}
+          </div>
+        </div>
+
         {/* Stats */}
         <div className="grid md:grid-cols-3 gap-4">
           <div className="rounded-2xl glass p-5">
@@ -2650,11 +2679,11 @@ function ParentPortal({ user, onLogout, dark, setDark }) {
           </div>
           <div className="rounded-2xl relative overflow-hidden p-5 text-white shadow-xl" style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}>
             <div className="text-xs opacity-85">Total Fees Paid</div>
-            <div className="text-3xl font-bold mt-1">₹<Counter value={feePaid} format={v => Math.round(v).toLocaleString('en-IN')} /></div>
+            <div className="text-3xl font-bold mt-1">â‚¹<Counter value={feePaid} format={v => Math.round(v).toLocaleString('en-IN')} /></div>
           </div>
           <div className={`rounded-2xl relative overflow-hidden p-5 text-white shadow-xl`} style={{ background: feeDue > 0 ? 'linear-gradient(135deg,#e11d48,#f43f5e)' : 'linear-gradient(135deg,#0891b2,#22d3ee)' }}>
             <div className="text-xs opacity-85">{feeDue > 0 ? 'Pending Dues' : 'All Clear'}</div>
-            <div className="text-3xl font-bold mt-1">₹<Counter value={feeDue} format={v => Math.round(v).toLocaleString('en-IN')} /></div>
+            <div className="text-3xl font-bold mt-1">â‚¹<Counter value={feeDue} format={v => Math.round(v).toLocaleString('en-IN')} /></div>
           </div>
         </div>
 
@@ -2723,7 +2752,7 @@ function Backup() {
       a.click();
       setLastBackup({ at: new Date().toISOString(), counts: data.counts });
       confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 }, colors: ['#7c3aed', '#22c55e', '#0ea5e9'] });
-      toast.success('Backup downloaded successfully 💾');
+      toast.success('Backup downloaded successfully ðŸ’¾');
     } catch (e) { toast.error(e.message); }
     finally { setExporting(false); }
   };
@@ -2737,7 +2766,7 @@ function Backup() {
       const backup = JSON.parse(text);
       const res = await api('/backup/restore', { method: 'POST', body: JSON.stringify(backup) });
       confetti({ particleCount: 200, spread: 100, origin: { y: 0.5 }, colors: ['#7c3aed', '#22c55e'] });
-      toast.success(`Restored: ${Object.entries(res.restored).map(([k, v]) => `${v} ${k}`).join(' • ')}`);
+      toast.success(`Restored: ${Object.entries(res.restored).map(([k, v]) => `${v} ${k}`).join(' â€¢ ')}`);
     } catch (e) { toast.error('Invalid backup file: ' + e.message); }
     finally { setRestoring(false); e.target.value = ''; }
   };
@@ -2761,11 +2790,11 @@ function Backup() {
               <div className="flex items-center gap-2"><Check size={12} /> Restore anytime</div>
             </div>
             <Button className="mt-5 bg-white text-violet-700 hover:bg-white/90" onClick={doExport} disabled={exporting}>
-              <Download size={15} className="mr-1.5" /> {exporting ? 'Preparing…' : 'Export as JSON'}
+              <Download size={15} className="mr-1.5" /> {exporting ? 'Preparingâ€¦' : 'Export as JSON'}
             </Button>
             {lastBackup && (
               <div className="text-[11px] opacity-80 mt-3">
-                Last export: {timeAgo(lastBackup.at)} • {Object.entries(lastBackup.counts).map(([k, v]) => `${v} ${k}`).join(', ')}
+                Last export: {timeAgo(lastBackup.at)} â€¢ {Object.entries(lastBackup.counts).map(([k, v]) => `${v} ${k}`).join(', ')}
               </div>
             )}
           </div>
@@ -2778,13 +2807,13 @@ function Backup() {
           <div className="text-xl font-bold">Restore from Backup</div>
           <div className="text-sm text-muted-foreground mt-1">Upload a Gokulam360 backup JSON to restore. This <b className="text-rose-600">replaces</b> all current data for your organization.</div>
           <div className="mt-4 space-y-1.5 text-xs">
-            <div className="flex items-center gap-2 text-amber-600"><span className="w-1 h-1 rounded-full bg-amber-500" /> Destructive — take a fresh export first</div>
-            <div className="flex items-center gap-2 text-muted-foreground"><Check size={12} /> Idempotent — same file = same result</div>
+            <div className="flex items-center gap-2 text-amber-600"><span className="w-1 h-1 rounded-full bg-amber-500" /> Destructive â€” take a fresh export first</div>
+            <div className="flex items-center gap-2 text-muted-foreground"><Check size={12} /> Idempotent â€” same file = same result</div>
             <div className="flex items-center gap-2 text-muted-foreground"><Check size={12} /> Data stays scoped to your org</div>
           </div>
           <input ref={fileRef} type="file" accept=".json" hidden onChange={onRestoreFile} />
           <Button variant="outline" className="mt-5 border-rose-300 text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-900/20" onClick={() => fileRef.current?.click()} disabled={restoring}>
-            <Upload size={15} className="mr-1.5" /> {restoring ? 'Restoring…' : 'Upload backup file'}
+            <Upload size={15} className="mr-1.5" /> {restoring ? 'Restoringâ€¦' : 'Upload backup file'}
           </Button>
         </motion.div>
       </div>
@@ -2824,13 +2853,13 @@ function PublicParentView({ token }) {
   if (err) return (
     <div className="min-h-screen bg-aurora grid place-items-center p-6">
       <div className="rounded-2xl glass p-8 text-center max-w-md">
-        <div className="w-16 h-16 mx-auto rounded-2xl bg-rose-500/20 grid place-items-center text-rose-600 mb-4"><span className="text-3xl">😔</span></div>
+        <div className="w-16 h-16 mx-auto rounded-2xl bg-rose-500/20 grid place-items-center text-rose-600 mb-4"><span className="text-3xl">ðŸ˜”</span></div>
         <div className="font-bold text-lg">Link not found</div>
         <div className="text-sm text-muted-foreground mt-1">This parent link is invalid or has expired.</div>
       </div>
     </div>
   );
-  if (!data) return <div className="min-h-screen bg-aurora grid place-items-center text-muted-foreground">Loading…</div>;
+  if (!data) return <div className="min-h-screen bg-aurora grid place-items-center text-muted-foreground">Loadingâ€¦</div>;
 
   const s = data.student;
   const attPct = data.attendance.length ? Math.round((data.attendance.filter(a => a.status === 'present' || a.status === 'late').length / data.attendance.length) * 100) : 0;
@@ -2855,7 +2884,8 @@ function PublicParentView({ token }) {
               {s.photo_url ? <AvatarImage src={s.photo_url} /> : <AvatarFallback className="bg-saffron-gradient text-white text-2xl">{initials(s.first_name + ' ' + s.last_name)}</AvatarFallback>}
             </Avatar>
             <div>
-              <div className="text-xs text-indigo-900/70">Namaste 🙏</div>
+    
+          <div className="text-xs text-indigo-900/70">Namaste ðŸ™</div>
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-indigo-950">{s.first_name} {s.last_name}</h1>
               <div className="text-sm text-indigo-900/70 mt-1 font-mono">{s.student_id}</div>
             </div>
@@ -2864,8 +2894,8 @@ function PublicParentView({ token }) {
 
         <div className="grid md:grid-cols-3 gap-4">
           <div className="rounded-2xl glass p-5"><div className="text-xs text-muted-foreground">Attendance</div><div className="text-3xl font-bold mt-1"><Counter value={attPct} />%</div><Progress value={attPct} className="h-1.5 mt-2" /></div>
-          <div className="rounded-2xl relative overflow-hidden p-5 text-white shadow-xl" style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}><div className="text-xs opacity-85">Paid</div><div className="text-3xl font-bold mt-1">₹<Counter value={feePaid} format={v => Math.round(v).toLocaleString('en-IN')} /></div></div>
-          <div className={`rounded-2xl relative overflow-hidden p-5 text-white shadow-xl`} style={{ background: feeDue > 0 ? 'linear-gradient(135deg,#e11d48,#f43f5e)' : 'linear-gradient(135deg,#0891b2,#22d3ee)' }}><div className="text-xs opacity-85">{feeDue > 0 ? 'Dues' : 'All clear'}</div><div className="text-3xl font-bold mt-1">₹<Counter value={feeDue} format={v => Math.round(v).toLocaleString('en-IN')} /></div></div>
+          <div className="rounded-2xl relative overflow-hidden p-5 text-white shadow-xl" style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}><div className="text-xs opacity-85">Paid</div><div className="text-3xl font-bold mt-1">â‚¹<Counter value={feePaid} format={v => Math.round(v).toLocaleString('en-IN')} /></div></div>
+          <div className={`rounded-2xl relative overflow-hidden p-5 text-white shadow-xl`} style={{ background: feeDue > 0 ? 'linear-gradient(135deg,#e11d48,#f43f5e)' : 'linear-gradient(135deg,#0891b2,#22d3ee)' }}><div className="text-xs opacity-85">{feeDue > 0 ? 'Dues' : 'All clear'}</div><div className="text-3xl font-bold mt-1">â‚¹<Counter value={feeDue} format={v => Math.round(v).toLocaleString('en-IN')} /></div></div>
         </div>
 
         <div className="rounded-2xl glass p-5">
@@ -2914,7 +2944,7 @@ function PublicParentView({ token }) {
         </section>
 
         <div className="text-center text-[11px] text-muted-foreground">
-          Contact: {data.organization.contact_email} · {data.organization.contact_phone}
+          Contact: {data.organization.contact_email} Â· {data.organization.contact_phone}
         </div>
       </div>
     </div>
@@ -2946,10 +2976,11 @@ function App() {
   const logout = () => { store.token = null; setUser(null); setOrg(null); };
   const onLoggedIn = async () => { await refreshMe(); };
 
-  if (!ready) return <div className="min-h-screen bg-aurora grid place-items-center text-muted-foreground">Loading Gokulam360…</div>;
+  if (!ready) return <div className="min-h-screen bg-aurora grid place-items-center text-muted-foreground">Loading Gokulam360â€¦</div>;
   if (publicToken) return <PublicParentView token={publicToken} />;
   if (!user) return <Login onLoggedIn={onLoggedIn} />;
   return <Shell user={user} org={org} onLogout={logout} dark={dark} setDark={setDark} refreshMe={refreshMe} />;
 }
 
 export default App;
+
