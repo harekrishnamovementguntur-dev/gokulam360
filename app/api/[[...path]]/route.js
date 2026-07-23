@@ -404,8 +404,7 @@ async function handleSeed() {
     { kind: 'attendance', title: 'Attendance marked for Bhagavad Gita Course', actor: 'Govinda Das' },
     { kind: 'fee_paid', title: 'Fee received from Arjun Iyer', actor: 'Radha Devi Dasi' },
     { kind: 'notification', title: 'SMS reminder sent to 12 parents', actor: 'Radha Devi Dasi' },
-    { kind: 
-'event', title: 'Janmashtami event scheduled for August 16', actor: 'Nitai Das' },
+    { kind: 'event', title: 'Janmashtami event scheduled for August 16', actor: 'Nitai Das' },
     { kind: 'student_added', title: 'New admission: Tulsi Pillai joined Preschool', actor: 'Radha Devi Dasi' },
     { kind: 'fee_paid', title: 'Admission fee received from Yashoda Krishnan', actor: 'Radha Devi Dasi' },
   ];
@@ -738,8 +737,7 @@ async function router(req, method) {
       const progIds = [...new Set(items.map(e => e.program_id))];
       const progs = await db.collection('programs').find({ id: { $in: progIds } }).toArray();
       const pMap = Object.fromEntries(progs.map(p => [p.id, p]));
-      // compute attendance-based sessions
-_attended per enrollment
+      // compute attendance-based sessions_attended per enrollment
       const attRecs = await db.collection('attendance').find({ organization_id: user.organization_id }).toArray();
       const enriched = items.map(e => {
         const enrolledDate = (e.enrolled_at || '').slice(0, 10);
@@ -1097,8 +1095,7 @@ _attended per enrollment
 
   // Backup export - entire org data as JSON
   if (resource === 'backup' && id === 'export' && method === 'GET') {
-    if (!['org_admin', 'super_admin'].inclu
-des(user.role)) return json({ error: 'Forbidden' }, 403);
+    if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
     const scope = { organization_id: user.organization_id };
     const [organizations, students, teachers, programs, attendance, fees, events, notifications, activity] = await Promise.all([
       user.role === 'super_admin' ? db.collection('organizations').find({}).toArray() : db.collection('organizations').find({ id: user.organization_id }).toArray(),
@@ -1177,5 +1174,4 @@ export async function POST(req) { try { return await router(req, 'POST'); } catc
 export async function PUT(req) { try { return await router(req, 'PUT'); } catch (e) { console.error(e); return json({ error: e.message }, 500); } }
 export async function DELETE(req) { try { return await router(req, 'DELETE'); } catch (e) { console.error(e); return json({ error: e.message }, 500); } }
 export async function PATCH(req) { try { return await router(req, 'PUT'); } catch (e) { console.error(e); return json({ error: e.message }, 500); } }
-
 
