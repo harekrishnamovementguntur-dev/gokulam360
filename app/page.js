@@ -1126,7 +1126,7 @@ function Students({ students, setStudents }) {
   const [org, setOrg] = useState(null);
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const empty = { first_name: '', last_name: '', dob: '', gender: 'Male', address: '', mobile: '', email: '', father_name: '', mother_name: '', emergency_contact: '', initiated_name: '', counsellor: '', temple: '', program_id: '', program_ids: [], status: 'active', student_id: '', photo_url: '' };
+  const empty = { first_name: '', last_name: '', dob: '', gender: 'Male', address: '', mobile: '', email: '', father_name: '', mother_name: '', emergency_contact: '', initiated_name: '', counsellor: '', temple: '', program_id: '', program_ids: [], eligible_sessions: {}, status: 'active', student_id: '', photo_url: '' };
   const [form, setForm] = useState(empty);
   const fileRef = useRef(null);
 
@@ -1145,7 +1145,10 @@ function Students({ students, setStudents }) {
   const save = async () => {
     try {
       const isNew = !editing;
-      const payload = { ...form, program_id: form.program_ids?.[0] || form.program_id }; // keep legacy
+      const eligibleSessions = Object.fromEntries(Object.entries(form.eligible_sessions || {})
+        .map(([programId, value]) => [programId, Number(value)])
+        .filter(([, value]) => Number.isFinite(value) && value > 0));
+      const payload = { ...form, eligible_sessions: eligibleSessions, program_id: form.program_ids?.[0] || form.program_id }; // keep legacy
       if (editing) await api(`/students/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       else await api('/students', { method: 'POST', body: JSON.stringify(payload) });
       if (isNew) {
@@ -1350,7 +1353,9 @@ function Students({ students, setStudents }) {
                       <label key={p.id} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-xs transition ${selected ? 'bg-primary/15 border border-primary/40' : 'bg-white/50 dark:bg-white/5 border border-transparent hover:border-primary/30'}`}>
                         <input type="checkbox" className="accent-primary" checked={!!selected} onChange={() => {
                           const ids = form.program_ids || [];
-                          setForm({ ...form, program_ids: selected ? ids.filter(x => x !== p.id) : [...ids, p.id] });
+                          const eligibleSessions = { ...(form.eligible_sessions || {}) };
+                          if (selected) delete eligibleSessions[p.id];
+                          setForm({ ...form, program_ids: selected ? ids.filter(x => x !== p.id) : [...ids, p.id], eligible_sessions: eligibleSessions });
                         }} />
                         <div className="flex-1 min-w-0">
                           <div className="font-medium truncate">{p.name}</div>
@@ -1360,6 +1365,14 @@ function Students({ students, setStudents }) {
                     );
                   })}
                 </div>
+                {(form.program_ids || []).length > 0 && <div className="mt-3 rounded-xl border bg-primary/5 p-3 space-y-2">
+                  <div className="text-xs font-medium">Eligible sessions for new enrollment</div>
+                  <div className="text-[10px] text-muted-foreground">Use this when a student joins mid-term. Leave blank to use the remaining sessions in the current term. Unused credits carry into the next renewal.</div>
+                  {programs.filter(p => form.program_ids?.includes(p.id)).map(p => {
+                    const remaining = (p.sessions || []).filter(date => date >= new Date().toISOString().slice(0, 10)).length;
+                    return <div key={p.id} className="flex items-center gap-3"><div className="flex-1 text-xs truncate">{p.name}<span className="ml-1 text-muted-foreground">({remaining || 'term'} remaining)</span></div><Input type="number" min="1" value={form.eligible_sessions?.[p.id] ?? ''} onChange={e => setForm({ ...form, eligible_sessions: { ...(form.eligible_sessions || {}), [p.id]: e.target.value } })} placeholder={remaining ? String(remaining) : 'Sessions'} className="h-8 w-24" /></div>;
+                  })}
+                </div>}
                 <div className="text-[10px] text-muted-foreground mt-1">{(form.program_ids || []).length} class(es) selected</div>
               </div>
             </TabsContent>
@@ -1513,7 +1526,7 @@ function EnrollmentCard({ e, onRenew, past = false }) {
             <div className="text-[10px] text-muted-foreground">
               Enrolled {new Date(e.enrolled_at).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })}
               {e.left_at && <> · Left {new Date(e.left_at).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })}</>}
-              {e.renewed_from && <> · Renewal</>}
+              {e.renewed_from && <> · Renewal</>}{e.carryover_sessions > 0 && <> · +{e.carryover_sessions} carried over</>}
             </div>
           </div>
         </div>
