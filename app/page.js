@@ -1464,8 +1464,8 @@ function EnrollmentHistoryDialog({ student, onClose, onChange }) {
 
   if (!student) return null;
 
-  const active = enrollments.filter(e => !e.left_at || e.status === 'active');
-  const past = enrollments.filter(e => e.left_at && e.status !== 'active');
+  const active = enrollments.filter(e => e.status === 'active' && !e.left_at);
+  const past = enrollments.filter(e => e.status !== 'active' || e.left_at);
 
   return (
     <Dialog open={!!student} onOpenChange={v => !v && onClose()}>
@@ -1792,11 +1792,11 @@ function Attendance() {
 
   const selectedProgram = programs.find(p => p.id === program);
   const selectedSession = sessions.find(s => s.date === date);
-  const list = students.filter(s => {
-    if (s.status !== 'active') return false;
+  const list = students.filter(student => {
+    if (student.status !== 'active') return false;
     if (!program) return true;
-    const ids = s.program_ids && s.program_ids.length ? s.program_ids : (s.program_id ? [s.program_id] : []);
-    return ids.includes(program);
+    const enrollment = enrollments.find(item => item.student_id === student.id && item.program_id === program && item.status === 'active' && !item.left_at);
+    return !!enrollment && enrollment.sessions_remaining > 0;
   });
   const setMark = (id, v) => setMarks({ ...marks, [id]: v });
   const bulk = (v) => { const m = {}; list.forEach(s => m[s.id] = v); setMarks(m); };
@@ -1809,6 +1809,7 @@ function Attendance() {
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#22c55e', '#7c3aed'] });
       toast.success(`Attendance saved for ${records.length} students`);
       api(`/programs/${program}/sessions`).then(r => setSessions(r.sessions || []));
+      api(`/enrollments?program_id=${program}`).then(r => setEnrollments(r.items));
     } catch (e) { toast.error(e.message); }
   };
 
@@ -1925,7 +1926,7 @@ function Attendance() {
       <div className="rounded-2xl glass p-4">
         {!program ? <EmptyState text="Select a class to see enrolled students" /> :
           !date ? <EmptyState text="Pick a session from the strip above" /> :
-          list.length === 0 ? <EmptyState text="No students enrolled in this class" /> : (
+          list.length === 0 ? <EmptyState text="No students with eligible sessions in this class" /> : (
             <div className="space-y-1.5">
               {list.map(s => {
                 const enr = enrollments.find(e => e.student_id === s.id && !e.left_at);
