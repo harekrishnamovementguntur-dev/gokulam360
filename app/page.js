@@ -313,7 +313,8 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
           </div>
           <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
             <span className="opacity-70">{org?.name || 'Platform'}</span>
-            <ChevronRight size={13} />
+            <ChevronRight size={13} 
+/>
             <span className="font-semibold text-foreground capitalize">{nav.find(n => n.key === view)?.label || view}</span>
           </div>
           <div className="ml-auto flex items-center gap-2">
@@ -620,7 +621,8 @@ function DashboardSkeleton() {
 }
 
 function Heatmap({ trend }) {
-  // Generate a 12-week grid: rows are days of week (Sun..Sat), columns weeks
+  // Generate a 12-week grid: rows are da
+ys of week (Sun..Sat), columns weeks
   const weeks = 12;
   const map = {};
   (trend || []).forEach(t => { map[t.date] = t.present / Math.max(1, t.present + t.absent); });
@@ -948,7 +950,8 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
                   <div className="w-11 h-11 rounded-2xl bg-saffron-gradient text-white grid place-items-center shadow-lg"><StepIcon size={18} /></div>
                   <div>
                     <div className="text-xl font-bold tracking-tight">{s.title}</div>
-                    <div className="text-xs text-muted-foreground">{s.subtitle}</div>
+                    <div className="text-xs text-muted-foregr
+ound">{s.subtitle}</div>
                   </div>
                 </div>
 
@@ -1239,7 +1242,8 @@ function Students({ students, setStudents }) {
         </div>
         <div className="flex gap-1 p-1 rounded-xl glass">
           {[
-            { k: 'all', l: 'All', c: counts.all },
+            { k: 'all', 
+l: 'All', c: counts.all },
             { k: 'active', l: 'Active', c: counts.active },
             { k: 'inactive', l: 'Inactive', c: counts.inactive },
             { k: 'discontinued', l: 'Left', c: counts.discontinued },
@@ -1510,7 +1514,8 @@ function EnrollmentCard({ e, onRenew, past = false }) {
           <div className="w-10 h-10 rounded-xl bg-saffron-gradient text-white grid place-items-center"><BookOpen size={16} /></div>
           <div>
             <div className="font-semibold text-sm">{e.program_name}</div>
-            <div className="text-[10px] text-muted-foreground">
+            <div className="text-[10px] text-muted-foreg
+round">
               Enrolled {new Date(e.enrolled_at).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })}
               {e.left_at && <> Â· Left {new Date(e.left_at).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })}</>}
               {e.renewed_from && <> Â· Renewal</>}
@@ -1741,7 +1746,8 @@ function Classes() {
                 {form.billing_policy.type === 'custom' && <><div><Label>Every</Label><Input type="number" min="1" value={form.billing_policy.interval_count} onChange={e => setForm({ ...form, billing_policy: { ...form.billing_policy, interval_count: e.target.value } })} /></div><div><Label>Unit</Label><Select value={form.billing_policy.interval_unit} onValueChange={interval_unit => setForm({ ...form, billing_policy: { ...form.billing_policy, interval_unit } })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="day">Days</SelectItem><SelectItem value="week">Weeks</SelectItem><SelectItem value="month">Months</SelectItem></SelectContent></Select></div></>}
                 <div><Label>Late fee</Label><Input type="number" min="0" value={form.billing_policy.late_fee?.value || ''} placeholder="0" onChange={e => setForm({ ...form, billing_policy: { ...form.billing_policy, late_fee: { mode: 'flat', value: e.target.value } } })} /></div>
               </div>
-              <label className="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" checked={!!form.billing_policy.carry_forward_remaining_classes} onChange={e => setForm({ ...form, billing_policy: { ...form.billing_policy, carry_forward_remaining_classes: e.target.checked } })} /> Carry forward remaining classes (16-Sunday term model)</label>
+              <label className="flex items-center gap-2 text-xs cursor-pointer"><input type="checkbox" checked={!!form.
+billing_policy.carry_forward_remaining_classes} onChange={e => setForm({ ...form, billing_policy: { ...form.billing_policy, carry_forward_remaining_classes: e.target.checked } })} /> Carry forward remaining classes (16-Sunday term model)</label>
               {form.billing_policy.carry_forward_remaining_classes && <div><Label>Classes per term</Label><Input className="mt-1" type="number" min="1" value={form.billing_policy.classes_per_term} onChange={e => setForm({ ...form, billing_policy: { ...form.billing_policy, classes_per_term: e.target.value } })} /></div>}
             </div>
             <div><Label>Age Group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="6-14" /></div>
@@ -2025,7 +2031,8 @@ function Fees() {
           <div className="text-3xl font-bold mt-1"><Counter value={Math.round((totalPaid / Math.max(1, totalPaid + totalPending)) * 100)} format={v => Math.round(v)} />%</div>
           <Progress className="mt-3 h-2" value={Math.round((totalPaid / Math.max(1, totalPaid + totalPending)) * 100)} />
         </div>
-        <div className="rounded-2xl glass p-5 border-rose-500/20">
+        <div className="rounded-
+2xl glass p-5 border-rose-500/20">
           <div className="text-xs text-muted-foreground">Overdue fees</div>
           <div className="text-3xl font-bold mt-1 text-rose-600"><Counter value={overdue.length} /></div>
           <div className="text-[11px] text-muted-foreground mt-1">{fmtINR(overdue.reduce((sum, f) => sum + (f.amount - (f.paid_amount || 0)), 0))} outstanding</div>
@@ -2316,7 +2323,8 @@ function Reports() {
   useEffect(() => {
     setLoading(true);
     const params = new URLSearchParams();
-    if (fromDate) params.set('from', fromDate);
+    if (fromDate) params.set('from', fromDat
+e);
     if (toDate) params.set('to', toDate);
     const query = params.toString() ? `?${params.toString()}` : '';
     if (tab === 'attendance-summary') {
@@ -2597,7 +2605,8 @@ function Events() {
             <div className="col-span-2"><Label>Description</Label><Textarea rows={3} value={form.description} onChange={ev => setForm({ ...form, description: ev.target.value })} placeholder="Details about the event" /></div>
             <label className={`col-span-2 flex items-start gap-3 rounded-xl border p-3 ${canSelectAnnouncement ? 'cursor-pointer' : 'opacity-60 cursor-not-allowed'}`}>
               <input type="checkbox" checked={!!form.is_announcement} disabled={!canSelectAnnouncement} onChange={ev => setForm({ ...form, is_announcement: ev.target.checked })} className="mt-1 accent-primary" />
-              <span><span className="block text-sm font-medium">Show on parent announcements</span><span className="block text-xs text-muted-foreground">Select up to 3 events to display on the parent QR page. {announcementCount}/3 currently selected.</span></span>
+              <span><span className="block text-sm font-medium">Show on par
+ent announcements</span><span className="block text-xs text-muted-foreground">Select up to 3 events to display on the parent QR page. {announcementCount}/3 currently selected.</span></span>
             </label>
             <div className="col-span-2 space-y-2"><Label>Advertisement image <span className="text-muted-foreground font-normal">(optional, max 2 MB)</span></Label><Input type="file" accept="image/*" onChange={selectImage} />{form.image_url && <div className="flex items-center gap-3"><img src={form.image_url} alt="Event preview" className="h-16 w-24 rounded-lg object-cover border" /><Button type="button" variant="ghost" size="sm" onClick={() => setForm({ ...form, image_url: '' })}>Remove image</Button></div>}</div>
           </div>
@@ -2875,7 +2884,8 @@ function PublicParentView({ token }) {
               {s.photo_url ? <AvatarImage src={s.photo_url} /> : <AvatarFallback className="bg-saffron-gradient text-white text-2xl">{initials(s.first_name + ' ' + s.last_name)}</AvatarFallback>}
             </Avatar>
             <div>
-              <div className="text-xs text-indigo-900/70">Namaste ðŸ™</div>
+    
+          <div className="text-xs text-indigo-900/70">Namaste ðŸ™</div>
               <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-indigo-950">{s.first_name} {s.last_name}</h1>
               <div className="text-sm text-indigo-900/70 mt-1 font-mono">{s.student_id}</div>
             </div>
@@ -2973,3 +2983,4 @@ function App() {
 }
 
 export default App;
+
