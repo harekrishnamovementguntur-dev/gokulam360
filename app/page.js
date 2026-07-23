@@ -1500,7 +1500,7 @@ function EnrollmentHistoryDialog({ student, onClose, onChange }) {
               <div>
                 <div className="text-[11px] uppercase tracking-widest text-muted-foreground mb-2 font-semibold">History ({past.length})</div>
                 <div className="space-y-2">
-                  {past.map(e => <EnrollmentCard key={e.id} e={e} past />)}
+                  {past.map(e => <EnrollmentCard key={e.id} e={e} past onRenew={renew} />)}
                 </div>
               </div>
             )}
@@ -1550,7 +1550,7 @@ function EnrollmentCard({ e, onRenew, past = false }) {
         </div>
       </div>
 
-      {(exhausted || carryover) && !past && (
+      {(exhausted || carryover) && (!past || e.status === 'completed') && (
         <div className="mt-3 flex items-center gap-2">
           {exhausted && (
             <div className="text-[11px] text-rose-600 flex items-center gap-1">
