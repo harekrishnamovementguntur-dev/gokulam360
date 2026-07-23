@@ -719,8 +719,8 @@ async function router(req, method) {
       return json({ error: 'One or more students have no eligible sessions remaining', student_ids: [...new Set(ineligible)] }, 400);
     }
 
-    // Replace this class session's marks only after session-credit validation succeeds.
-    await db.collection('attendance').deleteMany({ organization_id: user.organization_id, date, program_id });
+    // Replace only submitted students' marks; preserve completed students' historical records.
+    await db.collection('attendance').deleteMany({ organization_id: user.organization_id, date, program_id, student_id: { $in: studentIds } });
     const now = new Date().toISOString();
     const docs = records.map(record => ({
       id: uuidv4(),
