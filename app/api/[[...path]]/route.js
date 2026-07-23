@@ -684,6 +684,7 @@ async function router(req, method) {
     const body = await req.json();
     const { date, program_id, records } = body; // records: [{student_id, status}]
     const validStatuses = new Set(['present', 'absent', 'late', 'excused']);
+    const creditStatuses = new Set(['present', 'late']);
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !program_id || !Array.isArray(records) || !records.length) {
       return json({ error: 'date, program_id, and non-empty records are required' }, 400);
     }
@@ -693,19 +694,55 @@ async function router(req, method) {
     const studentIds = [...new Set(records.map(r => r.student_id))];
     const matchingStudents = await db.collection('students').countDocuments({ id: { $in: studentIds }, ...orgScope(user), is_deleted: { $ne: true } });
     if (matchingStudents !== studentIds.length) return json({ error: 'One or more students do not belong to this organization' }, 400);
-    // Remove existing for this date+program+org
+
+    const enrollments = await db.collection('enrollments').find({
+      ...orgScope(user), program_id, student_id: { $in: studentIds }, status: 'active', left_at: null,
+    }).toArray();
+    const enrollmentByStudent = Object.fromEntries(enrollments.map(enrollment => [enrollment.student_id, enrollment]));
+    const previousAttendance = await db.collection('attendance').find({
+      ...orgScope(user), program_id, student_id: { $in: studentIds },
+    }).toArray();
+
+    const ineligible = [];
+    for (const record of records) {
+      const enrollment = enrollmentByStudent[record.student_id];
+      if (!enrollment) { ineligible.push(record.student_id); continue; }
+      const enrolledDate = (enrollment.enrolled_at || '').slice(0, 10);
+      const prior = previousAttendance.filter(item => item.student_id === record.student_id && item.date >= enrolledDate && item.date !== date);
+      const usedBefore = prior.filter(item => creditStatuses.has(item.status)).length;
+      const existingForDate = previousAttendance.find(item => item.student_id === record.student_id && item.date === date);
+      const nextUsed = usedBefore + (creditStatuses.has(record.status) ? 1 : 0);
+      const credits = enrollment.sessions_credited || 0;
+      if (nextUsed > credits || (!existingForDate && usedBefore >= credits)) ineligible.push(record.student_id);
+    }
+    if (ineligible.length) {
+      return json({ error: 'One or more students have no eligible sessions remaining', student_ids: [...new Set(ineligible)] }, 400);
+    }
+
+    // Replace this class session's marks only after session-credit validation succeeds.
     await db.collection('attendance').deleteMany({ organization_id: user.organization_id, date, program_id });
-    const docs = records.map(r => ({
+    const now = new Date().toISOString();
+    const docs = records.map(record => ({
       id: uuidv4(),
       organization_id: user.organization_id,
       program_id,
       date,
-      student_id: r.student_id,
-      status: r.status,
+      student_id: record.student_id,
+      status: record.status,
       marked_by: user.id,
-      created_at: new Date().toISOString(),
+      created_at: now,
     }));
     if (docs.length) await db.collection('attendance').insertMany(docs);
+
+    // Complete enrollments as soon as all of their credited sessions are consumed.
+    for (const enrollment of enrollments) {
+      const prior = previousAttendance.filter(item => item.student_id === enrollment.student_id && item.date >= (enrollment.enrolled_at || '').slice(0, 10) && item.date !== date);
+      const current = records.find(record => record.student_id === enrollment.student_id);
+      const used = prior.filter(item => creditStatuses.has(item.status)).length + (current && creditStatuses.has(current.status) ? 1 : 0);
+      if (used >= (enrollment.sessions_credited || 0)) {
+        await db.collection('enrollments').updateOne({ id: enrollment.id, status: 'active', left_at: null }, { $set: { status: 'completed', completed_at: now } });
+      }
+    }
     return json({ ok: true, count: docs.length });
   }
 
