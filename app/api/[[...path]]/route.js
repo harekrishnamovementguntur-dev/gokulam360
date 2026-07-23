@@ -126,13 +126,19 @@ async function syncEnrollments(db, student, oldProgramIds = []) {
     if (existing) continue;
     const prog = await db.collection('programs').findOne({ id: pid });
     const allSessions = prog?.sessions || [];
-    // sessions_credited = remaining sessions of this class from today forward
+    // A late admission can be given a custom session credit. When blank, use the
+    // sessions remaining in this term; unused credits are carried into a renewal.
     const remainingFromToday = allSessions.filter(d => d >= today);
-    const credited = remainingFromToday.length || allSessions.length;
+    const configured = Number(student.eligible_sessions?.[pid]);
+    const defaultCredits = remainingFromToday.length || allSessions.length;
+    const credited = Number.isFinite(configured) && configured > 0
+      ? Math.min(Math.floor(configured), allSessions.length || Math.floor(configured))
+      : defaultCredits;
     await db.collection('enrollments').insertOne({
       id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
       enrolled_at: now, left_at: null, status: 'active',
       sessions_credited: credited,
+      eligible_sessions: configured > 0 ? credited : null,
       created_at: now,
     });
     if (prog?.fee_amount) {
@@ -625,14 +631,21 @@ async function router(req, method) {
       const old = await db.collection('enrollments').findOne({ id: body.enrollment_id, organization_id: user.organization_id });
       if (!old) return json({ error: 'Enrollment not found' }, 404);
       const prog = await db.collection('programs').findOne({ id: old.program_id });
-      const credited = prog?.sessions?.length || 16;
       const now = new Date().toISOString();
+      const attendance = await db.collection('attendance').find({
+        organization_id: user.organization_id, student_id: old.student_id, program_id: old.program_id,
+        date: { $gte: (old.enrolled_at || '').slice(0, 10), $lte: now.slice(0, 10) },
+      }).toArray();
+      const used = attendance.filter(record => record.status === 'present' || record.status === 'late').length;
+      const carryover = Math.max(0, (old.sessions_credited || 0) - used);
+      const termCredits = prog?.sessions?.length || 16;
+      const credited = termCredits + carryover;
       // Mark previous as completed
       await db.collection('enrollments').updateOne({ id: old.id }, { $set: { status: 'completed', left_at: now } });
       const fresh = {
         id: uuidv4(), organization_id: user.organization_id, student_id: old.student_id, program_id: old.program_id,
         enrolled_at: now, left_at: null, status: 'active', sessions_credited: credited,
-        renewed_from: old.id, created_at: now,
+        carryover_sessions: carryover, renewed_from: old.id, created_at: now,
       };
       await db.collection('enrollments').insertOne(fresh);
       if (prog?.fee_amount) {
