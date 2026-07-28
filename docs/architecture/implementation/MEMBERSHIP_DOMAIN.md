@@ -6,7 +6,7 @@ This first implementation phase introduces durable Membership records, lifecycle
 
 ## UI capability
 
-Administrators can list, search, filter, create, view, edit Membership notes, archive, and restore Memberships. Student and Program links are deliberately immutable after creation; changing either would create a different business relationship and must be represented by a new Membership.
+Administrators can list, search, filter, create, view, edit Membership notes, archive, and restore Memberships. Student and Program links are deliberately immutable after creation; changing either would create a different business relationship and must be represented by a new Membership. A Student and Program may have only one non-archived Membership; when a prior Membership is Completed, it is reactivated instead of creating another one.
 
 ## API
 
