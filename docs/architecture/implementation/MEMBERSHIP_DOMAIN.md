@@ -24,6 +24,10 @@ The change is additive. Existing legacy `enrollments` remain untouched and there
 
 MongoDB transactions require a replica set or MongoDB Atlas. This is already the required production deployment mode; local standalone development must use a replica-set configuration before exercising Membership write endpoints.
 
+## Data integrity and indexes
+
+Membership infrastructure is provisioned lazily by the Membership API. It creates the indexes required for organization, Student, Program, audit, and outbox access patterns. A unique partial index permits only one current (non-archived) Membership for an organization, Student, and Program. The `current_marker` used solely by that index is omitted from API responses; it is removed when a Membership is archived and restored when the Membership is restored. Existing Membership documents are normalized when the infrastructure is first provisioned.
+
 ## Risks
 
 - The UI is operationally independent from current enrollment, fee, and attendance screens until their planned migrations.
