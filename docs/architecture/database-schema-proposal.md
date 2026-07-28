@@ -8,8 +8,18 @@ Every tenant record includes `id`, `organization_id`, `status`, `created_at`, `c
 
 | Collection | Purpose | Important fields / indexes |
 |---|---|---|
-| organizations | Tenant root and branding | `id`, lifecycle, currency, configuration references |
-| organization_configs | Versioned tenant configuration | academic, attendance, credit, content, notification, permission settings |
+| organizations | Tenant root and identity | `id`, lifecycle, default currency |
+| organization_academic_policies | Versioned academic policy module | organization, effective period, term/session policy |
+| organization_attendance_policies | Versioned attendance policy module | organization, permitted statuses, correction policy |
+| organization_credit_policies | Versioned credit policy module | organization, consumption rules, transfer/expiry controls |
+| dashboard_configurations | Versioned dashboard module | organization, audience, featured-content layout |
+| content_configurations | Versioned CMS module | organization, enabled types, schemas, moderation rules |
+| notification_configurations | Versioned notification module | organization, channels, templates, delivery rules |
+| certificate_configurations | Versioned certificate module | organization, templates, issue criteria |
+| branding_configurations | Versioned branding module | organization, logos, identity assets |
+| theme_configurations | Versioned theme module | organization, visual tokens |
+| permission_policies | Versioned authorization module | organization, roles, capabilities |
+| report_configurations | Versioned report module | organization, report definitions, visibility |
 | students | Person master record | identity, contacts, lifecycle; unique organization/student number |
 | programs | Reusable academic definition | curriculum, credit/attendance defaults; no price |
 | program_offerings | Cohort/batch delivery | program, teachers, capacity, schedule, lifecycle |
@@ -20,13 +30,17 @@ Every tenant record includes `id`, `organization_id`, `status`, `created_at`, `c
 | attendance_records | Session attendance | session, participation, marked status, correction chain |
 | credit_ledger_entries | Immutable operational credits | membership, signed quantity, reason, source reference, idempotency key |
 | payment_transactions | Immutable money records | payer, amount, currency, method, provider reference, status |
-| payment_allocations | Links payment to memberships | payment, membership, amount, credits granted |
+| payment_allocations | Links payment to memberships | payment, membership, allocated amount, credits granted |
 | achievements | Membership accomplishments | type, evidence, issuer, dates |
-| content_items | Generic managed content | type, body, assets, publish window, priority, lifecycle |
-| content_targets | Content audience scope | content, program/offering, term, membership status, age group |
+| content_items | Generic managed content | type, structured body, publishing lifecycle, priority |
+| content_assets | Media and documents for content | content, asset type, storage reference, metadata, ordering |
+| content_targets | Content audience scope | content, program/offering, academic year, membership status, age group |
+| featured_content | Explicit dashboard selection | content, offering, position; max three active entries per offering |
 | audit_logs | Security and business audit | actor, entity, action, before/after summary |
 | outbox_events | Reliable domain-event delivery | event type, aggregate, payload, status, idempotency |
 | report_snapshots | Reproducible reporting | report scope, generated period, immutable values |
+
+Dedicated configuration collections are separate aggregates: they have independent permissions, validation, version histories, effective dates, and audit trails. They are not embedded in a single `organization_configs` document. References from programs or offerings pin the configuration version used for an operational decision when historical reproducibility is required.
 
 ## Ledger Integrity
 
