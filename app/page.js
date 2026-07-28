@@ -32,6 +32,7 @@ import { Separator } from '@/components/ui/separator';
 import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList, CommandSeparator } from '@/components/ui/command';
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
+import Memberships from '@/components/Memberships';
 
 const API = '/api';
 
@@ -238,6 +239,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
       { key: 'dashboard', label: 'Dashboard', icon: BarChart3, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'organizations', label: 'Organizations', icon: Building2, roles: ['super_admin'] },
       { key: 'students', label: 'Students', icon: GraduationCap, roles: ['super_admin', 'org_admin', 'teacher'] },
+      { key: 'memberships', label: 'Memberships', icon: Users, roles: ['super_admin', 'org_admin'] },
       { key: 'teachers', label: 'Teachers', icon: Users, roles: ['super_admin', 'org_admin'] },
       { key: 'classes', label: 'Classes & Batches', icon: School, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['super_admin', 'org_admin', 'teacher'] },
@@ -334,6 +336,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               {view === 'dashboard' && <Dashboard user={user} org={org} onNav={setView} />}
               {view === 'organizations' && <Organizations />}
               {view === 'students' && <Students students={students} setStudents={setStudents} />}
+              {view === 'memberships' && <Memberships request={api} />}
               {view === 'teachers' && <Teachers teachers={teachers} setTeachers={setTeachers} />}
               {view === 'classes' && <Classes />}
               {view === 'attendance' && <Attendance />}
