@@ -108,6 +108,16 @@ export async function transitionMembershipCommand({ db, user, membership, body }
     now,
     reason: typeof body.reason === 'string' ? body.reason : '',
   });
+  if (membership.status === 'archived') {
+    const existing = await db.collection('memberships').findOne({
+      organization_id: membership.organization_id,
+      student_id: membership.student_id,
+      program_id: membership.program_id,
+      id: { $ne: membership.id },
+      status: { $ne: 'archived' },
+    });
+    if (existing) throw new Error('Cannot restore while another non-archived Membership exists for this Student and Program');
+  }
 
   await runInTransaction(db, async session => {
     await db.collection('memberships').replaceOne({ id: membership.id, organization_id: membership.organization_id }, updated, { session });
