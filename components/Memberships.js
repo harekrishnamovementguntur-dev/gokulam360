@@ -174,7 +174,7 @@ export default function Memberships({ request }) {
             <div><Label>Notes</Label><div className="mt-1 rounded-xl border p-3 text-sm min-h-12">{details.notes || 'No notes added.'}</div></div>
             <div><Label>Lifecycle History</Label><div className="mt-2 space-y-2">{(details.lifecycle_history || []).map((event, index) => <div key={index} className="rounded-xl border p-3 text-xs"><div className="font-medium">{event.from_status || '—'} <span className="text-muted-foreground">→</span> {event.to_status}</div><div className="text-muted-foreground mt-1">{event.reason || 'No reason supplied'} · {new Date(event.changed_at).toLocaleString('en-IN')}</div></div>)}</div></div>
             <DialogFooter className="gap-2 sm:gap-0">
-              <Button variant="outline" onClick={() => openEdit(details)}><Edit3 size={14} className="mr-1" /> Edit notes</Button>
+              <Button variant="outline" onClick={() => { setDetails(null); openEdit(details); }}><Edit3 size={14} className="mr-1" /> Edit notes</Button>
               {details.status === 'archived'
                 ? <Button className="bg-emerald-gradient" onClick={() => transition(details, restoreStatus(details), 'Membership restored')}><RotateCcw size={14} className="mr-1" /> Restore</Button>
                 : <Button variant="destructive" onClick={() => transition(details, 'archived', 'Membership archived')}><Archive size={14} className="mr-1" /> Archive</Button>}
