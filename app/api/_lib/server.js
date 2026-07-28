@@ -8,6 +8,14 @@ const JWT_SECRET = process.env.JWT_SECRET;
 
 let client;
 
+export class ApiError extends Error {
+  constructor(message, status = 400) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+  }
+}
+
 export async function getDb() {
   if (!MONGO_URL) throw new Error('MONGO_URL must be configured');
   if (!client) {
@@ -19,6 +27,20 @@ export async function getDb() {
 
 export function json(data, status = 200) {
   return NextResponse.json(data, { status });
+}
+
+export function membershipErrorResponse(error) {
+  if (error?.code === 11000) {
+    return json({ error: 'A non-archived Membership already exists for this Student and Program' }, 409);
+  }
+  if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 500) {
+    return json({ error: error.message }, error.status);
+  }
+  if (error instanceof SyntaxError) {
+    return json({ error: 'Request body must contain valid JSON' }, 400);
+  }
+  console.error('Membership API error', error);
+  return json({ error: 'Unable to complete the Membership request' }, 500);
 }
 
 export function requireUser(req, roles = null) {
@@ -38,9 +60,10 @@ export function requireUser(req, roles = null) {
 
 export function resolveOrganizationId(user, requestedOrganizationId) {
   if (user.role === 'super_admin') {
-    if (!requestedOrganizationId) throw new Error('organization_id is required for super_admin');
+    if (!requestedOrganizationId) throw new ApiError('organization_id is required for super_admin', 422);
     return requestedOrganizationId;
   }
+  if (!user.organization_id) throw new ApiError('Authenticated user has no organization', 422);
   return user.organization_id;
 }
 
@@ -50,7 +73,7 @@ export function scopeFor(user) {
 
 export function stripId(doc) {
   if (!doc) return doc;
-  const { _id, ...rest } = doc;
+  const { _id, current_marker, ...rest } = doc;
   return rest;
 }
 
