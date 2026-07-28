@@ -2,16 +2,21 @@
 
 ## Scope
 
-This is the first additive implementation phase of Architecture Gita v1.0. It introduces the durable `memberships` collection, lifecycle history, audit records, and pending outbox events. It does not change legacy Student, Program, Enrollment, Fee, Attendance, or UI behaviour.
+This first implementation phase introduces durable Membership records, lifecycle history, audit records, pending outbox events, and a Membership Management UI. It does not change legacy Student, Program, Enrollment, Fee, Attendance, or parent-portal behaviour.
+
+## UI capability
+
+Administrators can list, search, filter, create, view, edit Membership notes, archive, and restore Memberships. Student and Program links are deliberately immutable after creation; changing either would create a different business relationship and must be represented by a new Membership.
 
 ## API
 
 - `GET /api/memberships?student_id=&program_id=&status=`
 - `POST /api/memberships`
 - `GET /api/memberships/{membershipId}`
+- `PUT /api/memberships/{membershipId}` — edits notes only
 - `POST /api/memberships/{membershipId}/lifecycle`
 
-Only administrators can create or transition a Membership. Teachers have read-only access.
+Only administrators can create, edit, archive, or restore a Membership. Teachers have read-only API access.
 
 ## Migration and compatibility
 
@@ -21,5 +26,5 @@ MongoDB transactions require a replica set or MongoDB Atlas. This is already the
 
 ## Risks
 
-- This PR adds a new API surface but intentionally does not make it visible in the current UI.
+- The UI is operationally independent from current enrollment, fee, and attendance screens until their planned migrations.
 - The outbox rows are recorded now to satisfy atomic business-history requirements; asynchronous delivery is implemented in the Notifications & Transactional Outbox phase.
