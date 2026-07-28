@@ -33,6 +33,19 @@ test('records allowed lifecycle transitions without overwriting history', () => 
   assert.equal(active.lifecycle_history[1].from_status, 'pending');
 });
 
+test('archives and restores to the immediately preceding state', () => {
+  const active = createMembership({ ...base, status: 'active' });
+  const archived = transitionMembership(active, {
+    status: 'archived', actorId: 'admin-2', now: '2026-07-29T00:00:00.000Z', reason: 'archived',
+  });
+  assert.equal(archived.lifecycle_history.at(-1).restorable_status, 'active');
+  const restored = transitionMembership(archived, {
+    status: archived.lifecycle_history.at(-1).restorable_status, actorId: 'admin-2', now: '2026-07-30T00:00:00.000Z', reason: 'restored',
+  });
+  assert.equal(restored.status, 'active');
+  assert.equal(restored.lifecycle_history.length, 3);
+});
+
 test('rejects invalid statuses and invalid lifecycle transitions', () => {
   assert.throws(() => createMembership({ ...base, status: 'deleted' }), /Invalid membership status/);
   const membership = createMembership({ ...base, status: 'pending' });
