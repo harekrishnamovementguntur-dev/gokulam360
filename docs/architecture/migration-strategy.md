@@ -10,14 +10,15 @@ Do not Git-revert PR7/PR8 as a production-data operation. Their code introduced 
 
 ## Phases
 
-1. **Documentation and inventory** — approve Architecture Gita and ADRs; inventory collections, indexes, record volumes, and data-quality gaps.
-2. **Additive schema** — introduce new collections and indexes only. No existing write path changes.
+1. **Documentation and inventory** — approve Architecture Gita, Business Rule Catalogue, Glossary, and ADRs; inventory collections, indexes, record volumes, and data-quality gaps.
+2. **Additive schema** — introduce new collections and indexes only, including dedicated configuration modules. No existing write path changes.
 3. **Backfill** — create memberships, offerings, terms, participations, payment transactions, and ledger entries from legacy data with migration source references.
 4. **Reconciliation** — compare legacy fee totals, attendance counts, and migrated balances per organization; produce exceptions rather than guessing.
-5. **Dual read** — expose read-only projections from the new model alongside legacy views.
-6. **Dual write** — after acceptance, write new commands to both models with idempotency and audit IDs.
-7. **Cutover** — route UI and reporting writes/reads to the new model.
-8. **Archive legacy** — preserve legacy records as read-only historical data; remove legacy features only after verified cutover.
+5. **Independent delivery** — deliver and approve small pull requests in this order: Memberships; Programs & Offerings; Terms & Sessions; Credits & Ledger; Payments; Attendance; Content; Parent Dashboard; Achievements; Notifications & Outbox.
+6. **Dual read** — expose read-only projections from the new model alongside legacy views.
+7. **Dual write** — after acceptance, write new commands to both models with idempotency and audit IDs.
+8. **Cutover** — route UI and reporting writes/reads to the new model.
+9. **Archive legacy** — preserve legacy records as read-only historical data; remove legacy features only after verified cutover.
 
 ## Rollback
 
