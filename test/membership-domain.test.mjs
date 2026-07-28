@@ -16,6 +16,7 @@ test('creates a durable Membership with its initial lifecycle event', () => {
   assert.equal(membership.status, 'pending');
   assert.equal(membership.student_id, 'student-1');
   assert.equal(membership.program_id, 'program-1');
+  assert.equal(membership.current_marker, true);
   assert.deepEqual(membership.lifecycle_history[0], {
     from_status: null, to_status: 'pending', reason: 'created',
     changed_by: 'user-1', changed_at: '2026-07-28T00:00:00.000Z',
@@ -38,11 +39,13 @@ test('archives and restores to the immediately preceding state', () => {
   const archived = transitionMembership(active, {
     status: 'archived', actorId: 'admin-2', now: '2026-07-29T00:00:00.000Z', reason: 'archived',
   });
+  assert.equal('current_marker' in archived, false);
   assert.equal(archived.lifecycle_history.at(-1).restorable_status, 'active');
   const restored = transitionMembership(archived, {
     status: archived.lifecycle_history.at(-1).restorable_status, actorId: 'admin-2', now: '2026-07-30T00:00:00.000Z', reason: 'restored',
   });
   assert.equal(restored.status, 'active');
+  assert.equal(restored.current_marker, true);
   assert.equal(restored.lifecycle_history.length, 3);
 });
 
