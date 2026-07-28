@@ -81,6 +81,25 @@ export async function createMembershipCommand({ db, user, organizationId, body }
   return stripId(membership);
 }
 
+export async function updateMembershipCommand({ db, user, membership, body }) {
+  if (typeof body.notes !== 'string') throw new Error('notes must be a string');
+  if (body.notes.length > 4000) throw new Error('notes must be 4000 characters or fewer');
+  const now = new Date().toISOString();
+  const updated = { ...membership, notes: body.notes, updated_at: now };
+
+  await runInTransaction(db, async session => {
+    await db.collection('memberships').replaceOne({ id: membership.id, organization_id: membership.organization_id }, updated, { session });
+    await db.collection('audit_logs').insertOne(auditDocument({
+      organizationId: membership.organization_id, actor: user, action: 'membership.updated',
+      membershipId: membership.id, now, details: { updated_fields: ['notes'] },
+    }), { session });
+    await db.collection('outbox_events').insertOne(outboxDocument({
+      organizationId: membership.organization_id, type: 'membership.updated', membership: updated, now,
+    }), { session });
+  });
+  return stripId(updated);
+}
+
 export async function transitionMembershipCommand({ db, user, membership, body }) {
   const now = new Date().toISOString();
   const updated = transitionMembership(membership, {
