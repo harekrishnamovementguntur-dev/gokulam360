@@ -1,6 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
-import { createMembership, transitionMembership } from '../../../lib/membership-domain.mjs';
+import { MembershipDomainError, createMembership, transitionMembership } from '../../../lib/membership-domain.mjs';
 import { runInTransaction, stripId } from './server.js';
+
+let infrastructurePromise;
 
 function auditDocument({ organizationId, actor, action, membershipId, now, details }) {
   return {
@@ -35,26 +37,70 @@ function outboxDocument({ organizationId, type, membership, now }) {
   };
 }
 
+async function provisionMembershipInfrastructure(db) {
+  const memberships = db.collection('memberships');
+  await memberships.updateMany(
+    { status: 'archived', current_marker: { $exists: true } },
+    { $unset: { current_marker: '' } },
+  );
+  await memberships.updateMany(
+    { status: { $ne: 'archived' }, current_marker: { $exists: false } },
+    { $set: { current_marker: true } },
+  );
+
+  await Promise.all([
+    memberships.createIndexes([
+      {
+        key: { organization_id: 1, student_id: 1, program_id: 1 },
+        name: 'memberships_current_relationship_unique',
+        unique: true,
+        partialFilterExpression: { current_marker: true },
+      },
+      { key: { organization_id: 1, created_at: -1 }, name: 'memberships_by_organization_created' },
+      { key: { organization_id: 1, student_id: 1, created_at: -1 }, name: 'memberships_by_student_created' },
+      { key: { organization_id: 1, program_id: 1, status: 1, created_at: -1 }, name: 'memberships_by_program_status_created' },
+    ]),
+    db.collection('audit_logs').createIndex(
+      { organization_id: 1, entity_type: 1, entity_id: 1, created_at: -1 },
+      { name: 'audit_logs_by_membership_entity' },
+    ),
+    db.collection('outbox_events').createIndex(
+      { status: 1, occurred_at: 1 },
+      { name: 'outbox_events_by_delivery_status' },
+    ),
+  ]);
+}
+
+export async function ensureMembershipInfrastructure(db) {
+  if (!infrastructurePromise) {
+    infrastructurePromise = provisionMembershipInfrastructure(db).catch(error => {
+      infrastructurePromise = undefined;
+      throw error;
+    });
+  }
+  return infrastructurePromise;
+}
+
 export async function createMembershipCommand({ db, user, organizationId, body }) {
   const now = new Date().toISOString();
   const studentId = String(body.student_id || '');
   const programId = String(body.program_id || '');
-  if (!studentId || !programId) throw new Error('student_id and program_id are required');
+  if (!studentId || !programId) throw new MembershipDomainError('student_id and program_id are required');
 
   const [student, program] = await Promise.all([
     db.collection('students').findOne({ id: studentId, organization_id: organizationId, is_deleted: { $ne: true } }),
     db.collection('programs').findOne({ id: programId, organization_id: organizationId, is_deleted: { $ne: true } }),
   ]);
-  if (!student) throw new Error('Student not found in this organization');
-  if (!program) throw new Error('Program not found in this organization');
+  if (!student) throw new MembershipDomainError('Student not found in this organization', 404);
+  if (!program) throw new MembershipDomainError('Program not found in this organization', 404);
 
   const duplicate = await db.collection('memberships').findOne({
     organization_id: organizationId,
     student_id: studentId,
     program_id: programId,
-    status: { $ne: 'archived' },
+    current_marker: true,
   });
-  if (duplicate) throw new Error('A non-archived Membership already exists for this Student and Program');
+  if (duplicate) throw new MembershipDomainError('A non-archived Membership already exists for this Student and Program', 409);
 
   const membership = createMembership({
     id: uuidv4(),
@@ -82,8 +128,8 @@ export async function createMembershipCommand({ db, user, organizationId, body }
 }
 
 export async function updateMembershipCommand({ db, user, membership, body }) {
-  if (typeof body.notes !== 'string') throw new Error('notes must be a string');
-  if (body.notes.length > 4000) throw new Error('notes must be 4000 characters or fewer');
+  if (typeof body.notes !== 'string') throw new MembershipDomainError('notes must be a string');
+  if (body.notes.length > 4000) throw new MembershipDomainError('notes must be 4000 characters or fewer');
   const now = new Date().toISOString();
   const updated = { ...membership, notes: body.notes, updated_at: now };
 
@@ -114,9 +160,9 @@ export async function transitionMembershipCommand({ db, user, membership, body }
       student_id: membership.student_id,
       program_id: membership.program_id,
       id: { $ne: membership.id },
-      status: { $ne: 'archived' },
+      current_marker: true,
     });
-    if (existing) throw new Error('Cannot restore while another non-archived Membership exists for this Student and Program');
+    if (existing) throw new MembershipDomainError('Cannot restore while another non-archived Membership exists for this Student and Program', 409);
   }
 
   await runInTransaction(db, async session => {
