@@ -23,6 +23,7 @@
 - **BR-022** A Membership Term Participation belongs to exactly one Membership, one Program Offering, and one Term.
 - **BR-023** Membership lifecycle states are Pending, Active, Paused, Completed, Inactive, and Archived only.
 - **BR-024** Memberships are never deleted. Lifecycle changes are recorded as history and audit events.
+- **BR-025** Archiving is reversible only through an audited lifecycle transition that restores the immediately preceding Membership status.
 
 ## Attendance
 
