@@ -1,4 +1,4 @@
-# Gokulam360 Architecture Gita
+# Gokulam360 Architecture Gita v1.0
 
 **Version:** 1.0  
 **Status:** Approved architecture baseline  
@@ -20,10 +20,11 @@ Technology serves administration, learning, character, community, knowledge, and
 6. Auditability and idempotency are required for financial, credit, attendance, and lifecycle operations.
 7. Modules publish domain events through a transactional outbox.
 8. Reports derive from immutable transactions and snapshots, not mutable current values.
+9. Terms in the [Glossary](./GLOSSARY.md) are canonical for database names, APIs, documentation, and UI labels.
 
 ## 3. Core Domain
 
-A **Program** is reusable academic definition: curriculum, objectives, age guidance, attendance rules, credit-consumption rules, events, and certificate criteria. It has no price.
+A **Program** is reusable academic definition: curriculum, objectives, age guidance, attendance rules, credit-consumption rules, and certificate criteria. It has no price.
 
 A **Program Offering** is an actual delivery of a program for an organization, cohort, batch, or period. It owns operational schedule, capacity, teachers, and configured delivery settings.
 
@@ -42,7 +43,7 @@ Permitted membership states:
 - Inactive
 - Archived
 
-Memberships are never deleted. State transitions require an audit record. Students, programs, events, payments, attendance, achievements, and certificates similarly preserve business history through lifecycle states, voids, reversals, or archival.
+Memberships are never deleted. State transitions require an audit record. Students, programs, content, payments, attendance, achievements, and certificates similarly preserve business history through lifecycle states, voids, reversals, or archival.
 
 ## 5. Credits and Payments
 
@@ -50,7 +51,7 @@ Credits and money are separate domains.
 
 - Administrators record custom amount, currency, payment method, and custom credit quantity.
 - There are no billing policies, fixed prices, credit packs, or automated pricing rules in version 1.
-- A payment transaction may allocate credits to one or more memberships.
+- A payment transaction may allocate money and/or grant credits to one or more memberships.
 - Credit balance is calculated only from immutable Credit Ledger entries.
 - Direct credit-balance editing is prohibited.
 - Negative balances are allowed and produce warnings; attendance is not blocked.
@@ -68,26 +69,44 @@ Attendance belongs to a Session and a Membership Term Participation.
 
 ## 7. Content Management
 
-Content replaces event-only presentation.
+Content Management replaces event-only presentation. It supports configurable types: Event, Bhagavad-gita Verse, Srimad Bhagavatam Verse, Srila Prabhupada Quote, Festival, News, Announcement, Story, Video, Audio, Gallery, PDF, and Custom Content.
 
-Supported configurable content types include Event, scripture verse, quote, festival information, moral story, announcement, news, inspirational message, and custom content.
+Content supports type-specific metadata, multiple assets, audience targeting by organization, program, offering, academic year, membership status, age group, publish/expiry date, priority, and visibility. Krishna Conscious organizations receive first-class scripture, source, transliteration, translation, purport-summary, and practical-application fields, while the underlying content model remains generic.
 
-Content supports audience targeting by organization, program, offering, academic year, membership status, age group, publish/expiry date, priority, attachments, and visibility.
+Each Program Offering may feature at most three content items. Dashboard Configuration decides the presentation. Parent experiences show only featured content relevant to a child's active memberships and merge duplicate items across memberships.
 
-Each program offering may feature at most three content items. Parent experiences merge applicable featured content across a child's active memberships without duplicates.
+## 8. Organization Configuration
 
-## 8. Achievements
+Configuration is composed from dedicated, versioned modules rather than one mutable settings object:
+
+- Academic Policies
+- Attendance Policies
+- Credit Policies
+- Dashboard Configuration
+- Content Configuration
+- Notification Configuration
+- Certificate Configuration
+- Branding
+- Theme
+- Permissions
+- Reports
+
+Every module is organization-scoped, has an owner and lifecycle, and publishes an audit record when changed. Program and Program Offering may reference relevant configuration versions but do not own global organization policy.
+
+## 9. Achievements
 
 Achievements attach to Memberships and support completion, attendance milestones, awards, volunteer service, reading milestones, examinations, teacher recognition, and organization-specific recognition. They become the source for future badges, certificates, dashboards, and reports.
 
-## 9. Events and Integration
+## 10. Events and Integration
 
 The system remains a modular monolith. Each successful command writes its business record, audit entry, and outbox event atomically. Asynchronous workers deliver notifications, dashboard projections, analytics, WhatsApp, email, push notifications, and future integrations.
 
-## 10. Security and Reporting
+## 11. Security and Reporting
 
 Every API operation enforces organization scope and capability-based authorization. Financial and credit mutations require idempotency keys. Reports are membership-centric and ledger-derived, preserving historical meaning even when programs, offerings, or configuration later change.
 
-## 11. Governance
+## 12. Governance and Versioning
 
-Every material architecture change requires an ADR. Every new module must define its lifecycle, audit events, organization scope, permissions, API contract, and reporting implications before implementation.
+This document is the approved **Architecture Gita v1.0**. It is an immutable baseline once merged. Future architectural revisions must create a new, versioned Architecture Gita document and ADRs explaining the change; they must not silently replace v1.0. Every new module must define its lifecycle, audit events, organization scope, permissions, API contract, and reporting implications before implementation.
+
+The [Business Rule Catalogue](./BUSINESS_RULES.md) is authoritative for invariants. Rule changes require an ADR and the next applicable Architecture Gita version.
