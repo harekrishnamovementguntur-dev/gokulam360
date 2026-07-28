@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
-import { Archive, CheckCircle2, Edit3, Eye, Plus, RotateCcw, Search, Users } from 'lucide-react';
+import { Archive, Edit3, Eye, Plus, RotateCcw, Search, Users } from 'lucide-react';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -41,6 +42,7 @@ export default function Memberships({ request }) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [details, setDetails] = useState(null);
   const [editing, setEditing] = useState(null);
+  const [archiveCandidate, setArchiveCandidate] = useState(null);
   const empty = { student_id: '', program_id: '', status: 'pending', notes: '' };
   const [form, setForm] = useState(empty);
   const studentsById = useMemo(() => Object.fromEntries(students.map(student => [student.id, student])), [students]);
@@ -177,11 +179,35 @@ export default function Memberships({ request }) {
               <Button variant="outline" onClick={() => { setDetails(null); openEdit(details); }}><Edit3 size={14} className="mr-1" /> Edit notes</Button>
               {details.status === 'archived'
                 ? <Button className="bg-emerald-gradient" onClick={() => transition(details, restoreStatus(details), 'Membership restored')}><RotateCcw size={14} className="mr-1" /> Restore</Button>
-                : <Button variant="destructive" onClick={() => transition(details, 'archived', 'Membership archived')}><Archive size={14} className="mr-1" /> Archive</Button>}
+                : <Button variant="destructive" onClick={() => setArchiveCandidate(details)}><Archive size={14} className="mr-1" /> Archive</Button>}
             </DialogFooter>
           </>}
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!archiveCandidate} onOpenChange={open => !open && setArchiveCandidate(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive this Membership?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The Membership will be hidden from active work but retained with its full history. You can restore it later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                const membership = archiveCandidate;
+                setArchiveCandidate(null);
+                transition(membership, 'archived', 'Membership archived');
+              }}
+            >
+              Archive Membership
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
