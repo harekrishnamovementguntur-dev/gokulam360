@@ -213,10 +213,7 @@ export default function AcademicCalendar({ request }) {
                   name="start_date"
                   id="term-start"
                   ref={termStartRef}
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="YYYY-MM-DD"
-                  pattern="\\d{4}-\\d{2}-\\d{2}"
+                  type="date"
                   defaultValue={termForm.start_date || ''}
                 />
               </div>
@@ -226,10 +223,7 @@ export default function AcademicCalendar({ request }) {
                   name="end_date"
                   id="term-end"
                   ref={termEndRef}
-                  type="text"
-                  inputMode="numeric"
-                  placeholder="YYYY-MM-DD"
-                  pattern="\\d{4}-\\d{2}-\\d{2}"
+                  type="date"
                   defaultValue={termForm.end_date || ''}
                 />
               </div>
