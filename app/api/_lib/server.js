@@ -29,18 +29,17 @@ export function json(data, status = 200) {
   return NextResponse.json(data, { status });
 }
 
+export function apiErrorResponse(error, context = 'request') {
+  if (error?.code === 11000) return json({ error: 'A record with these values already exists' }, 409);
+  if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 500) return json({ error: error.message }, error.status);
+  if (error instanceof SyntaxError) return json({ error: 'Request body must contain valid JSON' }, 400);
+  console.error(context + ' API error', error);
+  return json({ error: 'Unable to complete the request' }, 500);
+}
+
 export function membershipErrorResponse(error) {
-  if (error?.code === 11000) {
-    return json({ error: 'A non-archived Membership already exists for this Student and Program' }, 409);
-  }
-  if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 500) {
-    return json({ error: error.message }, error.status);
-  }
-  if (error instanceof SyntaxError) {
-    return json({ error: 'Request body must contain valid JSON' }, 400);
-  }
-  console.error('Membership API error', error);
-  return json({ error: 'Unable to complete the Membership request' }, 500);
+  if (error?.code === 11000) return json({ error: 'A non-archived Membership already exists for this Student and Program' }, 409);
+  return apiErrorResponse(error, 'Membership');
 }
 
 export function requireUser(req, roles = null) {
