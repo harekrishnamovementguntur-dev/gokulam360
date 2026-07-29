@@ -7,13 +7,28 @@ This roadmap governs implementation after Architecture Gita v1.0. The current ap
 | Phase | Scope | Status |
 |---|---|---|
 | PR #13 | Membership foundation and UI | Completed / merged |
-| PR #14 | Program and Program Offering | In review |
-| PR #15 | Terms and Sessions | Planned |
+| PR #14 | Program and Program Offering | Completed / merged |
+| PR #15 | Terms and Sessions | Planned — awaiting implementation plan and UX review |
 | PR #16 | Membership Term Participation | Planned |
 | PR #17 | Credit Ledger and Payments | Planned |
 | PR #18 | Attendance Integration | Planned |
 | PR #19 | Coordinated Application Cutover | Planned |
 | PR #20 | Legacy Removal and Cleanup | Planned |
+
+## Completed capabilities
+
+### PR #14 — Program and Program Offering
+
+- Canonical Program domain for reusable academic definitions.
+- Canonical Program Offering domain for operational delivery.
+- Separate persistence for Programs and Offerings.
+- Organization-scoped uniqueness and query indexes.
+- Validation, lifecycle history, audit records, and transactional outbox records.
+- Administrator UI for creating, editing, archiving, and restoring Programs and Offerings.
+- No migration framework, Legacy Mapping UI, synchronization, or dual writes.
+- Legacy application remains an unchanged temporary development shell.
+
+PR #14 was merged into `main` in merge commit `2876ecd24cd9012308e2d8830d0be8bf2ccba05d`.
 
 ## Governance
 
