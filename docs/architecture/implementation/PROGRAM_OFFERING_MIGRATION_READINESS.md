@@ -1,17 +1,35 @@
-# PR #14 Migration Readiness Report
+# PR #14 Architecture Readiness Report
 
-## Legacy functionality covered
-- Explicit legacy Program to canonical Program Offering mapping
-- Auditable source snapshot and mapping ownership
-- Canonical Program and Offering lifecycle-ready records
+## Canonical functionality delivered
 
-## Legacy functionality remaining
-- Legacy Classes & Batches still owns schedule generation, sessions, enrollment, fees, and attendance
-- Membership still references legacy program_id
-- No Terms, Sessions, Participation, Credits, Payments, or Attendance migration
+- Canonical Program domain and lifecycle.
+- Canonical Program Offering domain and lifecycle.
+- Organization-scoped APIs, indexes, validation, audit records, and outbox records.
+- Administrator UI for creating, editing, archiving, and restoring canonical Programs and Offerings.
+- Canonical domain tests.
+
+## Explicitly removed
+
+- Legacy Mapping UI.
+- `/api/migration-mappings`.
+- `migration_mappings` indexes and persistence.
+- Legacy-to-canonical synchronization or dual writes.
+
+## Development-shell status
+
+The current Classes & Batches, enrollment, Fees, Attendance, reporting, import/export, backup, and Parent Portal flows remain on the temporary development runtime. They are intentionally not refactored in PR #14.
 
 ## Risks
-Mappings require administrator review because a legacy Program may represent a batch or term. No automatic mapping is performed.
 
-## Recommendation
-PR #15 should add Terms and Sessions beneath Program Offering. The following Membership Term Participation phase can consume the explicit mapping without rewriting Membership history.
+- Canonical and legacy runtime code coexist temporarily while the architecture is completed.
+- Cross-domain integration is deferred and must be covered by contract tests before cutover.
+- The legacy runtime must not receive new business capabilities.
+
+## Recommended roadmap
+
+- PR #15: Terms and Sessions.
+- PR #16: Membership Term Participation.
+- PR #17: Credit Ledger and Payments.
+- PR #18: Attendance Integration.
+- PR #19: Coordinated Application Cutover and regenerated demo data.
+- PR #20: Legacy Removal and Cleanup.
