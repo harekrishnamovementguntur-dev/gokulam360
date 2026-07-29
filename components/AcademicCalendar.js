@@ -43,6 +43,13 @@ export default function AcademicCalendar({ request }) {
   const excludedInputRef = useRef(null);
   const holidayInputRef = useRef(null);
   const holidayReasonRef = useRef(null);
+  const sessionDateRef = useRef(null);
+  const sessionStartRef = useRef(null);
+  const sessionEndRef = useRef(null);
+  const generationStartDateRef = useRef(null);
+  const generationEndDateRef = useRef(null);
+  const generationStartTimeRef = useRef(null);
+  const generationEndTimeRef = useRef(null);
 
   const loadOfferings = async () => {
     const response = await request('/program-offerings');
@@ -108,8 +115,15 @@ export default function AcademicCalendar({ request }) {
   const saveSession = async () => {
     try {
       setSaving(true);
+      const payload = {
+        ...sessionForm,
+        date: sessionDateRef.current?.value || sessionForm.date,
+        start_time: sessionStartRef.current?.value || sessionForm.start_time,
+        end_time: sessionEndRef.current?.value || sessionForm.end_time,
+        term_id: sessionDialog.entity?.term_id || selectedTermId,
+      };
       const path = sessionDialog.entity ? '/academic-sessions/' + sessionDialog.entity.id : '/academic-sessions';
-      await request(path, { method: sessionDialog.entity ? 'PUT' : 'POST', body: JSON.stringify({ ...sessionForm, term_id: sessionDialog.entity?.term_id || selectedTermId }) });
+      await request(path, { method: sessionDialog.entity ? 'PUT' : 'POST', body: JSON.stringify(payload) });
       setSessionDialog(null); await loadSessions(); toast.success('Session saved');
     } catch (error) { toast.error(error.message); } finally { setSaving(false); }
   };
@@ -135,17 +149,27 @@ export default function AcademicCalendar({ request }) {
       if (holidayReasonRef.current) holidayReasonRef.current.value = '';
     }
   };
+  const liveGenerationForm = () => ({
+    ...generationForm,
+    start_date: generationStartDateRef.current?.value || generationForm.start_date,
+    end_date: generationEndDateRef.current?.value || generationForm.end_date,
+    start_time: generationStartTimeRef.current?.value || generationForm.start_time,
+    end_time: generationEndTimeRef.current?.value || generationForm.end_time,
+  });
   const getPreview = async () => {
     try {
       setSaving(true);
-      const result = await request('/academic-sessions/generate/preview', { method: 'POST', body: JSON.stringify(generationForm) });
+      const payload = liveGenerationForm();
+      setGenerationForm(payload);
+      const result = await request('/academic-sessions/generate/preview', { method: 'POST', body: JSON.stringify(payload) });
       setPreview(result); setWizardStep(4);
     } catch (error) { toast.error(error.message); } finally { setSaving(false); }
   };
   const generate = async () => {
     try {
       setSaving(true);
-      const result = await request('/academic-sessions/generate', { method: 'POST', body: JSON.stringify(generationForm) });
+      const payload = liveGenerationForm();
+      const result = await request('/academic-sessions/generate', { method: 'POST', body: JSON.stringify(payload) });
       setGenerationResult(result); setWizardStep(5); await loadSessions();
       toast.success(result.created.length + ' Sessions created');
     } catch (error) { toast.error(error.message); } finally { setSaving(false); }
@@ -245,11 +269,11 @@ export default function AcademicCalendar({ request }) {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(sessionDialog)} onOpenChange={(open) => !open && setSessionDialog(null)}><DialogContent><DialogHeader><DialogTitle>{sessionDialog?.entity ? 'Edit Session' : 'Add Session'}</DialogTitle></DialogHeader><div className="grid gap-3"><div className="grid grid-cols-2 gap-3"><div><Label htmlFor="session-date">Date</Label><Input id="session-date" type="date" value={sessionForm.date || ''} onChange={(event) => setSessionForm({ ...sessionForm, date: event.target.value })} /></div><div><Label>Status</Label><Select value={sessionForm.status} onValueChange={(value) => setSessionForm({ ...sessionForm, status: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{['scheduled', 'completed', 'cancelled', 'rescheduled', 'holiday', 'archived'].map((status) => <SelectItem key={status} value={status}>{statusLabel(status)}</SelectItem>)}</SelectContent></Select></div></div><div className="grid grid-cols-2 gap-3"><div><Label htmlFor="session-start">Start time</Label><Input id="session-start" type="time" value={sessionForm.start_time || ''} onChange={(event) => setSessionForm({ ...sessionForm, start_time: event.target.value })} /></div><div><Label htmlFor="session-end">End time</Label><Input id="session-end" type="time" value={sessionForm.end_time || ''} onChange={(event) => setSessionForm({ ...sessionForm, end_time: event.target.value })} /></div></div><div><Label htmlFor="session-topic">Topic (optional)</Label><Input id="session-topic" value={sessionForm.topic || ''} onChange={(event) => setSessionForm({ ...sessionForm, topic: event.target.value })} /></div><div><Label htmlFor="session-reference">Reference (optional)</Label><Input id="session-reference" value={sessionForm.reference || ''} onChange={(event) => setSessionForm({ ...sessionForm, reference: event.target.value })} /></div><div><Label htmlFor="session-notes">Notes</Label><Textarea id="session-notes" value={sessionForm.notes || ''} onChange={(event) => setSessionForm({ ...sessionForm, notes: event.target.value })} /></div></div><DialogFooter><Button variant="outline" onClick={() => setSessionDialog(null)}>Cancel</Button><Button disabled={saving} onClick={saveSession}>Save Session</Button></DialogFooter></DialogContent></Dialog>
+      <Dialog open={Boolean(sessionDialog)} onOpenChange={(open) => !open && setSessionDialog(null)}><DialogContent><DialogHeader><DialogTitle>{sessionDialog?.entity ? 'Edit Session' : 'Add Session'}</DialogTitle></DialogHeader><div className="grid gap-3"><div className="grid grid-cols-2 gap-3"><div><Label htmlFor="session-date">Date</Label><Input id="session-date" ref={sessionDateRef} type="date" defaultValue={sessionForm.date || ''} /></div><div><Label>Status</Label><Select value={sessionForm.status} onValueChange={(value) => setSessionForm({ ...sessionForm, status: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{['scheduled', 'completed', 'cancelled', 'rescheduled', 'holiday', 'archived'].map((status) => <SelectItem key={status} value={status}>{statusLabel(status)}</SelectItem>)}</SelectContent></Select></div></div><div className="grid grid-cols-2 gap-3"><div><Label htmlFor="session-start">Start time</Label><Input id="session-start" ref={sessionStartRef} type="time" defaultValue={sessionForm.start_time || ''} /></div><div><Label htmlFor="session-end">End time</Label><Input id="session-end" ref={sessionEndRef} type="time" defaultValue={sessionForm.end_time || ''} /></div></div><div><Label htmlFor="session-topic">Topic (optional)</Label><Input id="session-topic" value={sessionForm.topic || ''} onChange={(event) => setSessionForm({ ...sessionForm, topic: event.target.value })} /></div><div><Label htmlFor="session-reference">Reference (optional)</Label><Input id="session-reference" value={sessionForm.reference || ''} onChange={(event) => setSessionForm({ ...sessionForm, reference: event.target.value })} /></div><div><Label htmlFor="session-notes">Notes</Label><Textarea id="session-notes" value={sessionForm.notes || ''} onChange={(event) => setSessionForm({ ...sessionForm, notes: event.target.value })} /></div></div><DialogFooter><Button variant="outline" onClick={() => setSessionDialog(null)}>Cancel</Button><Button disabled={saving} onClick={saveSession}>Save Session</Button></DialogFooter></DialogContent></Dialog>
 
       <Dialog open={Boolean(wizard)} onOpenChange={(open) => !open && setWizard(null)}><DialogContent className="max-w-3xl"><DialogHeader><DialogTitle>Generate Sessions · {selectedTerm?.name}</DialogTitle></DialogHeader>{generationForm && <div className="space-y-4"><div className="grid grid-cols-5 gap-1 text-center text-xs">{[1,2,3,4,5].map((step) => <div key={step} className={'rounded-lg p-2 ' + (wizardStep === step ? 'bg-primary text-primary-foreground' : wizardStep > step ? 'bg-emerald-500/15 text-emerald-700' : 'bg-muted')}>{wizardStep > step ? <Check size={14} className="mx-auto" /> : step}<div>{stepLabel(step)}</div></div>)}</div>
         {wizardStep === 1 && <div className="grid gap-3"><p className="text-sm text-muted-foreground">Choose the weekdays on which Sessions should occur.</p><div className="grid grid-cols-2 gap-2 sm:grid-cols-4">{weekdays.map((day) => <label key={day.value} className="flex items-center gap-2 rounded-lg border p-3"><input type="checkbox" checked={generationForm.weekdays.includes(day.value)} onChange={(event) => setGenerationForm({ ...generationForm, weekdays: event.target.checked ? [...generationForm.weekdays, day.value].sort() : generationForm.weekdays.filter((value) => value !== day.value) })} />{day.label}</label>)}</div></div>}
-        {wizardStep === 2 && <div className="grid gap-3"><p className="text-sm text-muted-foreground">Set the default time for generated Sessions.</p><div className="grid grid-cols-2 gap-3"><div><Label htmlFor="generation-start">Start time</Label><Input id="generation-start" type="time" value={generationForm.start_time} onChange={(event) => setGenerationForm({ ...generationForm, start_time: event.target.value })} /></div><div><Label htmlFor="generation-end">End time</Label><Input id="generation-end" type="time" value={generationForm.end_time} onChange={(event) => setGenerationForm({ ...generationForm, end_time: event.target.value })} /></div></div><div className="grid grid-cols-2 gap-3"><div><Label htmlFor="generation-from">From</Label><Input id="generation-from" type="date" value={generationForm.start_date} onChange={(event) => setGenerationForm({ ...generationForm, start_date: event.target.value })} /></div><div><Label htmlFor="generation-to">To</Label><Input id="generation-to" type="date" value={generationForm.end_date} onChange={(event) => setGenerationForm({ ...generationForm, end_date: event.target.value })} /></div></div></div>}
+        {wizardStep === 2 && <div className="grid gap-3"><p className="text-sm text-muted-foreground">Set the default time for generated Sessions.</p><div className="grid grid-cols-2 gap-3"><div><Label htmlFor="generation-start">Start time</Label><Input id="generation-start" ref={generationStartTimeRef} type="time" defaultValue={generationForm.start_time} /></div><div><Label htmlFor="generation-end">End time</Label><Input id="generation-end" ref={generationEndTimeRef} type="time" defaultValue={generationForm.end_time} /></div></div><div className="grid grid-cols-2 gap-3"><div><Label htmlFor="generation-from">From</Label><Input id="generation-from" ref={generationStartDateRef} type="date" defaultValue={generationForm.start_date} /></div><div><Label htmlFor="generation-to">To</Label><Input id="generation-to" ref={generationEndDateRef} type="date" defaultValue={generationForm.end_date} /></div></div></div>}
         {wizardStep === 3 && <div className="grid gap-4"><div><Label>Excluded dates</Label><div className="flex gap-2 mt-1"><Input ref={excludedInputRef} type="date" value={generationForm.excluded_input} onChange={(event) => setGenerationForm({ ...generationForm, excluded_input: event.target.value })} /><Button variant="outline" onClick={() => addException('excluded')}>Add</Button></div><div className="mt-2 flex flex-wrap gap-2">{generationForm.excluded_dates.map((dateValue) => <span key={dateValue} className="rounded-full bg-muted px-3 py-1 text-xs">{dateValue}</span>)}</div></div><div><Label>Holiday dates and reasons</Label><div className="mt-1 grid gap-2 sm:grid-cols-[10rem_1fr_auto]"><Input ref={holidayInputRef} type="date" defaultValue={generationForm.holiday_input || ''} /><Input ref={holidayReasonRef} placeholder="Reason, for example: Festival" value={generationForm.holiday_reason} onChange={(event) => setGenerationForm({ ...generationForm, holiday_reason: event.target.value })} /><Button variant="outline" onClick={() => addException('holiday')}>Add</Button></div><div className="mt-2 space-y-1">{generationForm.holiday_dates.map((holiday) => <div key={holiday.date} className="rounded-lg bg-muted px-3 py-1 text-xs">{holiday.date} — {holiday.reason || 'Holiday'}</div>)}</div></div></div>}
         {wizardStep === 4 && preview && <div className="space-y-4"><div className="rounded-xl bg-primary/10 p-4"><div className="text-lg font-semibold">{preview.candidates.filter((item) => item.action === 'create').length} Sessions will be created</div><p className="text-sm text-muted-foreground">Existing Sessions will be preserved and not overwritten, including manual, cancelled, archived, holiday, and rescheduled Sessions.</p></div><div className="grid gap-3 md:grid-cols-2"><div><h4 className="font-medium">Dates to create</h4><div className="max-h-40 overflow-auto text-sm">{preview.candidates.filter((item) => item.action === 'create').map((item) => <div key={item.date}>{item.date} · Session {item.session_number}</div>) || <p>None</p>}</div></div><div><h4 className="font-medium">Preserved Sessions</h4><div className="max-h-40 overflow-auto text-sm">{preview.preserved.map((item) => <div key={item.session_number}>{item.date}{item.requested_date !== item.date ? ' (requested ' + item.requested_date + ')' : ''} · {statusLabel(item.status)} · {item.source}</div>) || <p>None</p>}</div></div></div><div><h4 className="font-medium">Excluded dates</h4>{preview.excluded.map((item) => <div key={item.date} className="text-sm">{item.date} — {item.reason}</div>)}<h4 className="mt-2 font-medium">Holidays</h4>{preview.holidays.map((item) => <div key={item.date} className="text-sm">{item.date} — {item.reason || 'Holiday'}</div>)}</div><p className="text-sm font-medium">Nothing will be created until you select Generate Sessions.</p></div>}
         {wizardStep === 5 && generationResult && <div className="space-y-4"><div className="rounded-xl bg-emerald-500/15 p-4"><div className="text-lg font-semibold">Generation complete</div><p className="text-sm">{generationResult.created.length} created · {generationResult.preserved.length} preserved</p></div><Button onClick={() => { setWizard(null); loadSessions(); }}>Review Sessions</Button></div>}
