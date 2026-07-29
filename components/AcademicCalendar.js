@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Archive, CalendarDays, Check, Edit3, History, Layers, Plus, RotateCcw, WandSparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -37,6 +37,8 @@ export default function AcademicCalendar({ request }) {
   const [preview, setPreview] = useState(null);
   const [generationResult, setGenerationResult] = useState(null);
   const [saving, setSaving] = useState(false);
+  const termStartRef = useRef(null);
+  const termEndRef = useRef(null);
 
   const loadOfferings = async () => {
     const response = await request('/program-offerings');
@@ -74,6 +76,8 @@ export default function AcademicCalendar({ request }) {
       const payload = {
         ...termForm,
         ...formValues,
+        start_date: termStartRef.current?.value || formValues.start_date || termForm.start_date,
+        end_date: termEndRef.current?.value || formValues.end_date || termForm.end_date,
         display_order: Number(formValues.display_order ?? termForm.display_order),
         program_offering_id: termDialog.entity?.program_offering_id || selectedOfferingId,
       };
@@ -172,7 +176,7 @@ export default function AcademicCalendar({ request }) {
         </section>
       </div>
 
-      <Dialog open={Boolean(termDialog)} onOpenChange={(open) => !open && setTermDialog(null)}><DialogContent><DialogHeader><DialogTitle>{termDialog?.entity ? 'Edit Term' : 'Create Term'}</DialogTitle></DialogHeader><form onSubmit={saveTerm} className="grid gap-3"><div><Label htmlFor="term-name">Term name</Label><Input name="name" id="term-name" value={termForm.name || ''} onChange={(event) => setTermForm({ ...termForm, name: event.target.value })} /></div><div><Label htmlFor="term-order">Display order</Label><Input name="display_order" id="term-order" type="number" min="1" value={termForm.display_order ?? 1} onChange={(event) => setTermForm({ ...termForm, display_order: Number(event.target.value) })} /></div><div className="grid grid-cols-2 gap-3"><div><Label htmlFor="term-start">Start date</Label><Input name="start_date" id="term-start" type="text" inputMode="numeric" placeholder="YYYY-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}" value={termForm.start_date || ''} onChange={(event) => setTermForm({ ...termForm, start_date: event.target.value })} /></div><div><Label htmlFor="term-end">End date</Label><Input name="end_date" id="term-end" type="text" inputMode="numeric" placeholder="YYYY-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}" value={termForm.end_date || ''} onChange={(event) => setTermForm({ ...termForm, end_date: event.target.value })} /></div></div></div><DialogFooter><Button variant="outline" onClick={() => setTermDialog(null)}>Cancel</Button><Button type="submit" disabled={saving}>Save Term</Button></DialogFooter></form></DialogContent></Dialog>
+      <Dialog open={Boolean(termDialog)} onOpenChange={(open) => !open && setTermDialog(null)}><DialogContent><DialogHeader><DialogTitle>{termDialog?.entity ? 'Edit Term' : 'Create Term'}</DialogTitle></DialogHeader><form onSubmit={saveTerm} className="grid gap-3"><div><Label htmlFor="term-name">Term name</Label><Input name="name" id="term-name" value={termForm.name || ''} onChange={(event) => setTermForm({ ...termForm, name: event.target.value })} /></div><div><Label htmlFor="term-order">Display order</Label><Input name="display_order" id="term-order" type="number" min="1" value={termForm.display_order ?? 1} onChange={(event) => setTermForm({ ...termForm, display_order: Number(event.target.value) })} /></div><div className="grid grid-cols-2 gap-3"><div><Label htmlFor="term-start">Start date</Label><Input name="start_date" id="term-start" ref={termStartRef} type="text" inputMode="numeric" placeholder="YYYY-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}" value={termForm.start_date || ''} onInput={(event) => setTermForm({ ...termForm, start_date: event.target.value })} /></div><div><Label htmlFor="term-end">End date</Label><Input name="end_date" id="term-end" ref={termEndRef} type="text" inputMode="numeric" placeholder="YYYY-MM-DD" pattern="\\d{4}-\\d{2}-\\d{2}" value={termForm.end_date || ''} onInput={(event) => setTermForm({ ...termForm, end_date: event.target.value })} /></div></div></div><DialogFooter><Button variant="outline" onClick={() => setTermDialog(null)}>Cancel</Button><Button type="submit" disabled={saving}>Save Term</Button></DialogFooter></form></DialogContent></Dialog>
 
       <Dialog open={Boolean(sessionDialog)} onOpenChange={(open) => !open && setSessionDialog(null)}><DialogContent><DialogHeader><DialogTitle>{sessionDialog?.entity ? 'Edit Session' : 'Add Session'}</DialogTitle></DialogHeader><div className="grid gap-3"><div className="grid grid-cols-2 gap-3"><div><Label htmlFor="session-date">Date</Label><Input id="session-date" type="date" value={sessionForm.date || ''} onChange={(event) => setSessionForm({ ...sessionForm, date: event.target.value })} /></div><div><Label>Status</Label><Select value={sessionForm.status} onValueChange={(value) => setSessionForm({ ...sessionForm, status: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{['scheduled', 'completed', 'cancelled', 'rescheduled', 'holiday', 'archived'].map((status) => <SelectItem key={status} value={status}>{statusLabel(status)}</SelectItem>)}</SelectContent></Select></div></div><div className="grid grid-cols-2 gap-3"><div><Label htmlFor="session-start">Start time</Label><Input id="session-start" type="time" value={sessionForm.start_time || ''} onChange={(event) => setSessionForm({ ...sessionForm, start_time: event.target.value })} /></div><div><Label htmlFor="session-end">End time</Label><Input id="session-end" type="time" value={sessionForm.end_time || ''} onChange={(event) => setSessionForm({ ...sessionForm, end_time: event.target.value })} /></div></div><div><Label htmlFor="session-topic">Topic (optional)</Label><Input id="session-topic" value={sessionForm.topic || ''} onChange={(event) => setSessionForm({ ...sessionForm, topic: event.target.value })} /></div><div><Label htmlFor="session-reference">Reference (optional)</Label><Input id="session-reference" value={sessionForm.reference || ''} onChange={(event) => setSessionForm({ ...sessionForm, reference: event.target.value })} /></div><div><Label htmlFor="session-notes">Notes</Label><Textarea id="session-notes" value={sessionForm.notes || ''} onChange={(event) => setSessionForm({ ...sessionForm, notes: event.target.value })} /></div></div><DialogFooter><Button variant="outline" onClick={() => setSessionDialog(null)}>Cancel</Button><Button disabled={saving} onClick={saveSession}>Save Session</Button></DialogFooter></DialogContent></Dialog>
 
