@@ -35,6 +35,14 @@ test('Offering updates keep date ordering valid', () => {
   assert.throws(() => updateProgramOffering(offering, { input: { end_date: '2026-06-01' }, actorId: 'u', now: '2026-07-30T00:00:00Z' }), /start_date/);
 });
 
+test('Offering parent Program cannot be reassigned', () => {
+  const offering = createProgramOffering({ ...ctx, input: offeringInput });
+  assert.throws(
+    () => updateProgramOffering(offering, { input: { program_id: 'program-2' }, actorId: 'u', now: '2026-07-30T00:00:00Z' }),
+    /program_id cannot be changed/,
+  );
+});
+
 test('archived entity restores only to inactive', () => {
   const program = createAcademicProgram({ ...ctx, input: { name: 'Gita', status: 'active' } });
   const archived = transitionProgramEntity(program, { status: 'archived', actorId: 'u', now: '2026-07-30T00:00:00Z' });
