@@ -217,9 +217,7 @@ export default function AcademicCalendar({ request }) {
                   inputMode="numeric"
                   placeholder="YYYY-MM-DD"
                   pattern="\\d{4}-\\d{2}-\\d{2}"
-                  value={termForm.start_date || ''}
-                  onInput={(event) => setTermForm((current) => ({ ...current, start_date: event.currentTarget.value }))}
-                  onChange={(event) => setTermForm((current) => ({ ...current, start_date: event.currentTarget.value }))}
+                  defaultValue={termForm.start_date || ''}
                 />
               </div>
               <div>
@@ -232,9 +230,7 @@ export default function AcademicCalendar({ request }) {
                   inputMode="numeric"
                   placeholder="YYYY-MM-DD"
                   pattern="\\d{4}-\\d{2}-\\d{2}"
-                  value={termForm.end_date || ''}
-                  onInput={(event) => setTermForm((current) => ({ ...current, end_date: event.currentTarget.value }))}
-                  onChange={(event) => setTermForm((current) => ({ ...current, end_date: event.currentTarget.value }))}
+                  defaultValue={termForm.end_date || ''}
                 />
               </div>
             </div>
