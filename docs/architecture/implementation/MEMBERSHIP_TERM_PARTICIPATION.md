@@ -37,3 +37,16 @@ Filters include Membership, Student, Program Offering, Term, and Status.
 ## Out of scope
 
 Attendance, Credits, Payments, Parent Dashboard changes, Notifications, Reports, and Certificates.
+
+
+## Development verification fixture
+
+Preview and local development environments expose an authenticated, idempotent fixture endpoint:
+
+- `POST /api/dev-fixtures/membership-term-participation`
+- Available only when `VERCEL_ENV=preview`, `ENABLE_DEV_FIXTURES=true`, or local development is active.
+- Restricted to `super_admin` and `org_admin`.
+- Creates or reuses one Student, Active Membership, canonical Program, Program Offering, and Term in the authenticated Organization.
+- Uses the existing Membership, Program, Offering, and Term constructors/services where applicable; it does not weaken Participation validation.
+- Fixture records use a `pr16-fixture` identifier prefix and are safe to call repeatedly.
+- The legacy Program record created only for a fresh fixture exists to satisfy the current development shell's Membership API; it is explicitly test data and is not a production migration mechanism.
