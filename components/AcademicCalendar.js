@@ -71,13 +71,16 @@ export default function AcademicCalendar({ request }) {
   const saveTerm = async (event) => {
     event?.preventDefault();
     try {
+      const formElement = event?.currentTarget;
+      const liveStartDate = termStartRef.current?.value || formElement?.elements?.namedItem('start_date')?.value || '';
+      const liveEndDate = termEndRef.current?.value || formElement?.elements?.namedItem('end_date')?.value || '';
+      const formValues = formElement ? Object.fromEntries(new FormData(formElement)) : {};
       setSaving(true);
-      const formValues = event?.currentTarget ? Object.fromEntries(new FormData(event.currentTarget)) : {};
       const payload = {
         ...termForm,
         ...formValues,
-        start_date: termStartRef.current?.value || formValues.start_date || termForm.start_date,
-        end_date: termEndRef.current?.value || formValues.end_date || termForm.end_date,
+        start_date: liveStartDate || formValues.start_date || termForm.start_date,
+        end_date: liveEndDate || formValues.end_date || termForm.end_date,
         display_order: Number(formValues.display_order ?? termForm.display_order),
         program_offering_id: termDialog.entity?.program_offering_id || selectedOfferingId,
       };
