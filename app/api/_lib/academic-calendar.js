@@ -79,16 +79,24 @@ export async function transitionAcademicTerm(db, user, term, nextStatus) {
 export async function createAcademicSession(db, user, organizationId, input) {
   const term = await db.collection('academic_terms').findOne({ id: input.term_id, organization_id: organizationId, status: { $ne: 'archived' } });
   if (!term) throw new AcademicCalendarError('Term not found', 404);
+  if (input.date < term.start_date || input.date > term.end_date) throw new AcademicCalendarError('Session date must be within the Term date range');
   const existing = await db.collection('academic_sessions').find({ term_id: term.id, organization_id: organizationId }).sort({ session_number: -1 }).limit(1).toArray();
   const now = new Date().toISOString();
   const nextNumber = (existing[0]?.session_number || 0) + 1;
   return writeEntity(db, user, 'academic_sessions', createSession({ id: uuidv4(), organizationId, input, actorId: user.id, now, source: 'manual', sessionNumber: nextNumber }), 'session.created');
 }
 export async function updateAcademicSession(db, user, session, input) {
+  const term = await db.collection('academic_terms').findOne({ id: session.term_id, organization_id: session.organization_id });
+  if (!term) throw new AcademicCalendarError('Term not found', 404);
   const now = new Date().toISOString();
-  return replaceEntity(db, user, 'academic_sessions', session, updateSession(session, { input, actorId: user.id, now }), 'session.updated', { fields: input });
+  const updated = updateSession(session, { input, actorId: user.id, now });
+  if (updated.date < term.start_date || updated.date > term.end_date) throw new AcademicCalendarError('Session date must be within the Term date range');
+  return replaceEntity(db, user, 'academic_sessions', session, updated, 'session.updated', { fields: input });
 }
 export async function transitionAcademicSession(db, user, session, nextStatus, details = {}) {
+  const term = await db.collection('academic_terms').findOne({ id: session.term_id, organization_id: session.organization_id });
+  if (!term) throw new AcademicCalendarError('Term not found', 404);
+  if (details.new_date && (details.new_date < term.start_date || details.new_date > term.end_date)) throw new AcademicCalendarError('Rescheduled date must be within the Term date range');
   const now = new Date().toISOString();
   return replaceEntity(db, user, 'academic_sessions', session, transitionSession(session, { status: nextStatus, actorId: user.id, now, details }), 'session.status_changed', { fields: { status: nextStatus, ...details } });
 }
