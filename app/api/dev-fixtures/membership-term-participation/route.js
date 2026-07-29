@@ -187,11 +187,13 @@ export async function POST(req) {
       await createCanonicalRecord(db, auth.user, 'program_offerings', offering, 'program_offering.created');
     }
 
-    const termId = `${FIXTURE_PREFIX}-term-${organizationId}`;
-    let term = await terms.findOne({ id: termId, organization_id: organizationId });
+    let term = await terms.findOne({
+      organization_id: organizationId,
+      program_offering_id: offering.id,
+      name: 'PR16 Verification Term',
+    });
     if (!term) {
       term = await createAcademicTerm(db, auth.user, organizationId, {
-        id: termId,
         name: 'PR16 Verification Term',
         display_order: 1,
         start_date: '2026-07-29',
