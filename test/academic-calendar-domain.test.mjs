@@ -48,6 +48,16 @@ test('Generation cannot extend beyond the Term date range', () => {
   assert.throws(() => generationCandidates(term, { weekdays: [0], start_date: '2026-07-01', end_date: '2026-08-31', start_time: '10:00', end_time: '11:30' }, []), /within the Term/);
 });
 
+test('Regeneration preserves a rescheduled Session by generation identity', () => {
+  const term = createTerm({ ...ctx, input: termInput });
+  const session = createSession({ ...ctx, id: 'session-rescheduled', input: { term_id: 'term-1', date: '2026-08-02', start_time: '10:00', end_time: '11:30', generation_key: 'term-1:2026-08-02' }, source: 'generated', sessionNumber: 1 });
+  const rescheduled = transitionSession(session, { status: 'rescheduled', details: { new_date: '2026-08-09' }, actorId: 'user-1', now: ctx.now });
+  const preview = generationCandidates(term, { weekdays: [0], start_date: '2026-08-01', end_date: '2026-08-31', start_time: '10:00', end_time: '11:30', excluded_dates: [], holiday_dates: [] }, [rescheduled]);
+  assert.equal(preview.candidates.find((item) => item.requested_date === '2026-08-02').action, 'preserve');
+  assert.equal(preview.candidates.filter((item) => item.action === 'create').length, 2);
+  assert.equal(preview.preserved[0].status, 'rescheduled');
+});
+
 test('Generation configuration requires at least one weekday and valid times', () => {
   assert.throws(() => normalizeGenerationInput({ weekdays: [], start_date: '2026-08-01', end_date: '2026-08-31', start_time: '10:00', end_time: '11:30' }), /weekday/);
   assert.throws(() => normalizeGenerationInput({ weekdays: [0], start_date: '2026-08-01', end_date: '2026-08-31', start_time: 'bad', end_time: '11:30' }), /HH:mm/);
