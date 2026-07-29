@@ -54,7 +54,7 @@ test('Regeneration preserves a rescheduled Session by generation identity', () =
   const rescheduled = transitionSession(session, { status: 'rescheduled', details: { new_date: '2026-08-09' }, actorId: 'user-1', now: ctx.now });
   const preview = generationCandidates(term, { weekdays: [0], start_date: '2026-08-01', end_date: '2026-08-31', start_time: '10:00', end_time: '11:30', excluded_dates: [], holiday_dates: [] }, [rescheduled]);
   assert.equal(preview.candidates.find((item) => item.requested_date === '2026-08-02').action, 'preserve');
-  assert.equal(preview.candidates.filter((item) => item.action === 'create').length, 2);
+  assert.equal(preview.candidates.filter((item) => item.action === 'create').length, 3);
   assert.equal(preview.preserved[0].status, 'rescheduled');
 });
 
