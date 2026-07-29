@@ -24,10 +24,6 @@ export async function ensureProgramInfrastructure(db) {
         { key: { organization_id: 1, program_id: 1, academic_year: 1, cohort: 1 }, name: 'offerings_program_year_cohort', unique: true },
         { key: { organization_id: 1, status: 1, start_date: 1 }, name: 'offerings_org_status_start' },
       ]),
-      db.collection('migration_mappings').createIndexes([
-        { key: { organization_id: 1, mapping_type: 1, 'source.entity_id': 1 }, name: 'migration_mapping_source_unique', unique: true, partialFilterExpression: { status: 'active' } },
-        { key: { organization_id: 1, 'targets.program_offering_id': 1 }, name: 'migration_mapping_offering' },
-      ]),
     ]).catch((error) => { provision = undefined; throw error; });
   }
   return provision;
@@ -74,24 +70,4 @@ export async function transitionEntity(db, user, collection, entity, status, kin
     await db.collection('outbox_events').insertOne(outboxRecord(entity.organization_id, kind + '.status_changed', updated, now), { session });
   });
   return stripId(updated);
-}
-export async function createLegacyProgramMapping(db, user, organizationId, input) {
-  if (!input.legacy_program_id || !input.program_offering_id) throw new ProgramDomainError('legacy_program_id and program_offering_id are required');
-  const [legacy, offering] = await Promise.all([
-    db.collection('programs').findOne({ id: input.legacy_program_id, organization_id: organizationId, is_deleted: { $ne: true } }),
-    db.collection('program_offerings').findOne({ id: input.program_offering_id, organization_id: organizationId, status: { $ne: 'archived' } }),
-  ]);
-  if (!legacy || !offering) throw new ProgramDomainError('Legacy Program and active Program Offering must exist in this Organization', 404);
-  const now = new Date().toISOString();
-  const mapping = {
-    id: uuidv4(), organization_id: organizationId, mapping_type: 'legacy_program_to_program_offering', status: 'active',
-    source: { entity_type: 'legacy_program', entity_id: legacy.id, snapshot: {
-      name: legacy.name, description: legacy.description || '', age_group: legacy.age_group || '',
-      start_date: legacy.start_date || null, end_date: legacy.end_date || null, days_of_week: legacy.days_of_week || [],
-      cancelled_dates: legacy.cancelled_dates || [], sessions: legacy.sessions || [], fee_amount: legacy.fee_amount || null,
-    }},
-    targets: { program_id: offering.program_id, program_offering_id: offering.id },
-    mapped_by: user.id, mapped_at: now, created_at: now,
-  };
-  return writeNewEntity(db, user, organizationId, 'migration_mappings', 'migration_mapping.created', mapping);
 }
