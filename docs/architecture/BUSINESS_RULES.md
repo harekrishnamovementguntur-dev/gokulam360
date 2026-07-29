@@ -21,6 +21,9 @@
 - **BR-020** A Membership belongs to exactly one Student and exactly one Program.
 - **BR-021** A Membership is durable across Terms, academic years, offerings, and batch changes.
 - **BR-022** A Membership Term Participation belongs to exactly one Membership, one Program Offering, and one Term.
+- **BR-027** Participation requires an Active Membership, and its Program Offering must belong to that Membership's Program.
+- **BR-028** The selected Term must belong to the selected Program Offering and Organization.
+- **BR-029** Only one Active Participation may exist for the same Membership and Term; Participation references are immutable after creation.
 - **BR-023** Membership lifecycle states are Pending, Active, Paused, Completed, Inactive, and Archived only.
 - **BR-024** Memberships are never deleted. Lifecycle changes are recorded as history and audit events.
 - **BR-025** Archiving is reversible only through an audited lifecycle transition that restores the immediately preceding Membership status.

@@ -12,6 +12,7 @@ These are the canonical terms for Gokulam360. Use them consistently in database 
 | **Session** | A scheduled class or meeting within a Term. It owns schedule, teacher, topic, location, status, and Attendance. |\n| **Session Source** | The ownership marker identifying whether a Session was generated or manually created/modified. |\n| **Session Generation Run** | An auditable execution of Session generation containing its configuration, preview outcome, created Sessions, and preserved Sessions. |
 | **Membership** | The durable Student-to-Program relationship. It is the central business entity and survives operational changes. |
 | **Membership Term Participation** | The time-bound participation of a Membership in a particular Program Offering and Term. |
+| **Participation Lifecycle** | The audited transitions between Active, Completed, Withdrawn, and Archived Participation states. |
 | **Attendance Record** | A record of a Participation’s attendance for one Session. |
 | **Credit** | An operational unit consumed according to Credit Policy; it is not money. |
 | **Credit Ledger** | The append-only record of all credit increases and decreases for a Membership. Its sum is the credit balance. |
