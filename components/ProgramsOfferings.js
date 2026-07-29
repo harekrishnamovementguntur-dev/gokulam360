@@ -66,7 +66,8 @@ export default function ProgramsOfferings({ request }) {
       }
       if (dialog.kind === 'offering') {
         const path = dialog.entity ? '/program-offerings/' + dialog.entity.id : '/program-offerings';
-        await request(path, { method: dialog.entity ? 'PUT' : 'POST', body: JSON.stringify(form) });
+        const payload = dialog.entity ? { ...form, program_id: undefined } : form;
+        await request(path, { method: dialog.entity ? 'PUT' : 'POST', body: JSON.stringify(payload) });
       }
       setDialog(null);
       await load();
@@ -164,7 +165,7 @@ export default function ProgramsOfferings({ request }) {
             <div><Label htmlFor="program-age-group">Age group</Label><Input id="program-age-group" value={form.age_group || ''} onChange={(event) => setForm({ ...form, age_group: event.target.value })} /></div>
           </div>}
           {dialog?.kind === 'offering' && <div className="grid gap-3">
-            <div><Label>Canonical Program</Label><Select value={form.program_id || undefined} onValueChange={(value) => setForm({ ...form, program_id: value })}><SelectTrigger><SelectValue placeholder="Select a Program" /></SelectTrigger><SelectContent>{programs.filter((program) => program.status !== 'archived').map((program) => <SelectItem value={program.id} key={program.id}>{program.name}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label>Canonical Program</Label><Select disabled={Boolean(dialog.entity)} value={form.program_id || undefined} onValueChange={(value) => setForm({ ...form, program_id: value })}><SelectTrigger><SelectValue placeholder="Select a Program" /></SelectTrigger><SelectContent>{programs.filter((program) => program.status !== 'archived').map((program) => <SelectItem value={program.id} key={program.id}>{program.name}</SelectItem>)}</SelectContent></Select>{dialog.entity && <p className="text-xs text-muted-foreground">The parent Program is fixed after an Offering is created.</p>}</div>
             <div><Label htmlFor="offering-year">Academic year</Label><Input id="offering-year" value={form.academic_year || ''} onChange={(event) => setForm({ ...form, academic_year: event.target.value })} /></div>
             <div><Label htmlFor="offering-cohort">Cohort / batch</Label><Input id="offering-cohort" value={form.cohort || ''} onChange={(event) => setForm({ ...form, cohort: event.target.value })} /></div>
             <div className="grid grid-cols-2 gap-3"><div><Label htmlFor="offering-start">Start date</Label><Input id="offering-start" type="date" value={form.start_date || ''} onChange={(event) => setForm({ ...form, start_date: event.target.value })} /></div><div><Label htmlFor="offering-end">End date</Label><Input id="offering-end" type="date" value={form.end_date || ''} onChange={(event) => setForm({ ...form, end_date: event.target.value })} /></div></div>
