@@ -1,12 +1,209 @@
 'use client';
-import {useEffect,useState} from 'react';import {toast} from 'sonner';import {BookOpen,Plus,Layers,Link2} from 'lucide-react';import {Button} from '@/components/ui/button';import {Input} from '@/components/ui/input';import {Textarea} from '@/components/ui/textarea';import {Label} from '@/components/ui/label';import {Dialog,DialogContent,DialogHeader,DialogTitle,DialogFooter} from '@/components/ui/dialog';import {Select,SelectContent,SelectItem,SelectTrigger,SelectValue} from '@/components/ui/select';import {Table,TableBody,TableCell,TableHead,TableHeader,TableRow} from '@/components/ui/table';
-const initial={name:'',description:'',age_group:'',status:'active'};
-export default function ProgramsOfferings({request}){const [programs,setPrograms]=useState([]),[offerings,setOfferings]=useState([]),[legacy,setLegacy]=useState([]),[mappings,setMappings]=useState([]),[mode,setMode]=useState(null),[form,setForm]=useState(initial);
-const load=async()=>{try{const [p,o,l,m]=await Promise.all([request('/academic-programs'),request('/program-offerings'),request('/programs'),request('/migration-mappings')]);setPrograms(p.items||[]);setOfferings(o.items||[]);setLegacy(l.items||[]);setMappings(m.items||[])}catch(e){toast.error(e.message)}};useEffect(()=>{load()},[]);
-const save=async()=>{try{if(mode==='program')await request('/academic-programs',{method:'POST',body:JSON.stringify(form)});if(mode==='offering')await request('/program-offerings',{method:'POST',body:JSON.stringify(form)});if(mode==='mapping')await request('/migration-mappings',{method:'POST',body:JSON.stringify(form)});setMode(null);setForm(initial);await load();toast.success('Saved')}catch(e){toast.error(e.message)}};
-const programName=id=>programs.find(x=>x.id===id)?.name||id;
-return <div className="space-y-5"><div className="flex items-center gap-3 flex-wrap"><div className="w-12 h-12 rounded-2xl bg-saffron-gradient text-white grid place-items-center"><BookOpen/></div><div className="flex-1"><h1 className="text-2xl font-bold">Programs & Offerings</h1><p className="text-sm text-muted-foreground">Canonical academic definitions and operational deliveries. Legacy Classes & Batches remains unchanged.</p></div><Button onClick={()=>{setMode('program');setForm(initial)}}><Plus size={15} className="mr-1"/>Program</Button><Button variant="outline" onClick={()=>{setMode('offering');setForm({program_id:'',academic_year:'',cohort:'',start_date:'',end_date:'',capacity:0,schedule:{},status:'active'}})}}><Layers size={15} className="mr-1"/>Offering</Button><Button variant="outline" onClick={()=>{setMode('mapping');setForm({legacy_program_id:'',program_offering_id:''})}}><Link2 size={15} className="mr-1"/>Map legacy</Button></div>
-<div className="grid md:grid-cols-2 gap-4"><section className="rounded-2xl glass overflow-hidden"><h2 className="font-semibold p-4">Canonical Programs</h2><Table><TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Age Group</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{programs.map(p=><TableRow key={p.id}><TableCell>{p.name}<div className="text-xs text-muted-foreground">{p.description}</div></TableCell><TableCell>{p.age_group||'—'}</TableCell><TableCell>{p.status}</TableCell></TableRow>)}{!programs.length&&<TableRow><TableCell colSpan={3}>No canonical Programs yet.</TableCell></TableRow>}</TableBody></Table></section>
-<section className="rounded-2xl glass overflow-hidden"><h2 className="font-semibold p-4">Program Offerings</h2><Table><TableHeader><TableRow><TableHead>Program</TableHead><TableHead>Delivery</TableHead><TableHead>Status</TableHead></TableRow></TableHeader><TableBody>{offerings.map(o=><TableRow key={o.id}><TableCell>{programName(o.program_id)}</TableCell><TableCell>{o.academic_year}{o.cohort?' · '+o.cohort:''}</TableCell><TableCell>{o.status}</TableCell></TableRow>)}{!offerings.length&&<TableRow><TableCell colSpan={3}>No Program Offerings yet.</TableCell></TableRow>}</TableBody></Table></section></div>
-<section className="rounded-2xl glass p-4"><h2 className="font-semibold">Legacy Program Bridge</h2><p className="text-sm text-muted-foreground mb-3">Mappings are explicit. Memberships still use their legacy program_id until Membership Term Participation is introduced.</p><div className="text-sm">{mappings.length} mapped of {legacy.length} legacy Programs</div></section>
-<Dialog open={!!mode} onOpenChange={v=>!v&&setMode(null)}><DialogContent><DialogHeader><DialogTitle>{mode==='program'?'Create Program':mode==='offering'?'Create Program Offering':'Map Legacy Program'}</DialogTitle></DialogHeader>{mode==='program'&&<div className="grid gap-3"><div><Label>Name</Label><Input value={form.name||''} onChange={e=>setForm({...form,name:e.target.value})}/></div><div><Label>Description</Label><Textarea value={form.description||''} onChange={e=>setForm({...form,description:e.target.value})}/></div><div><Label>Age group</Label><Input value={form.age_group||''} onChange={e=>setForm({...form,age_group:e.target.value})}/></div></div>}{mode==='offering'&&<div className="grid gap-3"><Select onValueChange={v=>setForm({...form,program_id:v})}><SelectTrigger><SelectValue placeholder="Canonical Program"/></SelectTrigger><SelectContent>{programs.map(p=><SelectItem value={p.id} key={p.id}>{p.name}</SelectItem>)}</SelectContent></Select><Input placeholder="Academic year" value={form.academic_year||''} onChange={e=>setForm({...form,academic_year:e.target.value})}/><Input placeholder="Cohort / batch" value={form.cohort||''} onChange={e=>setForm({...form,cohort:e.target.value})}/><Input type="date" value={form.start_date||''} onChange={e=>setForm({...form,start_date:e.target.value})}/><Input type="date" value={form.end_date||''} onChange={e=>setForm({...form,end_date:e.target.value})}/><Input type="number" min="0" placeholder="Capacity" value={form.capacity||0} onChange={e=>setForm({...form,capacity:Number(e.target.value)})}/><Input placeholder="Schedule (for example: Sunday 10:00–11:00)" value={form.schedule?.label||''} onChange={e=>setForm({...form,schedule:{...form.schedule,label:e.target.value}})}/></div>}{mode==='mapping'&&<div className="grid gap-3"><Select onValueChange={v=>setForm({...form,legacy_program_id:v})}><SelectTrigger><SelectValue placeholder="Legacy Program"/></SelectTrigger><SelectContent>{legacy.map(p=><SelectItem value={p.id} key={p.id}>{p.name}</SelectItem>)}</SelectContent></Select><Select onValueChange={v=>setForm({...form,program_offering_id:v})}><SelectTrigger><SelectValue placeholder="Canonical Program Offering"/></SelectTrigger><SelectContent>{offerings.map(o=><SelectItem value={o.id} key={o.id}>{programName(o.program_id)+' · '+o.academic_year+' '+o.cohort}</SelectItem>)}</SelectContent></Select></div>}<DialogFooter><Button variant="outline" onClick={()=>setMode(null)}>Cancel</Button><Button onClick={save}>Save</Button></DialogFooter></DialogContent></Dialog></div>}
+
+import { useEffect, useState } from 'react';
+import { toast } from 'sonner';
+import { Archive, BookOpen, Edit3, Layers, Link2, Plus, RotateCcw } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+
+const emptyProgram = { name: '', description: '', age_group: '', status: 'active' };
+const emptyOffering = { program_id: '', academic_year: '', cohort: '', start_date: '', end_date: '', capacity: 0, schedule: { label: '' }, status: 'active' };
+const emptyMapping = { legacy_program_id: '', program_offering_id: '' };
+
+export default function ProgramsOfferings({ request }) {
+  const [programs, setPrograms] = useState([]);
+  const [offerings, setOfferings] = useState([]);
+  const [legacyPrograms, setLegacyPrograms] = useState([]);
+  const [mappings, setMappings] = useState([]);
+  const [dialog, setDialog] = useState(null);
+  const [form, setForm] = useState(emptyProgram);
+  const [saving, setSaving] = useState(false);
+
+  const load = async () => {
+    try {
+      const [programResponse, offeringResponse, legacyResponse, mappingResponse] = await Promise.all([
+        request('/academic-programs'),
+        request('/program-offerings'),
+        request('/programs'),
+        request('/migration-mappings'),
+      ]);
+      setPrograms(programResponse.items || []);
+      setOfferings(offeringResponse.items || []);
+      setLegacyPrograms(legacyResponse.items || []);
+      setMappings(mappingResponse.items || []);
+    } catch (error) {
+      toast.error(error.message || 'Unable to load Programs and Offerings');
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const programName = (programId) => programs.find((program) => program.id === programId)?.name || 'Unknown Program';
+
+  const openProgram = (program = null) => {
+    setDialog({ kind: 'program', entity: program });
+    setForm(program ? { name: program.name, description: program.description || '', age_group: program.age_group || '' } : emptyProgram);
+  };
+
+  const openOffering = (offering = null) => {
+    setDialog({ kind: 'offering', entity: offering });
+    setForm(offering ? {
+      program_id: offering.program_id,
+      academic_year: offering.academic_year,
+      cohort: offering.cohort || '',
+      start_date: offering.start_date,
+      end_date: offering.end_date,
+      capacity: offering.capacity || 0,
+      schedule: offering.schedule || { label: '' },
+    } : emptyOffering);
+  };
+
+  const openMapping = () => {
+    setDialog({ kind: 'mapping', entity: null });
+    setForm(emptyMapping);
+  };
+
+  const save = async () => {
+    try {
+      setSaving(true);
+      if (dialog.kind === 'program') {
+        const path = dialog.entity ? '/academic-programs/' + dialog.entity.id : '/academic-programs';
+        await request(path, { method: dialog.entity ? 'PUT' : 'POST', body: JSON.stringify(form) });
+      }
+      if (dialog.kind === 'offering') {
+        const path = dialog.entity ? '/program-offerings/' + dialog.entity.id : '/program-offerings';
+        await request(path, { method: dialog.entity ? 'PUT' : 'POST', body: JSON.stringify(form) });
+      }
+      if (dialog.kind === 'mapping') {
+        await request('/migration-mappings', { method: 'POST', body: JSON.stringify(form) });
+      }
+      setDialog(null);
+      await load();
+      toast.success('Saved successfully');
+    } catch (error) {
+      toast.error(error.message || 'Unable to save changes');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const transition = async (kind, entity, status) => {
+    try {
+      setSaving(true);
+      const base = kind === 'program' ? '/academic-programs/' : '/program-offerings/';
+      await request(base + entity.id + '/lifecycle', { method: 'POST', body: JSON.stringify({ status }) });
+      await load();
+      toast.success(status === 'archived' ? 'Archived successfully' : 'Restored as inactive');
+    } catch (error) {
+      toast.error(error.message || 'Unable to update status');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const actionButtons = (kind, entity, edit) => (
+    <div className="flex justify-end gap-1">
+      <Button variant="ghost" size="icon" aria-label={'Edit ' + entity.name} onClick={edit}>
+        <Edit3 size={15} />
+      </Button>
+      {entity.status === 'archived' ? (
+        <Button variant="ghost" size="icon" aria-label={'Restore ' + entity.name} disabled={saving} onClick={() => transition(kind, entity, 'inactive')}>
+          <RotateCcw size={15} />
+        </Button>
+      ) : (
+        <Button variant="ghost" size="icon" aria-label={'Archive ' + entity.name} disabled={saving} onClick={() => transition(kind, entity, 'archived')}>
+          <Archive size={15} />
+        </Button>
+      )}
+    </div>
+  );
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="grid h-12 w-12 place-items-center rounded-2xl bg-saffron-gradient text-white"><BookOpen /></div>
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold">Programs & Offerings</h1>
+          <p className="text-sm text-muted-foreground">Manage reusable academic Programs and their operational deliveries. Existing Classes & Batches remain unchanged.</p>
+        </div>
+        <Button onClick={() => openProgram()}><Plus size={15} className="mr-1" />Program</Button>
+        <Button variant="outline" onClick={() => openOffering()}><Layers size={15} className="mr-1" />Offering</Button>
+        <Button variant="outline" onClick={openMapping}><Link2 size={15} className="mr-1" />Map legacy</Button>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <section className="overflow-hidden rounded-2xl glass">
+          <div className="p-4"><h2 className="font-semibold">Canonical Programs</h2><p className="text-sm text-muted-foreground">Academic definitions only—no pricing, dates, or schedule.</p></div>
+          <Table>
+            <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Age Group</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {programs.map((program) => <TableRow key={program.id}>
+                <TableCell><div className="font-medium">{program.name}</div><div className="max-w-[18rem] truncate text-xs text-muted-foreground">{program.description || 'No description'}</div></TableCell>
+                <TableCell>{program.age_group || '—'}</TableCell>
+                <TableCell className="capitalize">{program.status}</TableCell>
+                <TableCell>{actionButtons('program', program, () => openProgram(program))}</TableCell>
+              </TableRow>)}
+              {!programs.length && <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">No canonical Programs yet.</TableCell></TableRow>}
+            </TableBody>
+          </Table>
+        </section>
+
+        <section className="overflow-hidden rounded-2xl glass">
+          <div className="p-4"><h2 className="font-semibold">Program Offerings</h2><p className="text-sm text-muted-foreground">Delivery details for a Program, such as cohort, dates, capacity, and schedule.</p></div>
+          <Table>
+            <TableHeader><TableRow><TableHead>Program</TableHead><TableHead>Delivery</TableHead><TableHead>Status</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+            <TableBody>
+              {offerings.map((offering) => <TableRow key={offering.id}>
+                <TableCell className="font-medium">{programName(offering.program_id)}</TableCell>
+                <TableCell><div>{offering.academic_year}{offering.cohort ? ' · ' + offering.cohort : ''}</div><div className="text-xs text-muted-foreground">{offering.start_date} to {offering.end_date}</div></TableCell>
+                <TableCell className="capitalize">{offering.status}</TableCell>
+                <TableCell>{actionButtons('offering', { ...offering, name: programName(offering.program_id) + ' offering' }, () => openOffering(offering))}</TableCell>
+              </TableRow>)}
+              {!offerings.length && <TableRow><TableCell colSpan={4} className="py-8 text-center text-muted-foreground">No Program Offerings yet.</TableCell></TableRow>}
+            </TableBody>
+          </Table>
+        </section>
+      </div>
+
+      <section className="rounded-2xl glass p-4">
+        <h2 className="font-semibold">Legacy Program Bridge</h2>
+        <p className="mb-3 text-sm text-muted-foreground">Mappings are explicit and auditable. Memberships continue using legacy program_id until the future Membership Term Participation migration.</p>
+        <div className="space-y-2 text-sm">
+          {mappings.map((mapping) => <div key={mapping.id} className="rounded-lg bg-muted/50 px-3 py-2">Legacy Program {legacyPrograms.find((program) => program.id === mapping.source?.entity_id)?.name || mapping.source?.snapshot?.name || mapping.source?.entity_id} → {programName(mapping.targets?.program_id)} · {offerings.find((offering) => offering.id === mapping.targets?.program_offering_id)?.academic_year || 'Offering'}</div>)}
+          {!mappings.length && <div className="text-muted-foreground">No legacy Programs have been mapped. {legacyPrograms.length} legacy Programs remain available to map.</div>}
+        </div>
+      </section>
+
+      <Dialog open={Boolean(dialog)} onOpenChange={(open) => !open && setDialog(null)}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>{dialog?.kind === 'program' ? (dialog.entity ? 'Edit Program' : 'Create Program') : dialog?.kind === 'offering' ? (dialog.entity ? 'Edit Program Offering' : 'Create Program Offering') : 'Map Legacy Program'}</DialogTitle></DialogHeader>
+          {dialog?.kind === 'program' && <div className="grid gap-3">
+            <div><Label htmlFor="program-name">Name</Label><Input id="program-name" value={form.name || ''} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div>
+            <div><Label htmlFor="program-description">Description</Label><Textarea id="program-description" value={form.description || ''} onChange={(event) => setForm({ ...form, description: event.target.value })} /></div>
+            <div><Label htmlFor="program-age-group">Age group</Label><Input id="program-age-group" value={form.age_group || ''} onChange={(event) => setForm({ ...form, age_group: event.target.value })} /></div>
+          </div>}
+          {dialog?.kind === 'offering' && <div className="grid gap-3">
+            <div><Label>Canonical Program</Label><Select value={form.program_id || undefined} onValueChange={(value) => setForm({ ...form, program_id: value })}><SelectTrigger><SelectValue placeholder="Select a Program" /></SelectTrigger><SelectContent>{programs.filter((program) => program.status !== 'archived').map((program) => <SelectItem value={program.id} key={program.id}>{program.name}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label htmlFor="offering-year">Academic year</Label><Input id="offering-year" value={form.academic_year || ''} onChange={(event) => setForm({ ...form, academic_year: event.target.value })} /></div>
+            <div><Label htmlFor="offering-cohort">Cohort / batch</Label><Input id="offering-cohort" value={form.cohort || ''} onChange={(event) => setForm({ ...form, cohort: event.target.value })} /></div>
+            <div className="grid grid-cols-2 gap-3"><div><Label htmlFor="offering-start">Start date</Label><Input id="offering-start" type="date" value={form.start_date || ''} onChange={(event) => setForm({ ...form, start_date: event.target.value })} /></div><div><Label htmlFor="offering-end">End date</Label><Input id="offering-end" type="date" value={form.end_date || ''} onChange={(event) => setForm({ ...form, end_date: event.target.value })} /></div></div>
+            <div><Label htmlFor="offering-capacity">Capacity</Label><Input id="offering-capacity" type="number" min="0" value={form.capacity ?? 0} onChange={(event) => setForm({ ...form, capacity: Number(event.target.value) })} /></div>
+            <div><Label htmlFor="offering-schedule">Schedule label</Label><Input id="offering-schedule" placeholder="For example: Sunday 10:00–11:00" value={form.schedule?.label || ''} onChange={(event) => setForm({ ...form, schedule: { ...form.schedule, label: event.target.value } })} /></div>
+          </div>}
+          {dialog?.kind === 'mapping' && <div className="grid gap-3">
+            <div><Label>Legacy Program</Label><Select value={form.legacy_program_id || undefined} onValueChange={(value) => setForm({ ...form, legacy_program_id: value })}><SelectTrigger><SelectValue placeholder="Select a legacy Program" /></SelectTrigger><SelectContent>{legacyPrograms.map((program) => <SelectItem value={program.id} key={program.id}>{program.name}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label>Canonical Program Offering</Label><Select value={form.program_offering_id || undefined} onValueChange={(value) => setForm({ ...form, program_offering_id: value })}><SelectTrigger><SelectValue placeholder="Select a Program Offering" /></SelectTrigger><SelectContent>{offerings.map((offering) => <SelectItem value={offering.id} key={offering.id}>{programName(offering.program_id) + ' · ' + offering.academic_year + (offering.cohort ? ' · ' + offering.cohort : '')}</SelectItem>)}</SelectContent></Select></div>
+          </div>}
+          <DialogFooter><Button variant="outline" disabled={saving} onClick={() => setDialog(null)}>Cancel</Button><Button disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
