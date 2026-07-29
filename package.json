@@ -9,7 +9,8 @@
         "build": "next build",
         "start": "next start",
         "test:membership": "node --test test/membership-domain.test.mjs",
-        "test:program": "node --test test/program-domain.test.mjs"
+        "test:program": "node --test test/program-domain.test.mjs",
+        "test:calendar": "node --test test/academic-calendar-domain.test.mjs"
     },
     "dependencies": {
         "@hookform/resolvers": "5.1.1",

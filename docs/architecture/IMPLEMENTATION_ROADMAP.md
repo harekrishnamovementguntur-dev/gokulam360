@@ -8,7 +8,7 @@ This roadmap governs implementation after Architecture Gita v1.0. The current ap
 |---|---|---|
 | PR #13 | Membership foundation and UI | Completed / merged |
 | PR #14 | Program and Program Offering | Completed / merged |
-| PR #15 | Terms and Sessions | Planned — awaiting implementation plan and UX review |
+| PR #15 | Terms and Sessions | In progress — implementation underway |
 | PR #16 | Membership Term Participation | Planned |
 | PR #17 | Credit Ledger and Payments | Planned |
 | PR #18 | Attendance Integration | Planned |

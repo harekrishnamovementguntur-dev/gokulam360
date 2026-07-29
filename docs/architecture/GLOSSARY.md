@@ -9,7 +9,7 @@ These are the canonical terms for Gokulam360. Use them consistently in database 
 | **Program** | The reusable academic definition: curriculum, objectives, academic rules, and certificate criteria. It has no pricing. |
 | **Program Offering** | A concrete delivery of a Program for a cohort, batch, location, or period. “Batch” is a presentation label for an Offering where appropriate. |
 | **Term** | A bounded academic period within one Program Offering. |
-| **Session** | A scheduled class or meeting within a Term. It owns schedule, teacher, topic, location, status, and Attendance. |
+| **Session** | A scheduled class or meeting within a Term. It owns schedule, teacher, topic, location, status, and Attendance. |\n| **Session Source** | The ownership marker identifying whether a Session was generated or manually created/modified. |\n| **Session Generation Run** | An auditable execution of Session generation containing its configuration, preview outcome, created Sessions, and preserved Sessions. |
 | **Membership** | The durable Student-to-Program relationship. It is the central business entity and survives operational changes. |
 | **Membership Term Participation** | The time-bound participation of a Membership in a particular Program Offering and Term. |
 | **Attendance Record** | A record of a Participation’s attendance for one Session. |

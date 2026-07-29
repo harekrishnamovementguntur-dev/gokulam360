@@ -14,7 +14,7 @@
 - **BR-010** A Program is a reusable academic definition and never owns pricing, payment rules, or credit packs.
 - **BR-011** A Program Offering belongs to exactly one Program and represents a concrete delivery.
 - **BR-012** A Term belongs to exactly one Program Offering.
-- **BR-013** A Session belongs to exactly one Term and owns its date, time, teacher, topic, location, and lifecycle status.
+- **BR-013** A Session belongs to exactly one Term and owns its date, time, teacher, topic, location, and lifecycle status.\n- **BR-014** Session numbers are assigned by the server within a Term and are immutable.\n- **BR-015** Session generation is preview-first, repeatable, and additive; it never overwrites an existing Session.\n- **BR-016** A generated Session has generated ownership until an administrator creates or modifies it; manual, cancelled, rescheduled, holiday, and archived Sessions are preserved during regeneration.\n- **BR-017** A generation run records its configuration, created Sessions, preserved Sessions, excluded dates, and holiday reasons.
 
 ## Membership and participation
 

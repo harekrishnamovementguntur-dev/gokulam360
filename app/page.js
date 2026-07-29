@@ -34,6 +34,7 @@ import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 import Memberships from '@/components/Memberships';
 import ProgramsOfferings from '@/components/ProgramsOfferings';
+import AcademicCalendar from '@/components/AcademicCalendar';
 
 const API = '/api';
 
@@ -243,6 +244,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
       { key: 'memberships', label: 'Memberships', icon: Users, roles: ['super_admin', 'org_admin'] },
       { key: 'teachers', label: 'Teachers', icon: Users, roles: ['super_admin', 'org_admin'] },
       { key: 'academic-programs', label: 'Programs & Offerings', icon: BookOpen, roles: ['super_admin', 'org_admin'] },
+      { key: 'academic-calendar', label: 'Academic Calendar', icon: CalendarIcon, roles: ['super_admin', 'org_admin'] },
       { key: 'classes', label: 'Classes & Batches', icon: School, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'fees', label: 'Fees', icon: IndianRupee, roles: ['super_admin', 'org_admin'] },
@@ -340,6 +342,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               {view === 'students' && <Students students={students} setStudents={setStudents} />}
               {view === 'memberships' && <Memberships request={api} />}
               {view === 'academic-programs' && <ProgramsOfferings request={api} />}
+              {view === 'academic-calendar' && <AcademicCalendar request={api} />}
               {view === 'teachers' && <Teachers teachers={teachers} setTeachers={setTeachers} />}
               {view === 'classes' && <Classes />}
               {view === 'attendance' && <Attendance />}
