@@ -1,4 +1,4 @@
-import { apiErrorResponse, getDb, json, requireUser, requireUser as authUser, scopeFor } from '../../../_lib/server.js';
+import { apiErrorResponse, getDb, json, requireUser, scopeFor } from '../../../_lib/server.js';
 import { ensureParticipationInfrastructure, transitionParticipationCommand } from '../../../_lib/membership-term-participation.js';
 
 export async function POST(req, { params }) {
