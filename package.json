@@ -8,7 +8,8 @@
         "dev:webpack": "next dev --hostname 0.0.0.0 --port 3000",
         "build": "next build",
         "start": "next start",
-        "test:membership": "node --test test/membership-domain.test.mjs"
+        "test:membership": "node --test test/membership-domain.test.mjs",
+        "test:program": "node --test test/program-domain.test.mjs"
     },
     "dependencies": {
         "@hookform/resolvers": "5.1.1",
