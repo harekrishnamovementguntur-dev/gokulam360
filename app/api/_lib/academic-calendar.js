@@ -115,7 +115,7 @@ export async function generateAcademicSessions(db, user, organizationId, input) 
   const run = {
     id: uuidv4(), organization_id: organizationId, term_id: input.term_id,
     configuration: preview.configuration, preview_count: preview.candidates.length,
-    created_count: toCreate.length, preserved_count: preview.candidates.length - toCreate.length,
+    created_count: toCreate.length, preserved_count: preview.preserved.length,
     created_session_ids: toCreate.map(() => uuidv4()), created_at: now, created_by: user.id,
   };
   const createdSessions = toCreate.map((candidate, index) => createSession({
@@ -129,5 +129,5 @@ export async function generateAcademicSessions(db, user, organizationId, input) 
     await db.collection('audit_logs').insertOne(audit(organizationId, user, 'session_generation.completed', input.term_id, now, { created_count: createdSessions.length, preserved_count: run.preserved_count }), { session });
     await db.collection('outbox_events').insertOne(outbox(organizationId, 'session_generation.completed', input.term_id, now, { generation_run_id: run.id }), { session });
   });
-  return { run: stripId(run), created: createdSessions.map(stripId), preserved: preview.candidates.filter((candidate) => candidate.action === 'preserve'), excluded: preview.excluded, holidays: preview.holidays };
+  return { run: stripId(run), created: createdSessions.map(stripId), preserved: preview.preserved, excluded: preview.excluded, holidays: preview.holidays };
 }
