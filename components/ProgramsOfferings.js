@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Archive, BookOpen, Edit3, Layers, Link2, Plus, RotateCcw } from 'lucide-react';
+import { Archive, BookOpen, Edit3, Layers, Plus, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -13,29 +13,21 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '
 
 const emptyProgram = { name: '', description: '', age_group: '', status: 'active' };
 const emptyOffering = { program_id: '', academic_year: '', cohort: '', start_date: '', end_date: '', capacity: 0, schedule: { label: '' }, status: 'active' };
-const emptyMapping = { legacy_program_id: '', program_offering_id: '' };
-
 export default function ProgramsOfferings({ request }) {
   const [programs, setPrograms] = useState([]);
   const [offerings, setOfferings] = useState([]);
-  const [legacyPrograms, setLegacyPrograms] = useState([]);
-  const [mappings, setMappings] = useState([]);
   const [dialog, setDialog] = useState(null);
   const [form, setForm] = useState(emptyProgram);
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
     try {
-      const [programResponse, offeringResponse, legacyResponse, mappingResponse] = await Promise.all([
+      const [programResponse, offeringResponse] = await Promise.all([
         request('/academic-programs'),
         request('/program-offerings'),
-        request('/programs'),
-        request('/migration-mappings'),
       ]);
       setPrograms(programResponse.items || []);
       setOfferings(offeringResponse.items || []);
-      setLegacyPrograms(legacyResponse.items || []);
-      setMappings(mappingResponse.items || []);
     } catch (error) {
       toast.error(error.message || 'Unable to load Programs and Offerings');
     }
@@ -65,11 +57,6 @@ export default function ProgramsOfferings({ request }) {
     } : emptyOffering);
   };
 
-  const openMapping = () => {
-    setDialog({ kind: 'mapping', entity: null });
-    setForm(emptyMapping);
-  };
-
   const save = async () => {
     try {
       setSaving(true);
@@ -80,9 +67,6 @@ export default function ProgramsOfferings({ request }) {
       if (dialog.kind === 'offering') {
         const path = dialog.entity ? '/program-offerings/' + dialog.entity.id : '/program-offerings';
         await request(path, { method: dialog.entity ? 'PUT' : 'POST', body: JSON.stringify(form) });
-      }
-      if (dialog.kind === 'mapping') {
-        await request('/migration-mappings', { method: 'POST', body: JSON.stringify(form) });
       }
       setDialog(null);
       await load();
@@ -131,11 +115,10 @@ export default function ProgramsOfferings({ request }) {
         <div className="grid h-12 w-12 place-items-center rounded-2xl bg-saffron-gradient text-white"><BookOpen /></div>
         <div className="flex-1">
           <h1 className="text-2xl font-bold">Programs & Offerings</h1>
-          <p className="text-sm text-muted-foreground">Manage reusable academic Programs and their operational deliveries. Existing Classes & Batches remain unchanged.</p>
+          <p className="text-sm text-muted-foreground">Manage canonical academic Programs and their operational deliveries.</p>
         </div>
         <Button onClick={() => openProgram()}><Plus size={15} className="mr-1" />Program</Button>
         <Button variant="outline" onClick={() => openOffering()}><Layers size={15} className="mr-1" />Offering</Button>
-        <Button variant="outline" onClick={openMapping}><Link2 size={15} className="mr-1" />Map legacy</Button>
       </div>
 
       <div className="grid gap-4 xl:grid-cols-2">
@@ -172,18 +155,9 @@ export default function ProgramsOfferings({ request }) {
         </section>
       </div>
 
-      <section className="rounded-2xl glass p-4">
-        <h2 className="font-semibold">Legacy Program Bridge</h2>
-        <p className="mb-3 text-sm text-muted-foreground">Mappings are explicit and auditable. Memberships continue using legacy program_id until the future Membership Term Participation migration.</p>
-        <div className="space-y-2 text-sm">
-          {mappings.map((mapping) => <div key={mapping.id} className="rounded-lg bg-muted/50 px-3 py-2">Legacy Program {legacyPrograms.find((program) => program.id === mapping.source?.entity_id)?.name || mapping.source?.snapshot?.name || mapping.source?.entity_id} → {programName(mapping.targets?.program_id)} · {offerings.find((offering) => offering.id === mapping.targets?.program_offering_id)?.academic_year || 'Offering'}</div>)}
-          {!mappings.length && <div className="text-muted-foreground">No legacy Programs have been mapped. {legacyPrograms.length} legacy Programs remain available to map.</div>}
-        </div>
-      </section>
-
       <Dialog open={Boolean(dialog)} onOpenChange={(open) => !open && setDialog(null)}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{dialog?.kind === 'program' ? (dialog.entity ? 'Edit Program' : 'Create Program') : dialog?.kind === 'offering' ? (dialog.entity ? 'Edit Program Offering' : 'Create Program Offering') : 'Map Legacy Program'}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{dialog?.kind === 'program' ? (dialog.entity ? 'Edit Program' : 'Create Program') : (dialog?.entity ? 'Edit Program Offering' : 'Create Program Offering')}</DialogTitle></DialogHeader>
           {dialog?.kind === 'program' && <div className="grid gap-3">
             <div><Label htmlFor="program-name">Name</Label><Input id="program-name" value={form.name || ''} onChange={(event) => setForm({ ...form, name: event.target.value })} /></div>
             <div><Label htmlFor="program-description">Description</Label><Textarea id="program-description" value={form.description || ''} onChange={(event) => setForm({ ...form, description: event.target.value })} /></div>
@@ -196,10 +170,6 @@ export default function ProgramsOfferings({ request }) {
             <div className="grid grid-cols-2 gap-3"><div><Label htmlFor="offering-start">Start date</Label><Input id="offering-start" type="date" value={form.start_date || ''} onChange={(event) => setForm({ ...form, start_date: event.target.value })} /></div><div><Label htmlFor="offering-end">End date</Label><Input id="offering-end" type="date" value={form.end_date || ''} onChange={(event) => setForm({ ...form, end_date: event.target.value })} /></div></div>
             <div><Label htmlFor="offering-capacity">Capacity</Label><Input id="offering-capacity" type="number" min="0" value={form.capacity ?? 0} onChange={(event) => setForm({ ...form, capacity: Number(event.target.value) })} /></div>
             <div><Label htmlFor="offering-schedule">Schedule label</Label><Input id="offering-schedule" placeholder="For example: Sunday 10:00–11:00" value={form.schedule?.label || ''} onChange={(event) => setForm({ ...form, schedule: { ...form.schedule, label: event.target.value } })} /></div>
-          </div>}
-          {dialog?.kind === 'mapping' && <div className="grid gap-3">
-            <div><Label>Legacy Program</Label><Select value={form.legacy_program_id || undefined} onValueChange={(value) => setForm({ ...form, legacy_program_id: value })}><SelectTrigger><SelectValue placeholder="Select a legacy Program" /></SelectTrigger><SelectContent>{legacyPrograms.map((program) => <SelectItem value={program.id} key={program.id}>{program.name}</SelectItem>)}</SelectContent></Select></div>
-            <div><Label>Canonical Program Offering</Label><Select value={form.program_offering_id || undefined} onValueChange={(value) => setForm({ ...form, program_offering_id: value })}><SelectTrigger><SelectValue placeholder="Select a Program Offering" /></SelectTrigger><SelectContent>{offerings.map((offering) => <SelectItem value={offering.id} key={offering.id}>{programName(offering.program_id) + ' · ' + offering.academic_year + (offering.cohort ? ' · ' + offering.cohort : '')}</SelectItem>)}</SelectContent></Select></div>
           </div>}
           <DialogFooter><Button variant="outline" disabled={saving} onClick={() => setDialog(null)}>Cancel</Button><Button disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</Button></DialogFooter>
         </DialogContent>
