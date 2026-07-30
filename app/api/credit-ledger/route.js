@@ -1,4 +1,4 @@
-import { apiErrorResponse, getDb, json, requireUser, resolveOrganizationId, scopeFor } from '../_lib/server.js';
+import { apiErrorResponse, getDb, json, requireUser, resolveOrganizationId } from '../_lib/server.js';
 import { ensureCreditLedgerInfrastructure, createManualAdjustment } from '../_lib/credit-ledger.js';
 
 export async function GET(req) {
@@ -6,7 +6,6 @@ export async function GET(req) {
   if (auth.error) return auth.error;
   try {
     const db = await getDb();
-    await ensureCreditLedgerInfrastructure(db);
     const url = new URL(req.url);
     const membershipId = url.searchParams.get('membership_id');
     if (!membershipId) return json({ error: 'membership_id is required' }, 422);
