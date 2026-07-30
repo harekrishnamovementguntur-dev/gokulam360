@@ -232,6 +232,7 @@ export async function POST(req) {
       status: membership.status,
     }, 201);
   } catch (error) {
+    if (error?.code === 11000) return json({ error: `Fixture duplicate-key: ${error.message}` }, 409);
     return apiErrorResponse(error, 'PR16 development fixture');
   }
 }
