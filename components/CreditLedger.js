@@ -23,11 +23,14 @@ const reasons = [
 
 async function request(path, options = {}) {
   const token = typeof window !== 'undefined' ? localStorage.getItem('g360_token') : null;
-  const response = await fetch('/api' + path, {
+  const requestPath = '/api' + path;
+  console.info('[CreditLedger] request:start', { path: requestPath, hasToken: Boolean(token) });
+  const response = await fetch(requestPath, {
     ...options,
     headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(options.headers || {}) },
   });
   const data = await response.json().catch(() => ({}));
+  console.info('[CreditLedger] request:response', { path: requestPath, status: response.status, ok: response.ok, data });
   if (!response.ok) throw new Error(data.error || 'Request failed');
   return data;
 }
@@ -52,10 +55,21 @@ export default function CreditLedger() {
   }, [memberships, selectedMembership, students]);
 
   const load = async () => {
+    console.info('[CreditLedger] load:start');
     try {
       const membershipData = await request('/memberships');
-      setMemberships(membershipData.items || membershipData);
+      const nextMemberships = membershipData.items || membershipData;
+      console.info('[CreditLedger] memberships:assign', {
+        responseIsArray: Array.isArray(membershipData),
+        responseKeys: membershipData && typeof membershipData === 'object' ? Object.keys(membershipData) : [],
+        itemsIsArray: Array.isArray(membershipData?.items),
+        assignedIsArray: Array.isArray(nextMemberships),
+        assignedLength: Array.isArray(nextMemberships) ? nextMemberships.length : null,
+        assignedValue: nextMemberships,
+      });
+      setMemberships(nextMemberships);
     } catch (error) {
+      console.error('[CreditLedger] memberships:error', error);
       toast.error(error.message);
       return;
     }
@@ -75,6 +89,13 @@ export default function CreditLedger() {
   };
 
   useEffect(() => { load(); }, []);
+  useEffect(() => {
+    console.info('[CreditLedger] memberships:render', {
+      length: memberships.length,
+      ids: memberships.map((membership) => membership?.id),
+      selectorItems: memberships.map((membership) => ({ key: membership?.id, value: membership?.id })),
+    });
+  }, [memberships]);
   useEffect(() => { loadLedger(selectedMembership); }, [selectedMembership]);
 
   const submit = async () => {
