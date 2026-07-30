@@ -210,7 +210,6 @@ export async function POST(req) {
     let participation = await participations.findOne({
       organization_id: organizationId,
       membership_id: membership.id,
-      program_offering_id: offering.id,
       term_id: term.id,
       status: 'active',
     });
