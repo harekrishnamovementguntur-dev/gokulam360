@@ -8,7 +8,6 @@ export async function GET(req) {
 
   try {
     const db = await getDb();
-    await ensureMembershipInfrastructure(db);
     const url = new URL(req.url);
     const query = scopeFor(auth.user);
     const studentId = url.searchParams.get('student_id');
