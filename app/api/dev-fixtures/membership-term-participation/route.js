@@ -12,6 +12,7 @@ import { ensureMembershipInfrastructure, createMembershipCommand, transitionMemb
 import { ensureProgramInfrastructure } from '../../_lib/program-offerings.js';
 import { ensureAcademicCalendarInfrastructure, createAcademicTerm } from '../../_lib/academic-calendar.js';
 import { createAcademicProgram, createProgramOffering } from '../../../../lib/program-domain.mjs';
+import { ensureParticipationInfrastructure, createParticipationCommand } from '../../_lib/membership-term-participation.js';
 
 const FIXTURE_PREFIX = 'pr16-fixture';
 
@@ -76,6 +77,7 @@ export async function POST(req) {
       ensureMembershipInfrastructure(db),
       ensureProgramInfrastructure(db),
       ensureAcademicCalendarInfrastructure(db),
+      ensureParticipationInfrastructure(db),
     ]);
 
     const students = db.collection('students');
@@ -84,14 +86,16 @@ export async function POST(req) {
     const canonicalPrograms = db.collection('academic_programs');
     const offerings = db.collection('program_offerings');
     const terms = db.collection('academic_terms');
+    const participations = db.collection('membership_term_participations');
+    const fixtureStudentId = `${FIXTURE_PREFIX}-student-${organizationId}`;
 
     let membership = await memberships.findOne({
       organization_id: organizationId,
-      status: 'active',
+      student_id: fixtureStudentId,
     });
 
     if (!membership) {
-      const studentId = `${FIXTURE_PREFIX}-student-${organizationId}`;
+      const studentId = fixtureStudentId;
       const programId = `${FIXTURE_PREFIX}-program-${organizationId}`;
       const now = new Date().toISOString();
 
@@ -203,6 +207,26 @@ export async function POST(req) {
       });
     }
 
+    let participation = await participations.findOne({
+      organization_id: organizationId,
+      membership_id: membership.id,
+      program_offering_id: offering.id,
+      term_id: term.id,
+      status: 'active',
+    });
+    if (!participation) {
+      participation = await createParticipationCommand({
+        db,
+        user: auth.user,
+        organizationId,
+        body: {
+          membership_id: membership.id,
+          program_offering_id: offering.id,
+          term_id: term.id,
+        },
+      });
+    }
+
     return json({
       fixture: 'membership-term-participation',
       organization_id: organizationId,
@@ -211,6 +235,7 @@ export async function POST(req) {
       program_id: program.id,
       program_offering_id: offering.id,
       term_id: term.id,
+      participation_id: participation.id,
       status: membership.status,
     }, 201);
   } catch (error) {
