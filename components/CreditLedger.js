@@ -53,10 +53,19 @@ export default function CreditLedger() {
 
   const load = async () => {
     try {
-      const [membershipData, studentData] = await Promise.all([request('/memberships'), request('/students')]);
+      const membershipData = await request('/memberships');
       setMemberships(membershipData.items || membershipData);
+    } catch (error) {
+      toast.error(error.message);
+      return;
+    }
+    try {
+      const studentData = await request('/students');
       setStudents(studentData.items || studentData);
-    } catch (error) { toast.error(error.message); }
+    } catch (error) {
+      // Student details enrich the label only; they must not block Membership ledger access.
+      setStudents([]);
+    }
   };
 
   const loadLedger = async (membershipId) => {
@@ -105,7 +114,7 @@ export default function CreditLedger() {
           <SelectContent>
             <SelectItem value="none">Choose Membership</SelectItem>
             {memberships.map((membership) => <SelectItem key={membership.id} value={membership.id}>
-              {labelOf(students.find((student) => student.id === membership.student_id))} · {membership.id.slice(0, 8)}
+              {labelOf(students.find((student) => student.id === membership.student_id) || { id: membership.student_id })} · {membership.id.slice(0, 8)}
             </SelectItem>)}
           </SelectContent>
         </Select>
