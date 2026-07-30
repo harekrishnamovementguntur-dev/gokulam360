@@ -8,11 +8,10 @@ import {
   runInTransaction,
   stripId,
 } from '../../_lib/server.js';
-import { ensureMembershipInfrastructure, createMembershipCommand, transitionMembershipCommand } from '../../_lib/memberships.js';
-import { ensureProgramInfrastructure } from '../../_lib/program-offerings.js';
-import { ensureAcademicCalendarInfrastructure, createAcademicTerm } from '../../_lib/academic-calendar.js';
+import { createMembershipCommand, transitionMembershipCommand } from '../../_lib/memberships.js';
+import { createAcademicTerm } from '../../_lib/academic-calendar.js';
 import { createAcademicProgram, createProgramOffering } from '../../../../lib/program-domain.mjs';
-import { ensureParticipationInfrastructure, createParticipationCommand } from '../../_lib/membership-term-participation.js';
+import { createParticipationCommand } from '../../_lib/membership-term-participation.js';
 
 const FIXTURE_PREFIX = 'pr16-fixture';
 
@@ -73,12 +72,7 @@ export async function POST(req) {
     const db = await getDb();
     const body = await req.json().catch(() => ({}));
     const organizationId = resolveOrganizationId(auth.user, body.organization_id);
-    await Promise.all([
-      ensureMembershipInfrastructure(db),
-      ensureProgramInfrastructure(db),
-      ensureAcademicCalendarInfrastructure(db),
-      ensureParticipationInfrastructure(db),
-    ]);
+    // Fixture setup uses the domain services directly; index provisioning belongs to the normal API lifecycle.
 
     const students = db.collection('students');
     const legacyPrograms = db.collection('programs');
