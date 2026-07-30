@@ -80,10 +80,12 @@ export default function CreditLedger() {
   const submit = async () => {
     setSaving(true);
     try {
+      const membership = memberships.find((item) => item.id === selectedMembership);
       await request('/credit-ledger', {
         method: 'POST',
         headers: { 'Idempotency-Key': crypto.randomUUID() },
         body: JSON.stringify({
+          organization_id: membership?.organization_id,
           membership_id: selectedMembership,
           quantity_delta: Number(form.quantity_delta),
           reason_code: form.reason_code,
