@@ -13,7 +13,7 @@ import { createAcademicTerm } from '../../_lib/academic-calendar.js';
 import { createAcademicProgram, createProgramOffering } from '../../../../lib/program-domain.mjs';
 import { createParticipationCommand } from '../../_lib/membership-term-participation.js';
 
-const FIXTURE_PREFIX = 'pr16-fixture';
+const FIXTURE_PREFIX = 'pr17a-fixture';
 
 function fixtureEnabled() {
   return process.env.ENABLE_DEV_FIXTURES === 'true' || process.env.VERCEL_ENV === 'preview' || process.env.NODE_ENV !== 'production';
@@ -101,7 +101,7 @@ export async function POST(req) {
             organization_id: organizationId,
             first_name: 'PR16',
             last_name: 'Participation Fixture Student',
-            name: 'PR16 Participation Fixture Student',
+            name: 'PR17A Credit Ledger Fixture Student',
             email: 'pr16-fixture@example.invalid',
             status: 'active',
             is_deleted: false,
@@ -117,7 +117,7 @@ export async function POST(req) {
           $setOnInsert: {
             id: programId,
             organization_id: organizationId,
-            name: 'PR16 Participation Fixture Program',
+            name: 'PR17A Credit Ledger Fixture Program',
             description: 'Development-only compatibility fixture',
             status: 'active',
             is_deleted: false,
@@ -132,14 +132,14 @@ export async function POST(req) {
         db,
         user: auth.user,
         organizationId,
-        body: { student_id: studentId, program_id: programId, status: 'active', notes: 'Development fixture for PR16 verification' },
+        body: { student_id: studentId, program_id: programId, status: 'active', notes: 'Development fixture for PR17A credit ledger verification' },
       });
     } else if (membership.status !== 'active') {
       membership = await transitionMembershipCommand({
         db,
         user: auth.user,
         membership,
-        body: { status: 'active', reason: 'Development fixture for PR16 verification' },
+        body: { status: 'active', reason: 'Development fixture for PR17A credit ledger verification' },
       });
     }
 
@@ -153,8 +153,8 @@ export async function POST(req) {
         actorId: auth.user.id,
         now,
         input: {
-          name: 'PR16 Participation Fixture Program',
-          description: 'Development-only canonical Program fixture',
+          name: 'PR17A Credit Ledger Fixture Program',
+          description: 'Development-only canonical Program fixture for PR17A',
           age_group: 'All ages',
           status: 'active',
         },
@@ -174,7 +174,7 @@ export async function POST(req) {
         input: {
           program_id: program.id,
           academic_year: '2026',
-          cohort: 'PR16 Verification Cohort',
+          cohort: 'PR17A Credit Ledger Cohort',
           start_date: '2026-07-29',
           end_date: '2026-12-31',
           capacity: 30,
@@ -188,11 +188,11 @@ export async function POST(req) {
     let term = await terms.findOne({
       organization_id: organizationId,
       program_offering_id: offering.id,
-      name: 'PR16 Verification Term',
+      name: 'PR17A Credit Ledger Verification Term',
     });
     if (!term) {
       term = await createAcademicTerm(db, auth.user, organizationId, {
-        name: 'PR16 Verification Term',
+        name: 'PR17A Credit Ledger Verification Term',
         display_order: 1,
         start_date: '2026-07-29',
         end_date: '2026-12-31',
