@@ -10,8 +10,8 @@ This roadmap governs implementation after Architecture Gita v1.0. The current ap
 | PR #14 | Program and Program Offering | Completed / merged |
 | PR #15 | Terms and Sessions | Completed / merged |
 | PR #16 | Membership Term Participation | Completed / merged |
-| PR #17A | Credit Ledger Foundation | In progress |
-| PR #17B | Payment Processing and Allocations | Planned |
+| PR #17A | Credit Ledger Foundation | Completed / merged |
+| PR #17B | Payment Processing and Allocations | In progress |
 | PR #18 | Attendance Integration | Planned |
 | PR #19 | Coordinated Application Cutover | Planned |
 | PR #20 | Legacy Removal and Cleanup | Planned |
@@ -58,6 +58,25 @@ The current branch introduces the append-only Credit Ledger foundation:
 - Organization-scoped API, audit logs, and Transactional Outbox events.
 - Dedicated Credits & Ledger administrator page.
 - Payment Transactions and Payment Allocations remain out of scope for PR #17A.
+
+### PR #17A — Credit Ledger Foundation
+
+- Append-only Credit Ledger entries with structured reasons, descriptions, and source references.
+- Calculated balances and running balances with no persisted mutable balance.
+- Idempotent manual adjustment command with organization scoping.
+- Atomic ledger, audit log, outbox, and idempotency receipt writes.
+- Credits & Ledger administrator UI.
+
+PR #17A was merged into main in merge commit b66eec2eef7888be07b054fd6a361892405bab6f.
+
+### PR #17B — Payment Processing and Allocations
+
+- Payment Transactions and Payment Allocations.
+- Separate Money domain; payment posting is distinct from payment creation.
+- Credit grants only when a Payment Transaction is posted.
+- Immutable posted allocations with reversals/compensating allocations for corrections.
+- Idempotent posting, audit logs, and Transactional Outbox events.
+- No Attendance, Credits redesign, Reports, Notifications, or Cutover work.
 
 ## Governance
 
