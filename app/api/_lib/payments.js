@@ -115,8 +115,10 @@ export async function refundPaymentCommand({ db, user, organizationId, id, body,
     for (const item of refundAllocations) {
       const allocation = { id: uuidv4(), organization_id: organizationId, payment_transaction_id: refund.id, original_payment_transaction_id: id, membership_id: item.membership_id, amount_minor: -item.amount_minor, credit_quantity: -item.credit_quantity, allocation_type: 'refund', status: 'posted', description: item.description, created_by: user.id, created_at: refund.created_at };
       await db.collection('payment_allocations').insertOne(allocation, { session });
-      const entry = createLedgerEntry({ id: uuidv4(), organizationId, membershipId: item.membership_id, quantityDelta: -item.credit_quantity, reasonCode: 'refund_reversal', description: item.description, sourceType: 'payment_refund_allocation', sourceId: allocation.id, actorId: user.id, now: refund.created_at, commandId: allocation.id });
-      await db.collection('credit_ledger_entries').insertOne(entry, { session });
+      if (item.credit_quantity > 0) {
+        const entry = createLedgerEntry({ id: uuidv4(), organizationId, membershipId: item.membership_id, quantityDelta: -item.credit_quantity, reasonCode: 'refund_reversal', description: item.description, sourceType: 'payment_refund_allocation', sourceId: allocation.id, actorId: user.id, now: refund.created_at, commandId: allocation.id });
+        await db.collection('credit_ledger_entries').insertOne(entry, { session });
+      }
     }
     const nextStatus = refundStatus(alreadyRefunded + amount, original.amount_minor);
     await db.collection('payment_transactions').updateOne({ id, organization_id: organizationId }, { $set: { status: nextStatus, updated_at: refund.created_at } }, { session });
