@@ -20,8 +20,10 @@ export async function ensurePaymentInfrastructure(db) {
         { key: { organization_id: 1, payment_transaction_id: 1, created_at: 1 }, name: 'allocations_by_payment_created' },
         { key: { organization_id: 1, membership_id: 1, created_at: -1 }, name: 'allocations_by_membership_created' },
       ]),
-      db.collection('audit_logs').createIndex({ organization_id: 1, entity_type: 1, entity_id: 1, created_at: -1 }, { name: 'audit_logs_by_payment_entity' }),
-      db.collection('outbox_events').createIndex({ organization_id: 1, aggregate_type: 1, aggregate_id: 1, occurred_at: 1 }, { name: 'outbox_events_by_payment_aggregate' }),
+      // audit_logs and outbox_events are shared infrastructure. Their canonical
+      // organization/entity and aggregate indexes are provisioned by the
+      // Membership and Credit Ledger domains; recreating the same key patterns
+      // under payment-specific names causes MongoDB IndexOptionsConflict.
     ]).catch((error) => { infrastructurePromise = undefined; throw error; });
   }
   return infrastructurePromise;
