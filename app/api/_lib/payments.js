@@ -61,6 +61,8 @@ async function membershipFor(db, organizationId, membershipId) {
   return membership;
 }
 export async function postPaymentCommand({ db, user, organizationId, id, body, idempotencyKey }) {
+  const key = String(idempotencyKey || '').trim();
+  if (!key) throw new PaymentDomainError('Idempotency-Key header is required', 400);
   const payment = await findPayment(db, organizationId, id);
   if (payment.status === 'posted') return getPaymentDetails({ db, organizationId, id });
   if (payment.status !== 'draft') throw new PaymentDomainError('Only draft Payment Transactions may be posted', 409);
@@ -71,7 +73,7 @@ export async function postPaymentCommand({ db, user, organizationId, id, body, i
   await runInTransaction(db, async (session) => {
     const current = await db.collection('payment_transactions').findOne({ id, organization_id: organizationId }, { session });
     if (!current || current.status !== 'draft') return;
-    await db.collection('payment_transactions').updateOne({ id, organization_id: organizationId, status: 'draft' }, { $set: { status: 'posted', posted_at: now, updated_at: now, post_idempotency_key: idempotencyKey || '' } }, { session });
+    await db.collection('payment_transactions').updateOne({ id, organization_id: organizationId, status: 'draft' }, { $set: { status: 'posted', posted_at: now, updated_at: now, post_idempotency_key: key } }, { session });
     for (const item of normalized) {
       const entry = createLedgerEntry({ id: uuidv4(), organizationId, membershipId: item.membership_id, quantityDelta: item.credit_quantity, reasonCode: 'credit_purchase', description: item.description || 'Credits granted from posted Payment Transaction', sourceType: 'payment_allocation', sourceId: item.id, actorId: user.id, now, commandId: item.id });
       await db.collection('payment_allocations').insertOne({ id: item.id, organization_id: organizationId, payment_transaction_id: id, membership_id: item.membership_id, amount_minor: item.amount_minor, credit_quantity: item.credit_quantity, allocation_type: 'payment', status: 'posted', description: item.description, created_by: user.id, created_at: now }, { session });
@@ -83,6 +85,10 @@ export async function postPaymentCommand({ db, user, organizationId, id, body, i
   return getPaymentDetails({ db, organizationId, id });
 }
 export async function refundPaymentCommand({ db, user, organizationId, id, body, idempotencyKey }) {
+  const key = String(idempotencyKey || '').trim();
+  if (!key) throw new PaymentDomainError('Idempotency-Key header is required', 400);
+  const existingRefund = await db.collection('payment_transactions').findOne({ organization_id: organizationId, idempotency_key: key, kind: 'refund' });
+  if (existingRefund) return getPaymentDetails({ db, organizationId, id: existingRefund.id });
   const original = await findPayment(db, organizationId, id);
   if (!['posted','partially_refunded'].includes(original.status)) throw new PaymentDomainError('Only posted Payment Transactions may be refunded', 409);
   const amount = Number(body.amount_minor);
@@ -93,7 +99,7 @@ export async function refundPaymentCommand({ db, user, organizationId, id, body,
   if (alreadyRefunded + amount > original.amount_minor) throw new PaymentDomainError('Refund exceeds the remaining refundable amount', 409);
   const ratio = amount / original.amount_minor;
   const refundAllocations = originalAllocations.map(item => ({ membership_id: item.membership_id, amount_minor: Math.floor(item.amount_minor * ratio), credit_quantity: Math.floor(item.credit_quantity * ratio), description: body.description || 'Compensating allocation for refund' })).filter(item => item.amount_minor > 0 || item.credit_quantity > 0);
-  const refund = createPayment({ id: uuidv4(), organizationId, amountMinor: amount, currency: original.currency, method: original.payment_method, description: body.description || 'Refund of ' + original.receipt_number, receiptNumber: receiptNumber(), actorId: user.id, now: new Date().toISOString(), idempotencyKey: String(idempotencyKey || '').trim() });
+  const refund = createPayment({ id: uuidv4(), organizationId, amountMinor: amount, currency: original.currency, method: original.payment_method, description: body.description || 'Refund of ' + original.receipt_number, receiptNumber: receiptNumber(), actorId: user.id, now: new Date().toISOString(), idempotencyKey: key });
   refund.kind = 'refund'; refund.status = 'posted'; refund.original_payment_id = id; refund.posted_at = refund.created_at;
   await runInTransaction(db, async (session) => {
     await db.collection('payment_transactions').insertOne(refund, { session });
