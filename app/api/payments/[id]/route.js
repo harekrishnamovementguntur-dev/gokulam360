@@ -1,5 +1,5 @@
 import { apiErrorResponse, getDb, json, requireUser, resolveOrganizationId } from '../../_lib/server.js';
-import { getPaymentDetails, postPaymentCommand, refundPaymentCommand } from '../../_lib/payments.js';
+import { ensurePaymentInfrastructure, getPaymentDetails, postPaymentCommand, refundPaymentCommand } from '../../_lib/payments.js';
 
 export async function GET(req, { params }) {
   const auth = requireUser(req, ['super_admin','org_admin']);
@@ -11,7 +11,7 @@ export async function POST(req, { params }) {
   const auth = requireUser(req, ['super_admin','org_admin']);
   if (auth.error) return auth.error;
   try {
-    const body = await req.json(); const db = await getDb(); const organizationId = resolveOrganizationId(auth.user, body.organization_id);
+    const body = await req.json(); const db = await getDb(); await ensurePaymentInfrastructure(db); const organizationId = resolveOrganizationId(auth.user, body.organization_id);
     const command = body.command || 'post';
     if (command === 'refund') return json(await refundPaymentCommand({ db, user: auth.user, organizationId, id: params.id, body, idempotencyKey:req.headers.get('idempotency-key') }), 201);
     return json(await postPaymentCommand({ db, user: auth.user, organizationId, id: params.id, body, idempotencyKey:req.headers.get('idempotency-key') }));
