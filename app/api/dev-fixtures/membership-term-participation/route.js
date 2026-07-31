@@ -8,12 +8,12 @@ import {
   runInTransaction,
   stripId,
 } from '../../_lib/server.js';
-import { ensureMembershipInfrastructure, createMembershipCommand, transitionMembershipCommand } from '../../_lib/memberships.js';
-import { ensureProgramInfrastructure } from '../../_lib/program-offerings.js';
-import { ensureAcademicCalendarInfrastructure, createAcademicTerm } from '../../_lib/academic-calendar.js';
+import { createMembershipCommand, transitionMembershipCommand } from '../../_lib/memberships.js';
+import { createAcademicTerm } from '../../_lib/academic-calendar.js';
 import { createAcademicProgram, createProgramOffering } from '../../../../lib/program-domain.mjs';
+import { createParticipationCommand } from '../../_lib/membership-term-participation.js';
 
-const FIXTURE_PREFIX = 'pr16-fixture';
+const FIXTURE_PREFIX = 'pr17a-fixture';
 
 function fixtureEnabled() {
   return process.env.ENABLE_DEV_FIXTURES === 'true' || process.env.VERCEL_ENV === 'preview' || process.env.NODE_ENV !== 'production';
@@ -72,11 +72,7 @@ export async function POST(req) {
     const db = await getDb();
     const body = await req.json().catch(() => ({}));
     const organizationId = resolveOrganizationId(auth.user, body.organization_id);
-    await Promise.all([
-      ensureMembershipInfrastructure(db),
-      ensureProgramInfrastructure(db),
-      ensureAcademicCalendarInfrastructure(db),
-    ]);
+    // Fixture setup uses the domain services directly; index provisioning belongs to the normal API lifecycle.
 
     const students = db.collection('students');
     const legacyPrograms = db.collection('programs');
@@ -84,14 +80,16 @@ export async function POST(req) {
     const canonicalPrograms = db.collection('academic_programs');
     const offerings = db.collection('program_offerings');
     const terms = db.collection('academic_terms');
+    const participations = db.collection('membership_term_participations');
+    const fixtureStudentId = `${FIXTURE_PREFIX}-student-${organizationId}`;
 
     let membership = await memberships.findOne({
       organization_id: organizationId,
-      status: 'active',
+      student_id: fixtureStudentId,
     });
 
     if (!membership) {
-      const studentId = `${FIXTURE_PREFIX}-student-${organizationId}`;
+      const studentId = fixtureStudentId;
       const programId = `${FIXTURE_PREFIX}-program-${organizationId}`;
       const now = new Date().toISOString();
 
@@ -103,7 +101,7 @@ export async function POST(req) {
             organization_id: organizationId,
             first_name: 'PR16',
             last_name: 'Participation Fixture Student',
-            name: 'PR16 Participation Fixture Student',
+            name: 'PR17A Credit Ledger Fixture Student',
             email: 'pr16-fixture@example.invalid',
             status: 'active',
             is_deleted: false,
@@ -119,7 +117,7 @@ export async function POST(req) {
           $setOnInsert: {
             id: programId,
             organization_id: organizationId,
-            name: 'PR16 Participation Fixture Program',
+            name: 'PR17A Credit Ledger Fixture Program',
             description: 'Development-only compatibility fixture',
             status: 'active',
             is_deleted: false,
@@ -134,14 +132,14 @@ export async function POST(req) {
         db,
         user: auth.user,
         organizationId,
-        body: { student_id: studentId, program_id: programId, status: 'active', notes: 'Development fixture for PR16 verification' },
+        body: { student_id: studentId, program_id: programId, status: 'active', notes: 'Development fixture for PR17A credit ledger verification' },
       });
     } else if (membership.status !== 'active') {
       membership = await transitionMembershipCommand({
         db,
         user: auth.user,
         membership,
-        body: { status: 'active', reason: 'Development fixture for PR16 verification' },
+        body: { status: 'active', reason: 'Development fixture for PR17A credit ledger verification' },
       });
     }
 
@@ -155,8 +153,8 @@ export async function POST(req) {
         actorId: auth.user.id,
         now,
         input: {
-          name: 'PR16 Participation Fixture Program',
-          description: 'Development-only canonical Program fixture',
+          name: 'PR17A Credit Ledger Fixture Program',
+          description: 'Development-only canonical Program fixture for PR17A',
           age_group: 'All ages',
           status: 'active',
         },
@@ -176,7 +174,7 @@ export async function POST(req) {
         input: {
           program_id: program.id,
           academic_year: '2026',
-          cohort: 'PR16 Verification Cohort',
+          cohort: 'PR17A Credit Ledger Cohort',
           start_date: '2026-07-29',
           end_date: '2026-12-31',
           capacity: 30,
@@ -190,16 +188,35 @@ export async function POST(req) {
     let term = await terms.findOne({
       organization_id: organizationId,
       program_offering_id: offering.id,
-      name: 'PR16 Verification Term',
+      name: 'PR17A Credit Ledger Verification Term',
     });
     if (!term) {
       term = await createAcademicTerm(db, auth.user, organizationId, {
-        name: 'PR16 Verification Term',
+        name: 'PR17A Credit Ledger Verification Term',
         display_order: 1,
         start_date: '2026-07-29',
         end_date: '2026-12-31',
         status: 'active',
         program_offering_id: offering.id,
+      });
+    }
+
+    let participation = await participations.findOne({
+      organization_id: organizationId,
+      membership_id: membership.id,
+      term_id: term.id,
+      status: 'active',
+    });
+    if (!participation) {
+      participation = await createParticipationCommand({
+        db,
+        user: auth.user,
+        organizationId,
+        body: {
+          membership_id: membership.id,
+          program_offering_id: offering.id,
+          term_id: term.id,
+        },
       });
     }
 
@@ -211,9 +228,11 @@ export async function POST(req) {
       program_id: program.id,
       program_offering_id: offering.id,
       term_id: term.id,
+      participation_id: participation.id,
       status: membership.status,
     }, 201);
   } catch (error) {
+    if (error?.code === 11000) return json({ error: `Fixture duplicate-key: ${error.message}` }, 409);
     return apiErrorResponse(error, 'PR16 development fixture');
   }
 }

@@ -77,7 +77,10 @@ export function stripId(doc) {
 }
 
 export async function runInTransaction(db, operation) {
-  const session = db.client.startSession();
+  if (!client || typeof client.startSession !== 'function') {
+    throw new ApiError('Database transactions are unavailable; no financial changes were made', 503);
+  }
+  const session = client.startSession();
   try {
     let result;
     await session.withTransaction(async () => {
