@@ -6,6 +6,7 @@ This document describes the recommended local workflow for Gokulam360 and the de
 
 - Node.js 20 LTS is recommended. Next.js 15 requires Node.js 18.18 or newer.
 - Yarn 1.22.22, matching the `packageManager` field in `package.json`.
+- The `yarn dev` script uses `cross-env`, so the same command works in Windows PowerShell/cmd and Unix shells.
 - A MongoDB development database with transaction support.
 - Git and a checkout of the exact branch or commit being tested.
 - A browser for the administrator UI.
