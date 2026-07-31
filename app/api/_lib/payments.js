@@ -75,9 +75,11 @@ export async function postPaymentCommand({ db, user, organizationId, id, body, i
     if (!current || current.status !== 'draft') return;
     await db.collection('payment_transactions').updateOne({ id, organization_id: organizationId, status: 'draft' }, { $set: { status: 'posted', posted_at: now, updated_at: now, post_idempotency_key: key } }, { session });
     for (const item of normalized) {
-      const entry = createLedgerEntry({ id: uuidv4(), organizationId, membershipId: item.membership_id, quantityDelta: item.credit_quantity, reasonCode: 'credit_purchase', description: item.description || 'Credits granted from posted Payment Transaction', sourceType: 'payment_allocation', sourceId: item.id, actorId: user.id, now, commandId: item.id });
+      if (item.credit_quantity > 0) {
+        const entry = createLedgerEntry({ id: uuidv4(), organizationId, membershipId: item.membership_id, quantityDelta: item.credit_quantity, reasonCode: 'credit_purchase', description: item.description || 'Credits granted from posted Payment Transaction', sourceType: 'payment_allocation', sourceId: item.id, actorId: user.id, now, commandId: item.id });
+        await db.collection('credit_ledger_entries').insertOne(entry, { session });
+      }
       await db.collection('payment_allocations').insertOne({ id: item.id, organization_id: organizationId, payment_transaction_id: id, membership_id: item.membership_id, amount_minor: item.amount_minor, credit_quantity: item.credit_quantity, allocation_type: 'payment', status: 'posted', description: item.description, created_by: user.id, created_at: now }, { session });
-      await db.collection('credit_ledger_entries').insertOne(entry, { session });
     }
     await db.collection('audit_logs').insertOne(audit({ organizationId, entityType: 'payment_transaction', entityId: id, actor: user, action: 'payment.posted', now, details: { allocation_count: normalized.length } }), { session });
     await db.collection('outbox_events').insertOne(outbox({ organizationId, aggregateType: 'payment_transaction', aggregateId: id, eventType: 'payment.posted', now, payload: { payment_id: id, allocation_count: normalized.length } }), { session });
@@ -99,6 +101,13 @@ export async function refundPaymentCommand({ db, user, organizationId, id, body,
   if (alreadyRefunded + amount > original.amount_minor) throw new PaymentDomainError('Refund exceeds the remaining refundable amount', 409);
   const ratio = amount / original.amount_minor;
   const refundAllocations = originalAllocations.map(item => ({ membership_id: item.membership_id, amount_minor: Math.floor(item.amount_minor * ratio), credit_quantity: Math.floor(item.credit_quantity * ratio), description: body.description || 'Compensating allocation for refund' })).filter(item => item.amount_minor > 0 || item.credit_quantity > 0);
+  if (refundAllocations.length) {
+    const last = refundAllocations[refundAllocations.length - 1];
+    last.amount_minor += amount - refundAllocations.reduce((sum, item) => sum + item.amount_minor, 0);
+    const originalCreditTotal = originalAllocations.reduce((sum, item) => sum + item.credit_quantity, 0);
+    const calculatedCreditTotal = refundAllocations.reduce((sum, item) => sum + item.credit_quantity, 0);
+    if (alreadyRefunded + amount >= original.amount_minor) last.credit_quantity += originalCreditTotal - calculatedCreditTotal;
+  }
   const refund = createPayment({ id: uuidv4(), organizationId, amountMinor: amount, currency: original.currency, method: original.payment_method, description: body.description || 'Refund of ' + original.receipt_number, receiptNumber: receiptNumber(), actorId: user.id, now: new Date().toISOString(), idempotencyKey: key });
   refund.kind = 'refund'; refund.status = 'posted'; refund.original_payment_id = id; refund.posted_at = refund.created_at;
   await runInTransaction(db, async (session) => {
