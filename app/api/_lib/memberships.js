@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { MembershipDomainError, createMembership, transitionMembership } from '../../../lib/membership-domain.mjs';
 import { runInTransaction, stripId } from './server.js';
+import { ensureIndexByKey } from '../../../lib/mongo-indexes.mjs';
 
 let infrastructurePromise;
 
@@ -60,7 +61,8 @@ async function provisionMembershipInfrastructure(db) {
       { key: { organization_id: 1, student_id: 1, created_at: -1 }, name: 'memberships_by_student_created' },
       { key: { organization_id: 1, program_id: 1, status: 1, created_at: -1 }, name: 'memberships_by_program_status_created' },
     ]),
-    db.collection('audit_logs').createIndex(
+    ensureIndexByKey(
+      db.collection('audit_logs'),
       { organization_id: 1, entity_type: 1, entity_id: 1, created_at: -1 },
       { name: 'audit_logs_by_membership_entity' },
     ),
