@@ -4,6 +4,7 @@ import {
   createLedgerEntry,
 } from '../../../lib/credit-ledger-domain.mjs';
 import { runInTransaction, stripId } from './server.js';
+import { ensureIndexByKey } from '../../../lib/mongo-indexes.mjs';
 
 let infrastructurePromise;
 
@@ -55,7 +56,8 @@ export async function ensureCreditLedgerInfrastructure(db) {
       db.collection('credit_ledger_command_receipts').createIndexes([
         { key: { organization_id: 1, idempotency_key: 1 }, unique: true, name: 'credit_ledger_idempotency_unique' },
       ]),
-      db.collection('audit_logs').createIndex(
+      ensureIndexByKey(
+        db.collection('audit_logs'),
         { organization_id: 1, entity_type: 1, entity_id: 1, created_at: -1 },
         { name: 'audit_logs_by_credit_ledger_entity' },
       ),
