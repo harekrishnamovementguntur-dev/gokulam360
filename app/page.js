@@ -348,6 +348,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               {view === 'academic-programs' && <ProgramsOfferings request={api} />}
               {view === 'academic-calendar' && <AcademicCalendar request={api} />}
               {view === 'participation' && <MembershipTermParticipation request={api} />}
+              {view === 'payments' && <Payments organizationId={org?.id} />}
               {view === 'teachers' && <Teachers teachers={teachers} setTeachers={setTeachers} />}
               {view === 'classes' && <Classes />}
               {view === 'attendance' && <Attendance />}
