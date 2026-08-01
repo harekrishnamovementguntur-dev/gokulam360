@@ -2130,7 +2130,7 @@ function Reports() {
     if (tab === 'attendance-summary') {
       api(`/reports/attendance-summary${query}`).then(setAttSummary).finally(() => setLoading(false));
     } else {
-      const reportName = tab === 'fees' ? 'payments' : tab;
+      const reportName = tab;
       api(`/reports/${reportName}${query}`).then(r => {
         setRows(Array.isArray(r.items) ? r.items : []);
         if (tab === 'attendance') setAttSummary({ items: r.items || [], summary: r.summary || {} });
@@ -2141,7 +2141,7 @@ function Reports() {
   const columns = {
     members: ['student_id', 'first_name', 'last_name', 'status', 'membership_count', 'active_membership_count', 'created_at'],
     attendance: ['session_date', 'student_name', 'status'],
-    fees: ['student_name', 'fee_type', 'amount', 'paid_amount', 'status', 'due_date'],
+    payments: ['receipt_number', 'kind', 'status', 'amount_minor', 'allocation_count', 'allocated_credit_quantity', 'created_at'],
   }[tab];
 
   const exportCSV = () => {
@@ -2210,7 +2210,7 @@ function Reports() {
           <TabsTrigger value="members">Members</TabsTrigger
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="attendance-summary">Monthly Summary</TabsTrigger>
-          <TabsTrigger value="fees">Fees</TabsTrigger>
+          <TabsTrigger value="payments">Payments</TabsTrigger
         </TabsList>
         <TabsContent value={tab} className="mt-4">
           {tab === 'attendance-summary' ? (
