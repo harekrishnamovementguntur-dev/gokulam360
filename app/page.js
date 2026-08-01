@@ -63,6 +63,7 @@ async function api(path, opts = {}) {
   return data;
 }
 const fmtINR = (n) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n || 0);
+const DAY_LABELS = { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' };
 const initials = (s = '') => s.split(' ').filter(Boolean).map(x => x[0]).join('').slice(0, 2).toUpperCase();
 const greet = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
 
@@ -1460,41 +1461,92 @@ function Students({ students, setStudents }) {
         </DialogContent>
       </Dialog>
 
-      <EnrollmentHistoryDialog student={historyOf} onClose={() => setHistoryOf(null)} onChange={() => load()} />
+      <EnrollmentHistoryDialog student={historyOf} organizationId={org?.id} onClose={() => setHistoryOf(null)} onChange={() => load()} />
     </div>
   );
 }
 
 /* ============================================================
-   ENROLLMENT HISTORY DRAWER
+   MEMBERSHIP TERM PARTICIPATION HISTORY
 ============================================================ */
-function EnrollmentHistoryDialog({ student, onClose, onChange }) {
-  const [enrollments, setEnrollments] = useState([]);
+function EnrollmentHistoryDialog({ student, organizationId, onClose, onChange }) {
+  const [memberships, setMemberships] = useState([]);
+  const [participations, setParticipations] = useState([]);
+  const [offerings, setOfferings] = useState([]);
+  const [terms, setTerms] = useState([]);
   const [loading, setLoading] = useState(false);
-  useEffect(() => {
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState({ membership_id: '', program_offering_id: '', term_id: '' });
+
+  const load = async () => {
     if (!student) return;
     setLoading(true);
-    api(`/enrollments?student_id=${student.id}`).then(r => setEnrollments(r.items)).finally(() => setLoading(false));
+    try {
+      const studentId = encodeURIComponent(student.id);
+      const [membershipResponse, participationResponse, offeringResponse, termResponse] = await Promise.all([
+        api(`/memberships?student_id=${studentId}`),
+        api(`/membership-term-participations?student_id=${studentId}`),
+        api('/program-offerings'),
+        api('/academic-terms'),
+      ]);
+      setMemberships(membershipResponse.items || []);
+      setParticipations(participationResponse.items || []);
+      setOfferings(offeringResponse.items || []);
+      setTerms(termResponse.items || []);
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setForm({ membership_id: '', program_offering_id: '', term_id: '' });
+    load();
   }, [student]);
 
-  const renew = async (e) => {
-    if (!confirm(`Renew ${e.program_name} for a fresh term?`)) return;
+  const activeMemberships = memberships.filter(membership => membership.status === 'active');
+  const selectedMembership = memberships.find(membership => membership.id === form.membership_id);
+  const visibleOfferings = offerings.filter(offering =>
+    offering.status !== 'archived' &&
+    (!selectedMembership || offering.program_id === selectedMembership.program_id)
+  );
+  const visibleTerms = terms.filter(term =>
+    term.status !== 'archived' && term.program_offering_id === form.program_offering_id
+  );
+  const membershipById = useMemo(() => new Map(memberships.map(item => [item.id, item])), [memberships]);
+  const offeringById = useMemo(() => new Map(offerings.map(item => [item.id, item])), [offerings]);
+  const termById = useMemo(() => new Map(terms.map(item => [item.id, item])), [terms]);
+  const active = participations.filter(item => item.status === 'active');
+  const past = participations.filter(item => item.status !== 'active');
+
+  const createParticipation = async () => {
     try {
-      await api('/enrollments/renew', { method: 'POST', body: JSON.stringify({ enrollment_id: e.id }) });
-      confetti({ particleCount: 100, spread: 80, origin: { y: 0.6 }, colors: ['#7c3aed', '#22c55e'] });
-      toast.success('Enrollment renewed 🎉');
-      api(`/enrollments?student_id=${student.id}`).then(r => setEnrollments(r.items));
+      setSaving(true);
+      await api('/membership-term-participations', {
+        method: 'POST',
+        body: JSON.stringify({
+          organization_id: organizationId || selectedMembership?.organization_id,
+          membership_id: form.membership_id,
+          program_offering_id: form.program_offering_id,
+          term_id: form.term_id,
+        }),
+      });
+      toast.success('Term participation created');
+      setForm({ membership_id: '', program_offering_id: '', term_id: '' });
+      await load();
       onChange && onChange();
-    } catch (e) { toast.error(e.message); }
+    } catch (error) {
+      toast.error(error.message);
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!student) return null;
 
-  const active = enrollments.filter(e => !e.left_at || e.status === 'active');
-  const past = enrollments.filter(e => e.left_at && e.status !== 'active');
-
   return (
-    <Dialog open={!!student} onOpenChange={v => !v && onClose()}>
+    <Dialog open={!!student} onOpenChange={open => !open && onClose()}>
       <DialogContent className="max-w-2xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
@@ -1506,30 +1558,45 @@ function EnrollmentHistoryDialog({ student, onClose, onChange }) {
               <div className="text-[10px] font-mono text-muted-foreground font-normal">{student.student_id}</div>
             </div>
           </DialogTitle>
-          <DialogDescription>Enrollment history · session credits · renewals</DialogDescription>
+          <DialogDescription>Membership and term participation history</DialogDescription>
         </DialogHeader>
 
         {loading ? (
-          <div className="space-y-2">{[...Array(3)].map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}</div>
-        ) : enrollments.length === 0 ? (
-          <EmptyState small text="Not enrolled in any class yet" />
+          <div className="space-y-2">{[...Array(3)].map((_, index) => <Skeleton key={index} className="h-24 rounded-2xl" />)}</div>
         ) : (
           <div className="space-y-4">
             <div>
-              <div className="text-[11px] uppercase tracking-widest text-muted-foreground mb-2 font-semibold">Active enrollments ({active.length})</div>
+              <div className="text-[11px] uppercase tracking-widest text-muted-foreground mb-2 font-semibold">Active term participation ({active.length})</div>
               <div className="space-y-2">
-                {active.map(e => <EnrollmentCard key={e.id} e={e} onRenew={renew} />)}
-                {active.length === 0 && <div className="text-xs text-muted-foreground italic">No active enrollments</div>}
+                {active.map(item => <ParticipationCard key={item.id} item={item} membership={membershipById.get(item.membership_id)} offering={offeringById.get(item.program_offering_id)} term={termById.get(item.term_id)} />)}
+                {active.length === 0 && <div className="text-xs text-muted-foreground italic">No active term participation</div>}
               </div>
             </div>
             {past.length > 0 && (
               <div>
-                <div className="text-[11px] uppercase tracking-widest text-muted-foreground mb-2 font-semibold">History ({past.length})</div>
+                <div className="text-[11px] uppercase tracking-widest text-muted-foreground mb-2 font-semibold">Participation history ({past.length})</div>
                 <div className="space-y-2">
-                  {past.map(e => <EnrollmentCard key={e.id} e={e} past />)}
+                  {past.map(item => <ParticipationCard key={item.id} item={item} membership={membershipById.get(item.membership_id)} offering={offeringById.get(item.program_offering_id)} term={termById.get(item.term_id)} past />)}
                 </div>
               </div>
             )}
+
+            <div className="rounded-2xl border bg-primary/5 p-4 space-y-3">
+              <div>
+                <div className="text-sm font-semibold">Add term participation</div>
+                <div className="text-[11px] text-muted-foreground">Choose an active Membership, its Program Offering, and Term. Historical Participation is preserved.</div>
+              </div>
+              {activeMemberships.length === 0 ? (
+                <div className="text-xs text-muted-foreground">Create or activate a Membership before adding term participation.</div>
+              ) : (
+                <>
+                  <div><Label>Active Membership</Label><Select value={form.membership_id || 'none'} onValueChange={value => setForm({ membership_id: value === 'none' ? '' : value, program_offering_id: '', term_id: '' })}><SelectTrigger><SelectValue placeholder="Choose Membership" /></SelectTrigger><SelectContent><SelectItem value="none">Choose Membership</SelectItem>{activeMemberships.map(membership => <SelectItem key={membership.id} value={membership.id}>{membership.program_id} · {membership.status}</SelectItem>)}</SelectContent></Select></div>
+                  <div><Label>Program Offering</Label><Select value={form.program_offering_id || 'none'} onValueChange={value => setForm({ ...form, program_offering_id: value === 'none' ? '' : value, term_id: '' })}><SelectTrigger><SelectValue placeholder="Choose Program Offering" /></SelectTrigger><SelectContent><SelectItem value="none">Choose Program Offering</SelectItem>{visibleOfferings.map(offering => <SelectItem key={offering.id} value={offering.id}>{offering.academic_year}{offering.cohort ? ` · ${offering.cohort}` : ''}</SelectItem>)}</SelectContent></Select></div>
+                  <div><Label>Term</Label><Select value={form.term_id || 'none'} onValueChange={value => setForm({ ...form, term_id: value === 'none' ? '' : value })}><SelectTrigger><SelectValue placeholder="Choose Term" /></SelectTrigger><SelectContent><SelectItem value="none">Choose Term</SelectItem>{visibleTerms.map(term => <SelectItem key={term.id} value={term.id}>{term.name} · {term.start_date} → {term.end_date}</SelectItem>)}</SelectContent></Select></div>
+                  <Button className="bg-saffron-gradient" onClick={createParticipation} disabled={saving || !(organizationId || selectedMembership?.organization_id) || !form.membership_id || !form.program_offering_id || !form.term_id}>{saving ? 'Saving…' : 'Add Participation'}</Button>
+                </>
+              )}
+            </div>
           </div>
         )}
       </DialogContent>
@@ -1537,10 +1604,8 @@ function EnrollmentHistoryDialog({ student, onClose, onChange }) {
   );
 }
 
-function EnrollmentCard({ e, onRenew, past = false }) {
-  const usedPct = e.sessions_credited ? Math.min(100, Math.round((e.sessions_attended / e.sessions_credited) * 100)) : 0;
-  const exhausted = e.sessions_remaining === 0 && e.sessions_credited > 0;
-  const carryover = e.program?.end_date && new Date(e.program.end_date) < new Date() && e.sessions_remaining > 0;
+function ParticipationCard({ item, membership, offering, term, past = false }) {
+  const offeringLabel = offering ? [offering.academic_year, offering.cohort].filter(Boolean).join(' · ') : item.program_offering_id;
   return (
     <motion.div initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }}
       className={`rounded-2xl p-4 border ${past ? 'bg-muted/40 opacity-80' : 'bg-white/60 dark:bg-white/5 glass'}`}>
@@ -1548,49 +1613,18 @@ function EnrollmentCard({ e, onRenew, past = false }) {
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-saffron-gradient text-white grid place-items-center"><BookOpen size={16} /></div>
           <div>
-            <div className="font-semibold text-sm">{e.program_name}</div>
+            <div className="font-semibold text-sm">{offeringLabel}</div>
             <div className="text-[10px] text-muted-foreground">
-              Enrolled {new Date(e.enrolled_at).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })}
-              {e.left_at && <> · Left {new Date(e.left_at).toLocaleDateString('en', { day: 'numeric', month: 'short', year: 'numeric' })}</>}
-              {e.renewed_from && <> · Renewal</>}{e.carryover_sessions > 0 && <> · +{e.carryover_sessions} carried over</>}
+              {term?.name || item.term_id}
+              {term?.start_date && <> · {term.start_date} → {term.end_date}</>}
             </div>
           </div>
         </div>
-        <Badge className={e.status === 'active' ? 'bg-emerald-500' : e.status === 'completed' ? 'bg-primary' : 'bg-muted text-muted-foreground'}>{e.status}</Badge>
+        <Badge className={item.status === 'active' ? 'bg-emerald-500' : item.status === 'completed' ? 'bg-primary' : 'bg-muted text-muted-foreground'}>{item.status}</Badge>
       </div>
-
-      <div className="mt-3 space-y-1.5">
-        <div className="flex items-center justify-between text-[11px]">
-          <span className="text-muted-foreground">Sessions used</span>
-          <span className="font-semibold">
-            <span className={exhausted ? 'text-rose-600' : 'text-emerald-600'}>{e.sessions_attended}</span>
-            <span className="text-muted-foreground"> / {e.sessions_credited}</span>
-          </span>
-        </div>
-        <div className="h-2 rounded-full bg-muted overflow-hidden">
-          <div className={`h-full rounded-full transition-all ${exhausted ? 'bg-rose-500' : usedPct > 75 ? 'bg-amber-500' : 'bg-emerald-500'}`} style={{ width: `${usedPct}%` }} />
-        </div>
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-          <span>Started {e.program?.start_date || '—'}</span>
-          <span>{e.sessions_remaining} sessions remaining</span>
-        </div>
+      <div className="mt-3 text-[11px] text-muted-foreground">
+        Membership: {membership?.program_id || item.membership_id}
       </div>
-
-      {(exhausted || carryover) && !past && (
-        <div className="mt-3 flex items-center gap-2">
-          {exhausted && (
-            <div className="text-[11px] text-rose-600 flex items-center gap-1">
-              ⚠ Quota exhausted
-            </div>
-          )}
-          {carryover && !exhausted && (
-            <div className="text-[11px] text-primary flex items-center gap-1">
-              📚 {e.sessions_remaining} unused sessions carrying over from previous term
-            </div>
-          )}
-          {onRenew && <Button size="sm" className="ml-auto bg-saffron-gradient text-white h-7 text-[11px]" onClick={() => onRenew(e)}>Renew term</Button>}
-        </div>
-      )}
     </motion.div>
   );
 }
