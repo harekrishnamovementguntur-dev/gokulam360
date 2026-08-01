@@ -16,8 +16,10 @@ This roadmap governs implementation after Architecture Gita v1.0. Canonical doma
 | PR #22A | Attendance Domain Foundation | Completed / merged |
 | PR #22B | Attendance Administrator UI and canonical roster workflow | Completed / merged |
 | PR #23 | Coordinated Application Cutover | Planned |
-| PR #24 | Legacy Removal and Cleanup | Planned |\n| PR #29 | Reporting Reconciliation (Members, Memberships, Payments, Credit Ledger) | Completed / merged |
-| PR #31 | Program and Offering Consumer Cutover | In progress |
+| PR #24 | Legacy Removal and Cleanup | Planned |
+| PR #29 | Reporting Reconciliation (Members, Memberships, Payments, Credit Ledger) | Completed / merged |
+| PR #31 | Program and Offering Consumer Cutover | Completed / merged |
+| PR #33 | Enrollments → Membership Term Participation Consumer Cutover | In progress |
 
 ## Completed capabilities
 
@@ -94,8 +96,14 @@ This phase introduces the canonical transactional Attendance domain:
 
 ## Current remaining work
 
-PR #31 removes the legacy Classes & Batches operational consumer and establishes the canonical Programs & Offerings screen as the sole class-management UI. Student identity and legacy program references remain intentionally unchanged for the later Students → Members cutover. Next pilot-critical work: Membership Term Participation consumer cutover, Fees → Payments, Attendance operational cutover, and Dashboard migration.
+PR #31 removed the legacy Classes & Batches operational consumer and established the canonical Programs & Offerings screen as the sole class-management UI. PR #33 is migrating the Student history/renewal consumer to canonical Membership Term Participation while intentionally leaving Student identity and legacy program fields for later cutover.
 
+
+### PR #33 — Enrollments → Membership Term Participation Consumer Cutover
+
+- Student history reads canonical Memberships, Program Offerings, Academic Terms, and Membership Term Participations.
+- New term participation actions use the canonical Participation API; legacy enrollment renewal is removed from this consumer.
+- Notifications, Parent Portal, Fees, Payments, Attendance, and Dashboard behavior remain outside this PR.
 
 ### PR #29 — Reporting Reconciliation
 
