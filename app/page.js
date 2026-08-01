@@ -37,6 +37,8 @@ import ProgramsOfferings from '@/components/ProgramsOfferings';
 import AcademicCalendar from '@/components/AcademicCalendar';
 import MembershipTermParticipation from '@/components/MembershipTermParticipation';
 import Payments from '@/components/Payments';
+import MemberMembershipReports from '@/components/MemberMembershipReports';
+import PaymentCreditReports from '@/components/PaymentCreditReports';
 import AttendanceAdministrator from '@/components/AttendanceAdministrator';
 
 const API = '/api';
@@ -261,6 +263,8 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
       { key: 'fees', label: 'Fees', icon: IndianRupee, roles: ['super_admin', 'org_admin'] },
       { key: 'notifications', label: 'Notifications', icon: Bell, roles: ['super_admin', 'org_admin'] },
       { key: 'reports', label: 'Reports', icon: FileText, roles: ['super_admin', 'org_admin'] },
+      { key: 'member-reports', label: 'Member Reports', icon: Users, roles: ['super_admin', 'org_admin'] },
+      { key: 'financial-reports', label: 'Payment Reports', icon: Wallet, roles: ['super_admin', 'org_admin'] },
       { key: 'events', label: 'Events', icon: CalendarIcon, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'backup', label: 'Backup', icon: Download, roles: ['super_admin', 'org_admin'] },
     ];
@@ -362,6 +366,8 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               {view === 'fees' && <Fees />}
               {view === 'notifications' && <Notifications students={students} />}
               {view === 'reports' && <Reports />}
+              {view === 'member-reports' && <MemberMembershipReports />}
+              {view === 'financial-reports' && <PaymentCreditReports />}
               {view === 'events' && <Events />}
               {view === 'backup' && <Backup />}
             </motion.div>
@@ -2124,7 +2130,8 @@ function Reports() {
     if (tab === 'attendance-summary') {
       api(`/reports/attendance-summary${query}`).then(setAttSummary).finally(() => setLoading(false));
     } else {
-      api(`/reports/${tab}${query}`).then(r => {
+      const reportName = tab === 'students' ? 'members' : tab;
+      api(`/reports/${reportName}${query}`).then(r => {
         setRows(Array.isArray(r.items) ? r.items : []);
         if (tab === 'attendance') setAttSummary({ items: r.items || [], summary: r.summary || {} });
       }).finally(() => setLoading(false));
