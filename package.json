@@ -13,7 +13,8 @@
         "test:calendar": "node --test test/academic-calendar-domain.test.mjs",
         "test:reporting": "node --test test/reporting-foundation.test.mjs",
         "test:attendance": "node --test test/attendance-domain.test.mjs",
-        "seed:attendance": "node scripts/seed-attendance-demo.mjs"
+        "seed:attendance": "node scripts/seed-attendance-demo.mjs",
+        "test:attendance-reporting": "node --test test/attendance-reporting.test.mjs"
     },
     "dependencies": {
         "@hookform/resolvers": "5.1.1",
