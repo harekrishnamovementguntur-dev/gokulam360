@@ -1,6 +1,6 @@
 # Gokulam360 Implementation Roadmap
 
-This roadmap governs implementation after Architecture Gita v1.0. The current application is a development shell with sample data only. Canonical domains are built first; a coordinated cutover occurs after the core architecture is complete.
+This roadmap governs implementation after Architecture Gita v1.0. Canonical domains are built first; application consumers are cut over only after the required canonical foundations are complete.
 
 ## Status
 
@@ -11,133 +11,71 @@ This roadmap governs implementation after Architecture Gita v1.0. The current ap
 | PR #15 | Terms and Sessions | Completed / merged |
 | PR #16 | Membership Term Participation | Completed / merged |
 | PR #17A | Credit Ledger Foundation | Completed / merged |
-| PR #17B | Payment Processing and Allocations | In progress |
-| PR #18 | Attendance Integration | Planned |
-| PR #19 | Coordinated Application Cutover | Planned |
-| PR #20 | Legacy Removal and Cleanup | Planned |
+| PR #17B / #18 | Payment Processing and Allocations | Completed / merged |
+| PR #20 | Audit index initialization fix | Completed / merged |
+| PR #22A | Attendance Domain Foundation | In progress |
+| PR #22B | Attendance Administrator UI and canonical roster workflow | Planned |
+| PR #23 | Coordinated Application Cutover | Planned |
+| PR #24 | Legacy Removal and Cleanup | Planned |
 
 ## Completed capabilities
 
 ### PR #14 — Program and Program Offering
 
-- Canonical Program domain for reusable academic definitions.
-- Canonical Program Offering domain for operational delivery.
-- Separate persistence for Programs and Offerings.
-- Organization-scoped uniqueness and query indexes.
-- Validation, lifecycle history, audit records, and transactional outbox records.
-- Administrator UI for creating, editing, archiving, and restoring Programs and Offerings.
-- No migration framework, Legacy Mapping UI, synchronization, or dual writes.
-- Legacy application remains an unchanged temporary development shell.
+- Canonical Program definitions are separate from operational Program Offerings.
+- Organization-scoped persistence, validation, lifecycle history, audit records, and outbox events.
+- Administrator UI for Program and Offering management.
+- No migration framework, synchronization, or dual writes.
 
 ### PR #15 — Academic Calendar
 
 - First-class Terms beneath Program Offerings.
 - First-class Sessions beneath Terms.
 - Configurable, repeatable, idempotent Session generation with preview.
-- Preservation of manually modified, cancelled, rescheduled, and archived Sessions during regeneration.
+- Preservation of manually modified, cancelled, rescheduled, and archived Sessions.
 - Term and Session lifecycle management, audit logging, and outbox integration.
 
 ### PR #16 — Membership Term Participation
 
-- First-class Participation relationship between Membership, Program Offering, and Term.
+- First-class relationship between Membership, Program Offering, and Term.
 - Participation lifecycle management with audit history.
-- Validation of active Memberships and matching Program Offering/Term relationships.
-- Duplicate active Participation prevention.
-- Administrator UI and organization-scoped APIs.
-
-PR #13 through PR #16 are merged into `main`. PR #17A is the current implementation phase.
-
-## PR #17A — Credit Ledger Foundation
-
-The current branch introduces the append-only Credit Ledger foundation:
-
-- Immutable ledger entries with structured reason codes and administrator descriptions.
-- Calculated balances and running balances; no persisted mutable balance.
-- Mandatory source references for business-action traceability.
-- Idempotent manual adjustment command.
-- Organization-scoped API, audit logs, and Transactional Outbox events.
-- Dedicated Credits & Ledger administrator page.
-- Payment Transactions and Payment Allocations remain out of scope for PR #17A.
+- Validation of active Memberships and matching Offering/Term relationships.
+- Duplicate active Participation prevention and organization-scoped APIs/UI.
 
 ### PR #17A — Credit Ledger Foundation
 
 - Append-only Credit Ledger entries with structured reasons, descriptions, and source references.
 - Calculated balances and running balances with no persisted mutable balance.
 - Idempotent manual adjustment command with organization scoping.
-- Atomic ledger, audit log, outbox, and idempotency receipt writes.
-- Credits & Ledger administrator UI.
+- Atomic ledger, audit, outbox, and idempotency receipt writes.
 
-PR #17A was merged into main in merge commit b66eec2eef7888be07b054fd6a361892405bab6f.
+### PR #17B / #18 — Payment Processing and Allocations
 
-### PR #17B — Payment Processing and Allocations
-
-- Payment Transactions and Payment Allocations.
-- Separate Money domain; payment posting is distinct from payment creation.
-- Credit grants only when a Payment Transaction is posted.
-- Immutable posted allocations with reversals/compensating allocations for corrections.
+- Separate Payment Transactions and Payment Allocations.
+- Payment posting is distinct from creation; credits are granted only when posted.
+- Immutable posted allocations with compensating corrections.
 - Idempotent posting, audit logs, and Transactional Outbox events.
-- No Attendance, Credits redesign, Reports, Notifications, or Cutover work.
+
+## PR #22A — Attendance Domain Foundation
+
+This phase introduces the canonical transactional Attendance domain:
+
+- Attendance Records reference canonical Sessions and active Membership Term Participations.
+- Attendance statuses are Present, Late, Absent, and Excused.
+- Attendance records are append-only; corrections and voids create linked revisions.
+- Present/Late credit consumption uses the configured offering policy; Absent/Excused do not debit.
+- Holiday and Cancelled Sessions never debit and cannot receive a new Attendance Record.
+- Attendance, compensating Ledger entries, Audit Logs, Outbox Events, and idempotency receipts are written transactionally.
+- Legacy Attendance UI and legacy collections remain unchanged until coordinated cutover.
 
 ## Governance
 
-- Canonical domains are implemented with explicit contracts and tests.
+- Architecture Gita, ADRs, Business Rules, and Glossary govern all implementation.
 - The development shell is temporary and must not receive new business capabilities.
 - No migration framework, synchronization, or dual writes are introduced.
-- Demo data is regenerated using the canonical model during the coordinated cutover.
+- Business history is preserved through immutable records, revisions, compensating transactions, and audit events.
 - Each completed PR updates this document with delivered capabilities, remaining risks, and the next dependency.
-- PR #17B must not begin until PR #17A has been reviewed and merged.
-
-## Cutover sequence
-
-PR #19 will move Students, enrollment, Fees, Attendance, Reports, imports, backups, Parent Portal, and dashboard consumers to canonical relationships. PR #20 will remove obsolete legacy routes, fields, seed logic, and collections after the cutover is verified.
 
 ## Current remaining work
 
-Credit Ledger review and merge, Payment Processing and Allocations, Attendance integration, coordinated application cutover, and legacy cleanup remain outstanding.
-# Gokulam360 Implementation Roadmap
-
-This roadmap governs implementation after Architecture Gita v1.0. The current application is a development shell with sample data only. Canonical domains are built first; a coordinated cutover occurs after the core architecture is complete.
-
-## Status
-
-| Phase | Scope | Status |
-|---|---|---|
-| PR #13 | Membership foundation and UI | Completed / merged |
-| PR #14 | Program and Program Offering | Completed / merged |
-| PR #15 | Terms and Sessions | Completed / merged |
-| PR #16 | Membership Term Participation | In progress |
-| PR #17 | Credit Ledger and Payments | Planned |
-| PR #18 | Attendance Integration | Planned |
-| PR #19 | Coordinated Application Cutover | Planned |
-| PR #20 | Legacy Removal and Cleanup | Planned |
-
-## Completed capabilities
-
-### PR #14 — Program and Program Offering
-
-- Canonical Program domain for reusable academic definitions.
-- Canonical Program Offering domain for operational delivery.
-- Separate persistence for Programs and Offerings.
-- Organization-scoped uniqueness and query indexes.
-- Validation, lifecycle history, audit records, and transactional outbox records.
-- Administrator UI for creating, editing, archiving, and restoring Programs and Offerings.
-- No migration framework, Legacy Mapping UI, synchronization, or dual writes.
-- Legacy application remains an unchanged temporary development shell.
-
-PR #14 was merged into `main` in merge commit `2876ecd24cd9012308e2d8830d0be8bf2ccba05d`.
-
-## Governance
-
-- Canonical domains are implemented with explicit contracts and tests.
-- The development shell is temporary and must not receive new business capabilities.
-- No migration framework, synchronization, or dual writes are introduced.
-- Demo data is regenerated using the canonical model during the coordinated cutover.
-- Each completed PR updates this document with delivered capabilities, remaining risks, and the next dependency.
-
-## Cutover sequence
-
-PR #19 will move Students, enrollment, Fees, Attendance, Reports, imports, backups, Parent Portal, and dashboard consumers to canonical relationships. PR #20 will remove obsolete legacy routes, fields, seed logic, and collections after the cutover is verified.
-
-## Current remaining work
-
-Terms, Sessions, Membership Term Participation, Credit Ledger, Payments, Attendance integration, coordinated consumer cutover, and legacy cleanup remain outstanding.
+Complete Attendance domain verification and merge PR #22A, then implement the administrator UI in PR #22B. After the canonical Attendance workflow is complete, perform the coordinated application cutover and remove obsolete legacy consumers.
