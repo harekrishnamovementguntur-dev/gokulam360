@@ -1461,7 +1461,7 @@ function Students({ students, setStudents }) {
         </DialogContent>
       </Dialog>
 
-      <EnrollmentHistoryDialog student={historyOf} onClose={() => setHistoryOf(null)} onChange={() => load()} />
+      <EnrollmentHistoryDialog student={historyOf} organizationId={org?.id} onClose={() => setHistoryOf(null)} onChange={() => load()} />
     </div>
   );
 }
@@ -1469,7 +1469,7 @@ function Students({ students, setStudents }) {
 /* ============================================================
    MEMBERSHIP TERM PARTICIPATION HISTORY
 ============================================================ */
-function EnrollmentHistoryDialog({ student, onClose, onChange }) {
+function EnrollmentHistoryDialog({ student, organizationId, onClose, onChange }) {
   const [memberships, setMemberships] = useState([]);
   const [participations, setParticipations] = useState([]);
   const [offerings, setOfferings] = useState([]);
@@ -1526,6 +1526,7 @@ function EnrollmentHistoryDialog({ student, onClose, onChange }) {
       await api('/membership-term-participations', {
         method: 'POST',
         body: JSON.stringify({
+          organization_id: organizationId,
           membership_id: form.membership_id,
           program_offering_id: form.program_offering_id,
           term_id: form.term_id,
@@ -1592,7 +1593,7 @@ function EnrollmentHistoryDialog({ student, onClose, onChange }) {
                   <div><Label>Active Membership</Label><Select value={form.membership_id || 'none'} onValueChange={value => setForm({ membership_id: value === 'none' ? '' : value, program_offering_id: '', term_id: '' })}><SelectTrigger><SelectValue placeholder="Choose Membership" /></SelectTrigger><SelectContent><SelectItem value="none">Choose Membership</SelectItem>{activeMemberships.map(membership => <SelectItem key={membership.id} value={membership.id}>{membership.program_id} · {membership.status}</SelectItem>)}</SelectContent></Select></div>
                   <div><Label>Program Offering</Label><Select value={form.program_offering_id || 'none'} onValueChange={value => setForm({ ...form, program_offering_id: value === 'none' ? '' : value, term_id: '' })}><SelectTrigger><SelectValue placeholder="Choose Program Offering" /></SelectTrigger><SelectContent><SelectItem value="none">Choose Program Offering</SelectItem>{visibleOfferings.map(offering => <SelectItem key={offering.id} value={offering.id}>{offering.academic_year}{offering.cohort ? ` · ${offering.cohort}` : ''}</SelectItem>)}</SelectContent></Select></div>
                   <div><Label>Term</Label><Select value={form.term_id || 'none'} onValueChange={value => setForm({ ...form, term_id: value === 'none' ? '' : value })}><SelectTrigger><SelectValue placeholder="Choose Term" /></SelectTrigger><SelectContent><SelectItem value="none">Choose Term</SelectItem>{visibleTerms.map(term => <SelectItem key={term.id} value={term.id}>{term.name} · {term.start_date} → {term.end_date}</SelectItem>)}</SelectContent></Select></div>
-                  <Button className="bg-saffron-gradient" onClick={createParticipation} disabled={saving || !form.membership_id || !form.program_offering_id || !form.term_id}>{saving ? 'Saving…' : 'Add Participation'}</Button>
+                  <Button className="bg-saffron-gradient" onClick={createParticipation} disabled={saving || !organizationId || !form.membership_id || !form.program_offering_id || !form.term_id}>{saving ? 'Saving…' : 'Add Participation'}</Button>
                 </>
               )}
             </div>
