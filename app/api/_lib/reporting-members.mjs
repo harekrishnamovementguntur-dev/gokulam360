@@ -1,4 +1,4 @@
-import { cursorPredicate, reportResponse, ReportingError } from '../../../lib/reporting-domain.mjs';
+import { cursorPredicate, encodeCursor, reportResponse, ReportingError } from '../../../lib/reporting-domain.mjs';
 
 const REPORT_SORT_FIELDS = new Set(['created_at', 'id']);
 
@@ -27,13 +27,12 @@ function pageResult(rows, filters, summary) {
   const items = hasMore ? rows.slice(0, filters.page_size) : rows;
   const last = items[items.length - 1];
   const nextCursor = hasMore && last
-    ? Buffer.from(JSON.stringify({
-        version: 1,
-        value: String(last[filters.sort]),
-        id: String(last.id),
+    ? encodeCursor({
+        value: last[filters.sort],
+        id: last.id,
         sort: filters.sort,
         direction: filters.direction,
-      })).toString('base64url')
+      })
     : null;
   return reportResponse({
     items,
