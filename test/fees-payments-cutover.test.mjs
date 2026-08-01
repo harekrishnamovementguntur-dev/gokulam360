@@ -16,3 +16,11 @@ test('legacy Fees UI and fee write operations are removed from the application s
   assert.doesNotMatch(page, /markPaid|saveNote/);
   assert.match(page, /<Payments organizationId=\{org\?\.id\}/);
 });
+
+
+test('super-admin Payments UI supports explicit organization scope', async () => {
+  const payments = await readFile(new URL('../components/Payments.js', import.meta.url), 'utf8');
+  assert.match(payments, /selectedOrganizationId/);
+  assert.match(payments, /request\('\/organizations'\)/);
+  assert.match(payments, /organization_id: scopeId/);
+});
