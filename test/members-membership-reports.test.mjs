@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildMembersPipeline, buildMembershipsPipeline } from '../app/api/_lib/reporting-members.js';
+import { buildMembersPipeline, buildMembershipsPipeline } from '../app/api/_lib/reporting-members.mjs';
 
 const scope = { organization_id: 'org-a' };
 const baseFilters = {
