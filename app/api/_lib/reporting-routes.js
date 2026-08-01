@@ -9,6 +9,7 @@ import {
   reportCatalog,
 } from '../../../lib/reporting-domain.mjs';
 import { listMembers, listMemberships } from './reporting-members.mjs';
+import { listLedgerReports, listPaymentReports } from './reporting-finance.mjs';
 
 function reportingErrorResponse(error) {
   const status = Number.isInteger(error?.status) ? error.status : 500;
@@ -44,7 +45,8 @@ export async function reportEndpointResponse(req, name, kind) {
     const authError = responseFromAuthError(auth);
     if (authError) return authError;
 
-    const scope = assertReportingAccess(auth.user);
+    const financial = kind === 'reports' && ['payments', 'ledger'].includes(name);
+    const scope = assertReportingAccess(auth.user, financial ? ['super_admin', 'org_admin'] : REPORTING_READ_ROLES);
     const filters = parseReportFilters(new URL(req.url).searchParams);
     const names = kind === 'reports' ? REPORT_NAMES : DASHBOARD_NAMES;
     if (!names.includes(name)) {
@@ -60,6 +62,12 @@ export async function reportEndpointResponse(req, name, kind) {
     }
     if (kind === 'reports' && name === 'memberships') {
       return json(await listMemberships({ db: await getDb(), scope, filters }));
+    }
+    if (kind === 'reports' && name === 'payments') {
+      return json(await listPaymentReports({ db: await getDb(), scope, filters }));
+    }
+    if (kind === 'reports' && name === 'ledger') {
+      return json(await listLedgerReports({ db: await getDb(), scope, filters }));
     }
 
     throw new ReportingError(
