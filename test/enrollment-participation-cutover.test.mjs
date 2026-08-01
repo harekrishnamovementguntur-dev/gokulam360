@@ -21,4 +21,5 @@ test('canonical participation creation requires the complete relationship chain'
   assert.match(history, /membership_id: form\.membership_id/);
   assert.match(history, /program_offering_id: form\.program_offering_id/);
   assert.match(history, /term_id: form\.term_id/);
+  assert.match(history, /organization_id: organizationId \\|\\| selectedMembership\\?\\.organization_id/);
 });
