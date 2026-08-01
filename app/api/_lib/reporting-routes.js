@@ -8,7 +8,7 @@ import {
   parseReportFilters,
   reportCatalog,
 } from '../../../lib/reporting-domain.mjs';
-import { listMembers, listMemberships } from './reporting-members.js';
+import { listMembers, listMemberships } from './reporting-members.mjs';
 
 function reportingErrorResponse(error) {
   const status = Number.isInteger(error?.status) ? error.status : 500;
