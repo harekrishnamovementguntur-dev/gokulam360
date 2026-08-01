@@ -19,7 +19,8 @@
         "test:attendance-reporting": "node --test test/attendance-reporting.test.mjs",
         "test:members-reports": "node --test test/members-membership-reports.test.mjs",
         "test:finance-reports": "node --test test/payment-credit-reports.test.mjs",
-        "test:enrollment-cutover": "node --test test/enrollment-participation-cutover.test.mjs"
+        "test:enrollment-cutover": "node --test test/enrollment-participation-cutover.test.mjs",
+        "test:fees-payments-cutover": "node --test test/fees-payments-cutover.test.mjs"
     },
     "dependencies": {
         "@hookform/resolvers": "5.1.1",
