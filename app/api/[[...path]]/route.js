@@ -846,61 +846,6 @@ async function router(req, method) {
     return json({ student: stripId(student), attendance: att.map(stripId), fees: fees.map(stripId) });
   }
 
-  // Reports endpoint - returns comprehensive report data
-  if (resource === 'reports' && method === 'GET') {
-    const type = id;
-    const scope = orgScope(user);
-    const from = url.searchParams.get('from') || '';
-    const to = url.searchParams.get('to') || '';
-    const isDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value);
-    if ((from && !isDate(from)) || (to && !isDate(to)) || (from && to && from > to)) {
-      return json({ error: 'Invalid date range' }, 400);
-    }
-    const dateFilter = field => {
-      const bounds = {};
-      if (from) bounds.$gte = from;
-      if (to) bounds.$lte = to;
-      return Object.keys(bounds).length ? { [field]: bounds } : {};
-    };
-    if (type === 'students') {
-      const items = await db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray();
-      return json({ items: items.map(stripId) });
-    }
-    if (type === 'attendance') {
-      const items = await db.collection('attendance').find({ ...scope, ...dateFilter('date') }).sort({ date: -1 }).toArray();
-      const students = await db.collection('students').find(scope).toArray();
-      const sMap = Object.fromEntries(students.map(s => [s.id, `${s.first_name} ${s.last_name}`]));
-      return json({ items: items.map(a => ({ ...stripId(a), student_name: sMap[a.student_id] || '-' })) });
-    }
-    if (type === 'fees') {
-      const items = await db.collection('fees').find({ ...scope, ...dateFilter('due_date') }).toArray();
-      const students = await db.collection('students').find(scope).toArray();
-      const sMap = Object.fromEntries(students.map(s => [s.id, `${s.first_name} ${s.last_name}`]));
-      return json({ items: items.map(f => ({ ...stripId(f), student_name: sMap[f.student_id] || '-' })) });
-    }
-    if (type === 'attendance-summary') {
-      const students = await db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray();
-      const attendance = await db.collection('attendance').find({ ...scope, ...dateFilter('date') }).toArray();
-      const summary = students.map(s => {
-        const sRecs = attendance.filter(a => a.student_id === s.id);
-        const months = {};
-        sRecs.forEach(a => {
-          const key = a.date.slice(0, 7);
-          if (!months[key]) months[key] = { present: 0, total: 0 };
-          months[key].total++;
-          if (a.status === 'present' || a.status === 'late') months[key].present++;
-        });
-        const monthly = Object.fromEntries(Object.entries(months).map(([k, v]) => [k, v.total ? Math.round((v.present / v.total) * 100) : 0]));
-        const totalPresent = sRecs.filter(a => a.status === 'present' || a.status === 'late').length;
-        const overall = sRecs.length ? Math.round((totalPresent / sRecs.length) * 100) : 0;
-        return { student_id: s.student_id, name: `${s.first_name} ${s.last_name}`, overall, monthly, total_sessions: sRecs.length, present: totalPresent };
-      });
-      const allMonths = Array.from(new Set(attendance.map(a => a.date.slice(0, 7)))).sort();
-      return json({ months: allMonths, students: summary });
-    }
-    return json({ error: 'Unknown report' }, 400);
-  }
-
   // Bulk import students
   if (resource === 'students-import' && method === 'POST') {
     if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
@@ -942,38 +887,6 @@ async function router(req, method) {
       title: `Bulk import: ${docs.length} students added`, actor: user.name || 'Admin', created_at: new Date().toISOString(),
     });
     return json({ imported: docs.length, errors });
-  }
-
-  // Attendance summary report - per student monthly %
-  if (resource === 'reports' && id === 'attendance-summary' && method === 'GET') {
-    const scope = orgScope(user);
-    const students = await db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray();
-    const attendance = await db.collection('attendance').find(scope).toArray();
-    // Group attendance by student+month
-    const summary = students.map(s => {
-      const sRecs = attendance.filter(a => a.student_id === s.id);
-      const months = {};
-      sRecs.forEach(a => {
-        const key = a.date.slice(0, 7); // YYYY-MM
-        if (!months[key]) months[key] = { present: 0, total: 0 };
-        months[key].total++;
-        if (a.status === 'present' || a.status === 'late') months[key].present++;
-      });
-      const monthly = Object.fromEntries(Object.entries(months).map(([k, v]) => [k, v.total ? Math.round((v.present / v.total) * 100) : 0]));
-      const totalPresent = sRecs.filter(a => a.status === 'present' || a.status === 'late').length;
-      const overall = sRecs.length ? Math.round((totalPresent / sRecs.length) * 100) : 0;
-      return {
-        student_id: s.student_id,
-        name: `${s.first_name} ${s.last_name}`,
-        overall,
-        monthly,
-        total_sessions: sRecs.length,
-        present: totalPresent,
-      };
-    });
-    // Collect all months in dataset
-    const allMonths = Array.from(new Set(attendance.map(a => a.date.slice(0, 7)))).sort();
-    return json({ months: allMonths, students: summary });
   }
 
   // Backup export - entire org data as JSON
