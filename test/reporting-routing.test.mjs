@@ -42,7 +42,7 @@ test('legacy Reports UI uses canonical report identifiers', () => {
   const end = page.indexOf('function AttendanceStatusSummary', start);
   const reports = page.slice(start, end);
   assert.match(reports, /useState\('members'\)/);
-  assert.match(reports, /tab === 'fees' \? 'payments' : tab/);
-  assert.doesNotMatch(reports, /value="students"/);
-  assert.doesNotMatch(reports, /value="fees"/);
+  assert.match(reports, /const reportName = tab;/);
+  assert.doesNotMatch(reports, /students/);
+  assert.doesNotMatch(reports, /fees/);
 });
