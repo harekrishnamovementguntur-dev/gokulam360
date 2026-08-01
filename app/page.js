@@ -63,6 +63,7 @@ async function api(path, opts = {}) {
   return data;
 }
 const fmtINR = (n) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n || 0);
+const DAY_LABELS = { 0: 'Sun', 1: 'Mon', 2: 'Tue', 3: 'Wed', 4: 'Thu', 5: 'Fri', 6: 'Sat' };
 const initials = (s = '') => s.split(' ').filter(Boolean).map(x => x[0]).join('').slice(0, 2).toUpperCase();
 const greet = () => { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; };
 
