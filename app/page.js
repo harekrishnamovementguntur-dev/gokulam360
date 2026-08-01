@@ -260,7 +260,6 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
       { key: 'participation', label: 'Membership Participation', icon: Users, roles: ['super_admin', 'org_admin'] },
       { key: 'payments', label: 'Payments', icon: Wallet, roles: ['super_admin', 'org_admin'] },
       { key: 'attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['super_admin', 'org_admin', 'teacher'] },
-      { key: 'fees', label: 'Fees', icon: IndianRupee, roles: ['super_admin', 'org_admin'] },
       { key: 'notifications', label: 'Notifications', icon: Bell, roles: ['super_admin', 'org_admin'] },
       { key: 'reports', label: 'Reports', icon: FileText, roles: ['super_admin', 'org_admin'] },
       { key: 'member-reports', label: 'Member Reports', icon: Users, roles: ['super_admin', 'org_admin'] },
@@ -362,7 +361,6 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               {view === 'payments' && <Payments organizationId={org?.id} />}
               {view === 'teachers' && <Teachers teachers={teachers} setTeachers={setTeachers} />}
               {view === 'attendance' && <AttendanceAdministrator request={api} />}
-              {view === 'fees' && <Fees />}
               {view === 'notifications' && <Notifications students={students} />}
               {view === 'reports' && <Reports />}
               {view === 'member-reports' && <MemberMembershipReports />}
@@ -1694,90 +1692,6 @@ function Teachers({ teachers, setTeachers }) {
 /* ============================================================
    FEES
 ============================================================ */
-function Fees() {
-  const [items, setItems] = useState([]);
-  const [students, setStudents] = useState([]);
-  const [noteDrafts, setNoteDrafts] = useState({});
-  const [savingNote, setSavingNote] = useState(null);
-  useEffect(() => { api('/fees').then(r => setItems(r.items)); api('/students').then(r => setStudents(r.items)); }, []);
-  const sMap = Object.fromEntries(students.map(s => [s.id, s]));
-  const pending = items.filter(f => f.status === 'pending');
-  const paid = items.filter(f => f.status === 'paid');
-  const totalPending = pending.reduce((a, f) => a + (f.amount - (f.paid_amount || 0)), 0);
-  const totalPaid = paid.reduce((a, f) => a + (f.paid_amount || 0), 0);
-  const markPaid = async (f) => {
-    await api(`/fees/${f.id}`, { method: 'PUT', body: JSON.stringify({ status: 'paid', paid_amount: f.amount, paid_at: new Date().toISOString() }) });
-    api('/fees').then(r => setItems(r.items));
-    confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 }, colors: ['#7c3aed', '#0ea5e9'] });
-    toast.success('Payment received 💰');
-  };
-  const saveNote = async (f) => {
-    const notes = noteDrafts[f.id] ?? f.notes ?? '';
-    setSavingNote(f.id);
-    try {
-      await api(`/fees/${f.id}`, { method: 'PUT', body: JSON.stringify({ notes }) });
-      setItems(current => current.map(item => item.id === f.id ? { ...item, notes } : item));
-      setNoteDrafts(current => ({ ...current, [f.id]: undefined }));
-      toast.success('Fee note saved');
-    } finally {
-      setSavingNote(null);
-    }
-  };
-  return (
-    <div className="space-y-5">
-      <PageHeader title="Fees" subtitle="Track collections & pending dues" icon={IndianRupee} />
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="rounded-2xl relative overflow-hidden p-5 text-white shadow-xl" style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}>
-          <div className="absolute -right-4 -bottom-4 opacity-20"><IndianRupee size={80} /></div>
-          <div className="text-xs opacity-85">Total Collected</div>
-          <div className="text-3xl font-bold mt-1">₹<Counter value={totalPaid} format={v => Math.round(v).toLocaleString('en-IN')} /></div>
-          <div className="text-[11px] opacity-80 mt-1">{paid.length} paid records</div>
-        </div>
-        <div className="rounded-2xl relative overflow-hidden p-5 text-white shadow-xl" style={{ background: 'linear-gradient(135deg,#e11d48,#f43f5e)' }}>
-          <div className="absolute -right-4 -bottom-4 opacity-20"><IndianRupee size={80} /></div>
-          <div className="text-xs opacity-85">Pending Dues</div>
-          <div className="text-3xl font-bold mt-1">₹<Counter value={totalPending} format={v => Math.round(v).toLocaleString('en-IN')} /></div>
-          <div className="text-[11px] opacity-80 mt-1">{pending.length} pending</div>
-        </div>
-        <div className="rounded-2xl glass p-5">
-          <div className="text-xs text-muted-foreground">Collection Rate</div>
-          <div className="text-3xl font-bold mt-1"><Counter value={Math.round((totalPaid / Math.max(1, totalPaid + totalPending)) * 100)} format={v => Math.round(v)} />%</div>
-          <Progress className="mt-3 h-2" value={Math.round((totalPaid / Math.max(1, totalPaid + totalPending)) * 100)} />
-        </div>
-      </div>
-      <div className="rounded-2xl glass overflow-hidden">
-        <Table>
-          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead><TableHead className="min-w-[240px]">Notes</TableHead><TableHead></TableHead></TableRow></TableHeader>
-          <TableBody>
-            {items.map(f => {
-              const s = sMap[f.student_id];
-              return (
-                <TableRow key={f.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <Avatar className="h-7 w-7">
-                        {s?.photo_url ? <AvatarImage src={s.photo_url} /> : <AvatarFallback className="bg-saffron-gradient text-white text-[10px]">{initials(s ? s.first_name + ' ' + s.last_name : '?')}</AvatarFallback>}
-                      </Avatar>
-                      <div className="text-sm font-medium">{s ? `${s.first_name} ${s.last_name}` : '-'}</div>
-                    </div>
-                  </TableCell>
-                  <TableCell>{f.fee_type}</TableCell>
-                  <TableCell>{fmtINR(f.amount)}</TableCell>
-                  <TableCell>{fmtINR(f.paid_amount)}</TableCell>
-                  <TableCell><Badge className={f.status === 'paid' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-rose-500 hover:bg-rose-600'}>{f.status}</Badge></TableCell>
-                  <TableCell className="text-xs text-muted-foreground">{f.due_date}</TableCell>
-                  <TableCell><div className="flex items-end gap-2"><Textarea rows={2} value={noteDrafts[f.id] ?? f.notes ?? ''} onChange={e => setNoteDrafts(current => ({ ...current, [f.id]: e.target.value }))} placeholder="Add a note…" className="min-h-[52px] text-xs" /><Button size="sm" variant="outline" onClick={() => saveNote(f)} disabled={savingNote === f.id}>{savingNote === f.id ? 'Saving…' : 'Save'}</Button></div></TableCell>
-                  <TableCell className="text-right">{f.status !== 'paid' && <Button size="sm" className="bg-saffron-gradient" onClick={() => markPaid(f)}>Mark Paid</Button>}</TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
-  );
-}
-
 /* ============================================================
    NOTIFICATIONS — FREE via wa.me deep-links
 ============================================================ */
