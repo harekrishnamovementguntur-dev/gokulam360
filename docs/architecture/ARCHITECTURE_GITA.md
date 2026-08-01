@@ -105,6 +105,40 @@ The system remains a modular monolith. Each successful command writes its busine
 
 Every API operation enforces organization scope and capability-based authorization. Financial and credit mutations require idempotency keys. Reports are membership-centric and ledger-derived, preserving historical meaning even when programs, offerings, or configuration later change.
 
+## 12. Authorization Scope Model
+
+Authorization scope is determined by the operation and the authenticated actor's role. An `organization_id` is a tenant-resource scope; it is not a requirement that every authenticated user belong to an organization.
+
+### Platform-scoped operations
+
+Platform-scoped operations operate across organizations and are available only to explicitly authorized Platform actors, currently Super Admins. Examples include:
+
+- Creating an Organization.
+- Listing Organizations.
+- Assigning the first Organization Administrator during Organization creation.
+- Platform-level administration and organization lifecycle operations.
+
+These operations must not require, derive, or validate an authenticated user's `organization_id`.
+
+### Tenant-scoped operations
+
+Tenant-scoped operations create, read, or change data owned by one Organization. For Organization Administrators, Teachers, and other tenant users, the organization scope must be derived from the authenticated context. A client-supplied `organization_id` must not override that authenticated scope.
+
+### Super Admin performing a tenant-scoped operation
+
+A Super Admin does not belong to any Organization. When a Super Admin performs a tenant-scoped operation, the request must identify an explicit target Organization. The target is a selected resource scope, not the Super Admin's identity or membership.
+
+The target Organization must:
+
+- Be supplied explicitly where the command requires tenant scope.
+- Be validated as an existing, eligible Organization.
+- Be recorded in authorization, audit, and domain event metadata.
+- Never be inferred from the first available Organization, stale UI state, or a null Super Admin context.
+
+Global operations must not be routed through this target-organization rule. Future APIs and UI flows must declare whether they are platform-scoped, tenant-scoped, or Super Admin tenant-scoped before implementation.
+
+This clarification is documented in [ADR-014](./adr/ADR-014-authorization-scope.md).
+
 ## 12. Governance and Versioning
 
 This document is the approved **Architecture Gita v1.0**. It is an immutable baseline once merged. Future architectural revisions must create a new, versioned Architecture Gita document and ADRs explaining the change; they must not silently replace v1.0. Every new module must define its lifecycle, audit events, organization scope, permissions, API contract, and reporting implications before implementation.
