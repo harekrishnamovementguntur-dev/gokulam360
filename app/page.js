@@ -2115,6 +2115,8 @@ function Reports() {
   const dateRangeSuffix = fromDate || toDate ? `-${fromDate || 'start'}-to-${toDate || 'end'}` : '';
   useEffect(() => {
     setLoading(true);
+    setRows([]);
+    setAttSummary(null);
     const params = new URLSearchParams();
     if (fromDate) params.set('from', fromDate);
     if (toDate) params.set('to', toDate);
@@ -2122,7 +2124,10 @@ function Reports() {
     if (tab === 'attendance-summary') {
       api(`/reports/attendance-summary${query}`).then(setAttSummary).finally(() => setLoading(false));
     } else {
-      api(`/reports/${tab}${query}`).then(r => setRows(r.items)).finally(() => setLoading(false));
+      api(`/reports/${tab}${query}`).then(r => {
+        setRows(Array.isArray(r.items) ? r.items : []);
+        if (tab === 'attendance') setAttSummary({ items: r.items || [], summary: r.summary || {} });
+      }).finally(() => setLoading(false));
     }
   }, [tab, fromDate, toDate]);
 
