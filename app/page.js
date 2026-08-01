@@ -1630,8 +1630,6 @@ function ParticipationCard({ item, membership, offering, term, past = false }) {
 /* ============================================================
    TEACHERS
 ============================================================ */
-
-============================================================ */
 function Teachers({ teachers, setTeachers }) {
   const [open, setOpen] = useState(false);
   const empty = { employee_id: '', name: '', email: '', mobile: '', address: '', qualification: '', skills: '' };
