@@ -2130,7 +2130,7 @@ function Reports() {
     if (tab === 'attendance-summary') {
       api(`/reports/attendance-summary${query}`).then(setAttSummary).finally(() => setLoading(false));
     } else {
-      const reportName = tab === 'students' ? 'members' : tab;
+      const reportName = tab === 'students' ? 'members' : tab === 'fees' ? 'payments' : tab;
       api(`/reports/${reportName}${query}`).then(r => {
         setRows(Array.isArray(r.items) ? r.items : []);
         if (tab === 'attendance') setAttSummary({ items: r.items || [], summary: r.summary || {} });
@@ -2139,9 +2139,9 @@ function Reports() {
   }, [tab, fromDate, toDate]);
 
   const columns = {
-    students: ['student_id', 'first_name', 'last_name', 'gender', 'mobile', 'email', 'status'],
+    students: ['student_id', 'first_name', 'last_name', 'status', 'membership_count', 'active_membership_count', 'created_at'],
     attendance: ['session_date', 'student_name', 'status'],
-    fees: ['student_name', 'fee_type', 'amount', 'paid_amount', 'status', 'due_date'],
+    fees: ['receipt_number', 'kind', 'status', 'amount_minor', 'allocation_count', 'allocated_credit_quantity', 'created_at'],
   }[tab];
 
   const exportCSV = () => {
