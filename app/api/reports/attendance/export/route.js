@@ -1,5 +1,5 @@
 import { apiErrorResponse, getDb, requireUser } from '../../../_lib/server.js';
-import { parseReportFilters, REPORTING_READ_ROLES } from '../../../../lib/reporting-domain.mjs';
+import { parseReportFilters, REPORTING_READ_ROLES } from '../../../../../lib/reporting-domain.mjs';
 import { attendanceCsv, listAttendanceReport } from '../../../_lib/attendance-reporting.js';
 
 export async function GET(req) {
