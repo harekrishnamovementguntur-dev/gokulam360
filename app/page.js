@@ -51,7 +51,13 @@ async function api(path, opts = {}) {
   const t = store.token; if (t) headers.Authorization = `Bearer ${t}`;
   const r = await fetch(`${API}${path}`, { ...opts, headers });
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || 'Request failed');
+  if (!r.ok) {
+    const detail = data?.error;
+    const message = typeof detail === 'string'
+      ? detail
+      : detail?.message || detail?.error || 'Request failed';
+    throw new Error(message);
+  }
   return data;
 }
 const fmtINR = (n) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n || 0);
@@ -2109,6 +2115,8 @@ function Reports() {
   const dateRangeSuffix = fromDate || toDate ? `-${fromDate || 'start'}-to-${toDate || 'end'}` : '';
   useEffect(() => {
     setLoading(true);
+    setRows([]);
+    setAttSummary(null);
     const params = new URLSearchParams();
     if (fromDate) params.set('from', fromDate);
     if (toDate) params.set('to', toDate);
@@ -2116,20 +2124,23 @@ function Reports() {
     if (tab === 'attendance-summary') {
       api(`/reports/attendance-summary${query}`).then(setAttSummary).finally(() => setLoading(false));
     } else {
-      api(`/reports/${tab}${query}`).then(r => setRows(r.items)).finally(() => setLoading(false));
+      api(`/reports/${tab}${query}`).then(r => {
+        setRows(Array.isArray(r.items) ? r.items : []);
+        if (tab === 'attendance') setAttSummary({ items: r.items || [], summary: r.summary || {} });
+      }).finally(() => setLoading(false));
     }
   }, [tab, fromDate, toDate]);
 
   const columns = {
     students: ['student_id', 'first_name', 'last_name', 'gender', 'mobile', 'email', 'status'],
-    attendance: ['date', 'student_name', 'status'],
+    attendance: ['session_date', 'student_name', 'status'],
     fees: ['student_name', 'fee_type', 'amount', 'paid_amount', 'status', 'due_date'],
   }[tab];
 
   const exportCSV = () => {
     if (tab === 'attendance-summary' && attSummary) {
-      const headers = ['Student ID', 'Name', 'Overall %', 'Sessions', 'Present', ...attSummary.months];
-      const lines = attSummary.students.map(s => [s.student_id, s.name, s.overall + '%', s.total_sessions, s.present, ...attSummary.months.map(m => (s.monthly[m] ?? '-') + (s.monthly[m] !== undefined ? '%' : ''))]);
+      const headers = ['Session Date', 'Session ID', 'Present', 'Late', 'Absent', 'Excused', 'Total'];
+      const lines = (attSummary.items || []).map(s => [s.session_date || '', s.session_id, s.present, s.late, s.absent, s.excused, s.total]);
       const csv = [headers.join(','), ...lines.map(l => l.map(v => `"${v}"`).join(','))].join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `attendance-summary${dateRangeSuffix}.csv`; a.click();
@@ -2143,7 +2154,7 @@ function Reports() {
     const XLSX = await import('xlsx');
     let ws, sheet = tab;
     if (tab === 'attendance-summary' && attSummary) {
-      const data = attSummary.students.map(s => ({ 'Student ID': s.student_id, Name: s.name, 'Overall %': s.overall, Sessions: s.total_sessions, Present: s.present, ...Object.fromEntries(attSummary.months.map(m => [m, s.monthly[m] ?? ''])) }));
+      const data = (attSummary.items || []).map(s => ({ 'Session Date': s.session_date || '', 'Session ID': s.session_id, Present: s.present, Late: s.late, Absent: s.absent, Excused: s.excused, Total: s.total }));
       ws = XLSX.utils.json_to_sheet(data);
       sheet = 'attendance-summary';
     } else {
@@ -2196,9 +2207,10 @@ function Reports() {
         </TabsList>
         <TabsContent value={tab} className="mt-4">
           {tab === 'attendance-summary' ? (
-            <AttendanceSummaryTable data={attSummary} loading={loading} />
+            <CanonicalAttendanceSummaryTable data={attSummary} loading={loading} />
           ) : (
             <div className="rounded-2xl glass overflow-hidden">
+              {tab === 'attendance' && !loading && <AttendanceStatusSummary summary={attSummary?.summary} />}
               {loading ? <div className="p-6 space-y-2">{[...Array(6)].map((_, i) => <Skeleton key={i} className="h-8" />)}</div> :
                 rows.length === 0 ? <EmptyState text="No data in this report" /> : (
                   <div className="overflow-x-auto">
@@ -2221,6 +2233,42 @@ function Reports() {
       </Tabs>
     </div>
   );
+}
+
+function AttendanceStatusSummary({ summary = {} }) {
+  const cards = [
+    ['Present', summary.present],
+    ['Late', summary.late],
+    ['Absent', summary.absent],
+    ['Excused', summary.excused],
+    ['Total', summary.total],
+  ];
+  return <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 border-b border-border/50">
+    {cards.map(([label, value]) => <div key={label} className="rounded-xl bg-background/40 p-3">
+      <div className="text-2xl font-bold"><Counter value={Number(value || 0)} /></div>
+      <div className="text-xs text-muted-foreground">{label}</div>
+    </div>)}
+  </div>;
+}
+
+function CanonicalAttendanceSummaryTable({ data, loading }) {
+  if (loading || !data) return <div className="rounded-2xl glass p-6 space-y-2">{[...Array(8)].map((_, i) => <Skeleton key={i} className="h-8" />)}</div>;
+  const items = Array.isArray(data.items) ? data.items : [];
+  const summary = data.summary?.attendance || data.summary || {};
+  return <div className="space-y-4">
+    <div className="rounded-2xl glass overflow-hidden">
+      <AttendanceStatusSummary summary={summary} />
+      {items.length === 0 ? <EmptyState text="No attendance recorded yet" /> : <div className="overflow-x-auto">
+        <Table>
+          <TableHeader><TableRow><TableHead>Session Date</TableHead><TableHead>Session</TableHead><TableHead className="text-center">Present</TableHead><TableHead className="text-center">Late</TableHead><TableHead className="text-center">Absent</TableHead><TableHead className="text-center">Excused</TableHead><TableHead className="text-center">Total</TableHead></TableRow></TableHeader>
+          <TableBody>{items.map(item => <TableRow key={item.session_id}>
+            <TableCell>{item.session_date || '-'}</TableCell><TableCell className="font-mono text-xs">{item.session_id}</TableCell>
+            <TableCell className="text-center">{item.present || 0}</TableCell><TableCell className="text-center">{item.late || 0}</TableCell><TableCell className="text-center">{item.absent || 0}</TableCell><TableCell className="text-center">{item.excused || 0}</TableCell><TableCell className="text-center">{item.total || 0}</TableCell>
+          </TableRow>)}</TableBody>
+        </Table>
+      </div>}
+    </div>
+  </div>;
 }
 
 function AttendanceSummaryTable({ data, loading }) {
