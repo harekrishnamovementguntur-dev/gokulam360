@@ -16,7 +16,7 @@ This roadmap governs implementation after Architecture Gita v1.0. Canonical doma
 | PR #22A | Attendance Domain Foundation | In progress |
 | PR #22B | Attendance Administrator UI and canonical roster workflow | In progress |
 | PR #23 | Coordinated Application Cutover | Planned |
-| PR #24 | Legacy Removal and Cleanup | Planned |
+| PR #24 | Legacy Removal and Cleanup | Planned |\n| PR #29 | Reporting Reconciliation (Members, Memberships, Payments, Credit Ledger) | In progress |
 
 ## Completed capabilities
 
@@ -94,3 +94,10 @@ This phase introduces the canonical transactional Attendance domain:
 ## Current remaining work
 
 Complete Attendance domain verification and merge PR #22A, complete the administrator UI in PR #22B, then implement canonical Attendance Reports in PR #27. After the canonical Attendance workflow is complete, perform the coordinated application cutover and remove obsolete legacy consumers.
+
+
+### PR #29 — Reporting Reconciliation
+
+- Restores the approved Members/Memberships and Payment/Credit Ledger reporting services, UI components, tests, documentation, and route wiring into the current `main` baseline.
+- Preserves the canonical Attendance reporting implementation and the Reporting Foundation.
+- Dashboard implementation remains blocked until this reconciliation is merged.
