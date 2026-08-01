@@ -76,6 +76,13 @@ This phase introduces the canonical transactional Attendance domain:
 - Existing records and immutable correction history are displayed; Holiday and Cancelled Sessions are blocked.
 - Legacy Attendance endpoints and collections are not used.
 
+### PR #27 — Canonical Attendance Reports
+
+- Canonical Attendance record report with status breakdowns and organization-scoped cursor pagination.
+- Session attendance summaries sourced from canonical Sessions and Attendance Records.
+- Current-page CSV export using the shared reporting contract.
+- No dashboards, analytics, notifications, legacy collection reads, or mutation behavior.
+
 ## Governance
 
 - Architecture Gita, ADRs, Business Rules, and Glossary govern all implementation.
@@ -86,4 +93,4 @@ This phase introduces the canonical transactional Attendance domain:
 
 ## Current remaining work
 
-Complete Attendance domain verification and merge PR #22A, then implement the administrator UI in PR #22B. After the canonical Attendance workflow is complete, perform the coordinated application cutover and remove obsolete legacy consumers.
+Complete Attendance domain verification and merge PR #22A, complete the administrator UI in PR #22B, then implement canonical Attendance Reports in PR #27. After the canonical Attendance workflow is complete, perform the coordinated application cutover and remove obsolete legacy consumers.
