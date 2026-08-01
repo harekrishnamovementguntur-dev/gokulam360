@@ -2207,10 +2207,10 @@ function Reports() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="members">Members</TabsTrigger
+          <TabsTrigger value="members">Members</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="attendance-summary">Monthly Summary</TabsTrigger>
-          <TabsTrigger value="payments">Payments</TabsTrigger
+          <TabsTrigger value="payments">Payments</TabsTrigger>
         </TabsList>
         <TabsContent value={tab} className="mt-4">
           {tab === 'attendance-summary' ? (
