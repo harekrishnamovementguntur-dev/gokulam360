@@ -32,7 +32,6 @@ test('report filters are applied to canonical memberships', () => {
   assert.deepEqual(pipeline[0], {
     $match: {
       organization_id: 'org-a',
-      id: undefined,
       program_id: 'program-a',
       status: 'active',
       student_id: 'student-a',
