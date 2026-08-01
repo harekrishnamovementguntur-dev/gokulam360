@@ -38,6 +38,7 @@ import AcademicCalendar from '@/components/AcademicCalendar';
 import MembershipTermParticipation from '@/components/MembershipTermParticipation';
 import Payments from '@/components/Payments';
 import MemberMembershipReports from '@/components/MemberMembershipReports';
+import PaymentCreditReports from '@/components/PaymentCreditReports';
 
 const API = '/api';
 
@@ -256,6 +257,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
       { key: 'notifications', label: 'Notifications', icon: Bell, roles: ['super_admin', 'org_admin'] },
       { key: 'reports', label: 'Reports', icon: FileText, roles: ['super_admin', 'org_admin'] },
       { key: 'member-reports', label: 'Member Reports', icon: Users, roles: ['super_admin', 'org_admin'] },
+      { key: 'financial-reports', label: 'Payment Reports', icon: Wallet, roles: ['super_admin', 'org_admin'] },
       { key: 'events', label: 'Events', icon: CalendarIcon, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'backup', label: 'Backup', icon: Download, roles: ['super_admin', 'org_admin'] },
     ];
@@ -358,6 +360,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               {view === 'notifications' && <Notifications students={students} />}
               {view === 'reports' && <Reports />}
               {view === 'member-reports' && <MemberMembershipReports />}
+              {view === 'financial-reports' && <PaymentCreditReports />}
               {view === 'events' && <Events />}
               {view === 'backup' && <Backup />}
             </motion.div>
