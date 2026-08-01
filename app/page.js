@@ -2112,7 +2112,7 @@ function Notifications({ students }) {
    REPORTS
 ============================================================ */
 function Reports() {
-  const [tab, setTab] = useState('students');
+  const [tab, setTab] = useState('members');
   const [rows, setRows] = useState([]);
   const [attSummary, setAttSummary] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -2130,7 +2130,7 @@ function Reports() {
     if (tab === 'attendance-summary') {
       api(`/reports/attendance-summary${query}`).then(setAttSummary).finally(() => setLoading(false));
     } else {
-      const reportName = tab === 'students' ? 'members' : tab;
+      const reportName = tab === 'fees' ? 'payments' : tab;
       api(`/reports/${reportName}${query}`).then(r => {
         setRows(Array.isArray(r.items) ? r.items : []);
         if (tab === 'attendance') setAttSummary({ items: r.items || [], summary: r.summary || {} });
@@ -2139,7 +2139,7 @@ function Reports() {
   }, [tab, fromDate, toDate]);
 
   const columns = {
-    students: ['student_id', 'first_name', 'last_name', 'gender', 'mobile', 'email', 'status'],
+    members: ['student_id', 'first_name', 'last_name', 'status', 'membership_count', 'active_membership_count', 'created_at'],
     attendance: ['session_date', 'student_name', 'status'],
     fees: ['student_name', 'fee_type', 'amount', 'paid_amount', 'status', 'due_date'],
   }[tab];
@@ -2199,7 +2199,7 @@ function Reports() {
           <Button className="bg-saffron-gradient" onClick={exportPDF}><FileText size={14} className="mr-1" /> PDF</Button>
         </div>} />
 
-      {tab !== 'students' && <div className="rounded-2xl glass p-4 flex flex-wrap items-end gap-3">
+      {tab !== 'members' && <div className="rounded-2xl glass p-4 flex flex-wrap items-end gap-3">
         <div><Label className="text-xs">From date</Label><Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} className="mt-1 w-[170px]" /></div>
         <div><Label className="text-xs">To date</Label><Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} min={fromDate || undefined} className="mt-1 w-[170px]" /></div>
         {(fromDate || toDate) && <Button variant="ghost" size="sm" onClick={() => { setFromDate(''); setToDate(''); }}>Clear dates</Button>}
@@ -2207,7 +2207,7 @@ function Reports() {
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="students">Students</TabsTrigger>
+          <TabsTrigger value="members">Members</TabsTrigger
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="attendance-summary">Monthly Summary</TabsTrigger>
           <TabsTrigger value="fees">Fees</TabsTrigger>
