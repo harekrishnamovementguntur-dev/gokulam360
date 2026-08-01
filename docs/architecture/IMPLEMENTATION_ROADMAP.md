@@ -13,10 +13,11 @@ This roadmap governs implementation after Architecture Gita v1.0. Canonical doma
 | PR #17A | Credit Ledger Foundation | Completed / merged |
 | PR #17B / #18 | Payment Processing and Allocations | Completed / merged |
 | PR #20 | Audit index initialization fix | Completed / merged |
-| PR #22A | Attendance Domain Foundation | In progress |
-| PR #22B | Attendance Administrator UI and canonical roster workflow | In progress |
+| PR #22A | Attendance Domain Foundation | Completed / merged |
+| PR #22B | Attendance Administrator UI and canonical roster workflow | Completed / merged |
 | PR #23 | Coordinated Application Cutover | Planned |
-| PR #24 | Legacy Removal and Cleanup | Planned |\n| PR #29 | Reporting Reconciliation (Members, Memberships, Payments, Credit Ledger) | In progress |
+| PR #24 | Legacy Removal and Cleanup | Planned |\n| PR #29 | Reporting Reconciliation (Members, Memberships, Payments, Credit Ledger) | Completed / merged |
+| PR #31 | Program and Offering Consumer Cutover | In progress |
 
 ## Completed capabilities
 
@@ -93,7 +94,7 @@ This phase introduces the canonical transactional Attendance domain:
 
 ## Current remaining work
 
-Complete Attendance domain verification and merge PR #22A, complete the administrator UI in PR #22B, then implement canonical Attendance Reports in PR #27. After the canonical Attendance workflow is complete, perform the coordinated application cutover and remove obsolete legacy consumers.
+PR #31 removes the legacy Classes & Batches operational consumer and establishes the canonical Programs & Offerings screen as the sole class-management UI. Student identity and legacy program references remain intentionally unchanged for the later Students → Members cutover. Next pilot-critical work: Membership Term Participation consumer cutover, Fees → Payments, Attendance operational cutover, and Dashboard migration.
 
 
 ### PR #29 — Reporting Reconciliation
