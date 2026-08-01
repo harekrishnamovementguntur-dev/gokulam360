@@ -9,7 +9,7 @@ import {
   Building2, LogOut, Menu, Moon, Sun, Search, Plus, Edit3, Trash2, IdCard, Printer,
   UserCircle2, TrendingUp, ChevronRight, Sparkles, Flame, BookOpen, ClipboardCheck,
   Bell, Send, MessageSquare, Camera, FileText, Download, FileSpreadsheet, Command as CmdIcon,
-  Rocket, Award, Heart, Activity, ArrowUpRight, Phone, PartyPopper, Zap, Layers, School,
+  Rocket, Award, Heart, Activity, ArrowUpRight, Phone, PartyPopper, Zap,
   ChevronLeft, Upload, Check, CheckCircle2, Circle, Palette, Wallet, UserPlus
 } from 'lucide-react';
 import {
@@ -258,7 +258,6 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
       { key: 'academic-calendar', label: 'Academic Calendar', icon: CalendarIcon, roles: ['super_admin', 'org_admin'] },
       { key: 'participation', label: 'Membership Participation', icon: Users, roles: ['super_admin', 'org_admin'] },
       { key: 'payments', label: 'Payments', icon: Wallet, roles: ['super_admin', 'org_admin'] },
-      { key: 'classes', label: 'Classes & Batches', icon: School, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'fees', label: 'Fees', icon: IndianRupee, roles: ['super_admin', 'org_admin'] },
       { key: 'notifications', label: 'Notifications', icon: Bell, roles: ['super_admin', 'org_admin'] },
@@ -361,7 +360,6 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               {view === 'participation' && <MembershipTermParticipation request={api} />}
               {view === 'payments' && <Payments organizationId={org?.id} />}
               {view === 'teachers' && <Teachers teachers={teachers} setTeachers={setTeachers} />}
-              {view === 'classes' && <Classes />}
               {view === 'attendance' && <AttendanceAdministrator request={api} />}
               {view === 'fees' && <Fees />}
               {view === 'notifications' && <Notifications students={students} />}
@@ -1653,132 +1651,6 @@ function Teachers({ teachers, setTeachers }) {
             <div className="col-span-2"><Label>Address</Label><Textarea rows={2} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
           </div>
           <DialogFooter><Button onClick={save} className="bg-saffron-gradient">Save</Button></DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-/* ============================================================
-   CLASSES / BATCHES (built on programs)
-============================================================ */
-const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const DAY_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-function DaysPicker({ value = [], onChange }) {
-  const toggle = (d) => onChange(value.includes(d) ? value.filter(x => x !== d) : [...value, d].sort());
-  return (
-    <div className="flex gap-1.5 flex-wrap">
-      {DAY_LABELS.map((label, i) => {
-        const active = value.includes(i);
-        return (
-          <button type="button" key={i} onClick={() => toggle(i)}
-            className={`w-11 h-11 rounded-xl text-xs font-semibold transition ${active ? 'bg-saffron-gradient text-white shadow-lg scale-105' : 'bg-muted text-muted-foreground hover:bg-primary/10 hover:text-primary'}`}>
-            {label}
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
-function Classes() {
-  const [items, setItems] = useState([]);
-  const [students, setStudents] = useState([]);
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
-  const empty = { name: '', description: '', age_group: '', duration_months: 4, capacity: 30, start_date: '', end_date: '', days_of_week: [0], fee_amount: 1500 };
-  const [form, setForm] = useState(empty);
-  const load = () => api('/programs').then(r => setItems(r.items));
-  useEffect(() => { load(); api('/students').then(r => setStudents(r.items)); }, []);
-  const save = async () => {
-    try {
-      const payload = { ...form, duration_months: Number(form.duration_months) || 0, capacity: Number(form.capacity) || 0, fee_amount: Number(form.fee_amount) || 0 };
-      if (editing) await api(`/programs/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
-      else await api('/programs', { method: 'POST', body: JSON.stringify(payload) });
-      confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7'] });
-      toast.success(editing ? 'Class updated' : 'Class created 🎉');
-      setOpen(false); load();
-    } catch (e) { toast.error(e.message); }
-  };
-  const del = async (p) => { if (!confirm(`Delete ${p.name}?`)) return; await api(`/programs/${p.id}`, { method: 'DELETE' }); toast.success('Deleted'); load(); };
-  const openNew = () => { setEditing(null); setForm(empty); setOpen(true); };
-  const openEdit = (p) => { setEditing(p); setForm({ ...empty, ...p, days_of_week: p.days_of_week || [0] }); setOpen(true); };
-
-  const enrolledCount = (p) => students.filter(s => (s.program_ids || [s.program_id]).includes(p.id)).length;
-
-  return (
-    <div className="space-y-5">
-      <PageHeader title="Classes & Batches" subtitle="Schedules, days, capacity & fees" icon={School}
-        action={<Button className="bg-saffron-gradient shadow" onClick={openNew}><Plus size={15} className="mr-1" /> New Class</Button>} />
-
-      {items.length === 0 ? <EmptyState text="No classes yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openNew}><Plus size={14} className="mr-1" />Create first class</Button>} /> : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {items.map((p, i) => {
-            const enrolled = enrolledCount(p);
-            const pct = Math.min(100, Math.round((enrolled / (p.capacity || 1)) * 100));
-            const days = p.days_of_week || [0];
-            return (
-              <motion.div key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                className="rounded-2xl glass p-5 card-lift group">
-                <div className="flex items-start justify-between">
-                  <div className="w-11 h-11 rounded-2xl bg-saffron-gradient grid place-items-center shadow"><BookOpen className="text-white" size={18} /></div>
-                  <Badge variant="secondary">{p.age_group}</Badge>
-                </div>
-                <div className="mt-3 font-semibold">{p.name}</div>
-                <div className="text-xs text-muted-foreground line-clamp-2 min-h-[32px]">{p.description}</div>
-
-                {/* Days pills */}
-                <div className="mt-3 flex gap-1 flex-wrap">
-                  {DAY_LABELS.map((l, di) => (
-                    <div key={di} className={`w-7 h-7 rounded-md text-[10px] font-semibold grid place-items-center ${days.includes(di) ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground/50'}`}>{l[0]}</div>
-                  ))}
-                </div>
-
-                <div className="mt-3 grid grid-cols-3 text-center gap-2">
-                  <div><div className="text-lg font-bold"><Counter value={enrolled} /></div><div className="text-[10px] text-muted-foreground">Enrolled</div></div>
-                  <div><div className="text-lg font-bold">{p.capacity}</div><div className="text-[10px] text-muted-foreground">Capacity</div></div>
-                  <div><div className="text-lg font-bold">{fmtINR(p.fee_amount || 0)}</div><div className="text-[10px] text-muted-foreground">Fee</div></div>
-                </div>
-                <div className="mt-3">
-                  <div className="flex justify-between text-[10px] text-muted-foreground mb-1"><span>Fill rate</span><span>{pct}%</span></div>
-                  <Progress value={pct} className="h-1.5" />
-                </div>
-                <div className="mt-3 text-[10px] text-muted-foreground flex justify-between">
-                  <span>{p.start_date} → {p.end_date}</span>
-                  <span className="text-primary font-semibold">{days.length} day{days.length !== 1 ? 's' : ''}/wk</span>
-                </div>
-                <div className="flex gap-1 mt-3 pt-3 border-t opacity-0 group-hover:opacity-100 transition">
-                  <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(p)}><Edit3 size={13} className="mr-1" /> Edit</Button>
-                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(p)}><Trash2 size={13} /></Button>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>{editing ? 'Edit' : 'New'} Class / Batch</DialogTitle><DialogDescription>Set schedule, capacity & fee.</DialogDescription></DialogHeader>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2"><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="e.g. Sunday School Term 2" /></div>
-            <div className="col-span-2"><Label>Description</Label><Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Short description of the program" /></div>
-            <div className="col-span-2">
-              <Label>Class Days *</Label>
-              <DaysPicker value={form.days_of_week} onChange={v => setForm({ ...form, days_of_week: v })} />
-              <div className="text-[10px] text-muted-foreground mt-1.5">
-                {form.days_of_week.length === 0 ? '⚠️ Select at least one day' : `Runs ${form.days_of_week.map(d => DAY_FULL[d]).join(', ')}`}
-              </div>
-            </div>
-            <div><Label>Fee (per term)</Label><Input type="number" value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
-            <div><Label>Age Group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="6-14" /></div>
-            <div><Label>Duration (months)</Label><Input type="number" value={form.duration_months} onChange={e => setForm({ ...form, duration_months: e.target.value })} /></div>
-            <div><Label>Capacity</Label><Input type="number" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} /></div>
-            <div><Label>Start Date</Label><Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} /></div>
-            <div><Label>End Date</Label><Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} /></div>
-          </div>
-          <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient" disabled={form.days_of_week.length === 0}>{editing ? 'Update' : 'Create'}</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

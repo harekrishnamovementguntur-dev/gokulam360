@@ -10,6 +10,7 @@
         "start": "next start",
         "test:membership": "node --test test/membership-domain.test.mjs",
         "test:program": "node --test test/program-domain.test.mjs",
+        "test:program-consumer": "node --test test/program-consumer-cutover.test.mjs",
         "test:calendar": "node --test test/academic-calendar-domain.test.mjs",
         "test:reporting": "node --test test/reporting-foundation.test.mjs",
         "test:reporting-routing": "node --test test/reporting-routing.test.mjs",
