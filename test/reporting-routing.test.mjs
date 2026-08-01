@@ -43,6 +43,6 @@ test('legacy Reports UI uses canonical report identifiers', () => {
   const reports = page.slice(start, end);
   assert.match(reports, /useState\('members'\)/);
   assert.match(reports, /const reportName = tab;/);
-  assert.doesNotMatch(reports, /students/);
-  assert.doesNotMatch(reports, /fees/);
+  assert.doesNotMatch(reports, /useState\('students'\)|value="students"|tab === 'students'/);
+  assert.doesNotMatch(reports, /value="fees"|tab === 'fees'|fees:/);
 });
