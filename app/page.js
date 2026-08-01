@@ -2130,7 +2130,8 @@ function Reports() {
     if (tab === 'attendance-summary') {
       api(`/reports/attendance-summary${query}`).then(setAttSummary).finally(() => setLoading(false));
     } else {
-      api(`/reports/${tab}${query}`).then(r => {
+      const reportName = tab === 'students' ? 'members' : tab;
+      api(`/reports/${reportName}${query}`).then(r => {
         setRows(Array.isArray(r.items) ? r.items : []);
         if (tab === 'attendance') setAttSummary({ items: r.items || [], summary: r.summary || {} });
       }).finally(() => setLoading(false));
