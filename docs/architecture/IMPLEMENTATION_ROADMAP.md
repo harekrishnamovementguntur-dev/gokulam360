@@ -14,7 +14,7 @@ This roadmap governs implementation after Architecture Gita v1.0. Canonical doma
 | PR #17B / #18 | Payment Processing and Allocations | Completed / merged |
 | PR #20 | Audit index initialization fix | Completed / merged |
 | PR #22A | Attendance Domain Foundation | In progress |
-| PR #22B | Attendance Administrator UI and canonical roster workflow | Planned |
+| PR #22B | Attendance Administrator UI and canonical roster workflow | In progress |
 | PR #23 | Coordinated Application Cutover | Planned |
 | PR #24 | Legacy Removal and Cleanup | Planned |
 
@@ -67,6 +67,14 @@ This phase introduces the canonical transactional Attendance domain:
 - Holiday and Cancelled Sessions never debit and cannot receive a new Attendance Record.
 - Attendance, compensating Ledger entries, Audit Logs, Outbox Events, and idempotency receipts are written transactionally.
 - Legacy Attendance UI and legacy collections remain unchanged until coordinated cutover.
+
+### PR #22B — Attendance Administrator UI
+
+- Canonical administrator workflow selects Program Offering, Term, and Session.
+- Active Membership Term Participations are displayed as the session roster.
+- Attendance writes use only the canonical Attendance API with idempotency keys.
+- Existing records and immutable correction history are displayed; Holiday and Cancelled Sessions are blocked.
+- Legacy Attendance endpoints and collections are not used.
 
 ## Governance
 
