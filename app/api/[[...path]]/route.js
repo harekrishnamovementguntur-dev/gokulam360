@@ -165,7 +165,6 @@ async function handleSeed() {
   await db.collection('students').deleteMany({});
   await db.collection('teachers').deleteMany({});
   await db.collection('programs').deleteMany({});
-  await db.collection('attendance').deleteMany({});
   await db.collection('fees').deleteMany({});
   await db.collection('payments').deleteMany({});
   await db.collection('events').deleteMany({});
@@ -295,32 +294,8 @@ async function handleSeed() {
   }));
   await db.collection('fees').insertMany(fees);
 
-  // Attendance (last 4 weeks Sunday)
-  const attRecords = [];
-  const today = new Date();
-  for (let w = 0; w < 4; w++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - w * 7);
-    const dateStr = d.toISOString().slice(0, 10);
-    students.forEach((s, idx) => {
-      const rand = (idx + w) % 10;
-      let status = 'present';
-      if (rand === 0) status = 'absent';
-      else if (rand === 1) status = 'late';
-      else if (rand === 2) status = 'excused';
-      attRecords.push({
-        id: uuidv4(),
-        organization_id: orgId,
-        student_id: s.id,
-        program_id: s.program_id,
-        date: dateStr,
-        status,
-        marked_by: users[2].id,
-        created_at: new Date().toISOString(),
-      });
-    });
-  }
-  await db.collection('attendance').insertMany(attRecords);
+  // Attendance is seeded only through the canonical Attendance domain.
+  // Legacy attendance data is intentionally not created by this development seed.
 
   // Events
   const events = [
@@ -678,36 +653,9 @@ async function router(req, method) {
     return json({ program_id: id, program_name: prog.name, days_of_week: prog.days_of_week, sessions: enriched });
   }
 
-  // Bulk attendance
-  if (resource === 'attendance-bulk' && method === 'POST') {
-    if (!['org_admin', 'teacher', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
-    const body = await req.json();
-    const { date, program_id, records } = body; // records: [{student_id, status}]
-    const validStatuses = new Set(['present', 'absent', 'late', 'excused']);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !program_id || !Array.isArray(records) || !records.length) {
-      return json({ error: 'date, program_id, and non-empty records are required' }, 400);
-    }
-    if (records.some(r => !r?.student_id || !validStatuses.has(r.status))) return json({ error: 'Invalid attendance record' }, 400);
-    const program = await db.collection('programs').findOne({ id: program_id, ...orgScope(user) });
-    if (!program) return json({ error: 'Program not found' }, 404);
-    const studentIds = [...new Set(records.map(r => r.student_id))];
-    const matchingStudents = await db.collection('students').countDocuments({ id: { $in: studentIds }, ...orgScope(user), is_deleted: { $ne: true } });
-    if (matchingStudents !== studentIds.length) return json({ error: 'One or more students do not belong to this organization' }, 400);
-    // Remove existing for this date+program+org
-    await db.collection('attendance').deleteMany({ organization_id: user.organization_id, date, program_id });
-    const docs = records.map(r => ({
-      id: uuidv4(),
-      organization_id: user.organization_id,
-      program_id,
-      date,
-      student_id: r.student_id,
-      status: r.status,
-      marked_by: user.id,
-      created_at: new Date().toISOString(),
-    }));
-    if (docs.length) await db.collection('attendance').insertMany(docs);
-    return json({ ok: true, count: docs.length });
-  }
+  // Legacy /attendance-bulk is intentionally unsupported.
+  // Attendance mutations must use /attendance-records so history, credits, audit,
+  // outbox, and idempotency remain transactional.
 
   // Dashboard stats
   if (resource === 'dashboard' && method === 'GET') {
@@ -717,7 +665,8 @@ async function router(req, method) {
     const feesScope = user.role === 'super_admin' ? {} : { organization_id: user.organization_id };
     const fees = await db.collection('fees').find(feesScope).toArray();
     const events = await db.collection('events').find(feesScope).toArray();
-    const attendance = await db.collection('attendance').find(feesScope).toArray();
+    // Dashboard attendance statistics use canonical Attendance Records.
+    const attendance = await db.collection('attendance_records').find(feesScope).toArray();
 
     const activeStudents = students.filter(s => s.status === 'active').length;
     const totalStudents = students.length;
@@ -893,12 +842,11 @@ async function router(req, method) {
   if (resource === 'backup' && id === 'export' && method === 'GET') {
     if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
     const scope = { organization_id: user.organization_id };
-    const [organizations, students, teachers, programs, attendance, fees, events, notifications, activity] = await Promise.all([
+    const [organizations, students, teachers, programs, fees, events, notifications, activity] = await Promise.all([
       user.role === 'super_admin' ? db.collection('organizations').find({}).toArray() : db.collection('organizations').find({ id: user.organization_id }).toArray(),
       db.collection('students').find(scope).toArray(),
       db.collection('teachers').find(scope).toArray(),
       db.collection('programs').find(scope).toArray(),
-      db.collection('attendance').find(scope).toArray(),
       db.collection('fees').find(scope).toArray(),
       db.collection('events').find(scope).toArray(),
       db.collection('notifications').find(scope).toArray(),
@@ -909,13 +857,12 @@ async function router(req, method) {
       exported_by: user.email,
       organization_id: user.organization_id,
       version: '1.0',
-      counts: { students: students.length, teachers: teachers.length, programs: programs.length, attendance: attendance.length, fees: fees.length, events: events.length, notifications: notifications.length },
+      counts: { students: students.length, teachers: teachers.length, programs: programs.length, fees: fees.length, events: events.length, notifications: notifications.length },
       data: {
         organizations: organizations.map(stripId),
         students: students.map(stripId),
         teachers: teachers.map(stripId),
         programs: programs.map(stripId),
-        attendance: attendance.map(stripId),
         fees: fees.map(stripId),
         events: events.map(stripId),
         notifications: notifications.map(stripId),
@@ -929,8 +876,11 @@ async function router(req, method) {
     if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
     const body = await req.json();
     const data = body.data || {};
+    if (Array.isArray(data.attendance) && data.attendance.length) {
+      return json({ error: 'Legacy attendance backup restore is not supported; use canonical Attendance records' }, 422);
+    }
     const orgId = user.organization_id;
-    const collections = ['students', 'teachers', 'programs', 'attendance', 'fees', 'events', 'notifications'];
+    const collections = ['students', 'teachers', 'programs', 'fees', 'events', 'notifications'];
     const counts = {};
     for (const c of collections) {
       const items = (data[c] || []).map(x => ({ ...x, organization_id: orgId, id: x.id || uuidv4() }));
