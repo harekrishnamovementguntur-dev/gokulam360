@@ -19,7 +19,8 @@ This roadmap governs implementation after Architecture Gita v1.0. Canonical doma
 | PR #24 | Legacy Removal and Cleanup | Planned |
 | PR #29 | Reporting Reconciliation (Members, Memberships, Payments, Credit Ledger) | Completed / merged |
 | PR #31 | Program and Offering Consumer Cutover | Completed / merged |
-| PR #33 | Enrollments → Membership Term Participation Consumer Cutover | In progress |
+| PR #33 | Enrollments → Membership Term Participation Consumer Cutover | Completed / merged |
+| PR #34 | Fees → Payments Consumer Cutover | In progress |
 
 ## Completed capabilities
 
@@ -96,8 +97,16 @@ This phase introduces the canonical transactional Attendance domain:
 
 ## Current remaining work
 
-PR #31 removed the legacy Classes & Batches operational consumer and established the canonical Programs & Offerings screen as the sole class-management UI. PR #33 is migrating the Student history/renewal consumer to canonical Membership Term Participation while intentionally leaving Student identity and legacy program fields for later cutover.
+PR #31 removed the legacy Classes & Batches operational consumer and established the canonical Programs & Offerings screen as the sole class-management UI. PR #33 is migrating the Student history/renewal consumer to canonical Membership Term Participation while intentionally leaving Student identity and legacy program fields for later cutover. PR #33 is merged and PR #34 is migrating the administrator Fees consumer to the canonical Payments workflow; Notifications, Parent Portal, and other legacy consumers remain separate workstreams.
 
+
+### PR #34 — Fees → Payments Consumer Cutover
+
+- Removes the legacy Fees screen from the administrator application shell.
+- Makes the canonical Payments workflow the sole operational payment UI.
+- Removes legacy fee read/write operations from the migrated administrator consumer.
+- Preserves Payment Transactions, Payment Allocations, and Credit Ledger behavior unchanged.
+- Adds focused cutover tests and rollback documentation.
 
 ### PR #33 — Enrollments → Membership Term Participation Consumer Cutover
 
