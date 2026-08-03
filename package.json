@@ -16,6 +16,7 @@
         "test:reporting-routing": "node --test test/reporting-routing.test.mjs",
         "test:attendance": "node --test test/attendance-domain.test.mjs",
         "seed:attendance": "node scripts/seed-attendance-demo.mjs",
+        "seed:pilot-demo": "node scripts/seed-pilot-demo.mjs",
         "test:attendance-reporting": "node --test test/attendance-reporting.test.mjs",
         "test:members-reports": "node --test test/members-membership-reports.test.mjs",
         "test:finance-reports": "node --test test/payment-credit-reports.test.mjs",
