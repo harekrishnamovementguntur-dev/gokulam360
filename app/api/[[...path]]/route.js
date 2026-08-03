@@ -5,15 +5,10 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import twilio from 'twilio';
 import { exportCanonicalBackup, restoreCanonicalBackup } from '../_lib/canonical-backup.js';
+import { requireRuntimeEnv } from '../_lib/env.js';
+import { allowRequest } from '../_lib/rate-limit.js';
 
-const MONGO_URL = process.env.MONGO_URL;
-const DB_NAME = process.env.DB_NAME || 'gokulam360';
-const JWT_SECRET = process.env.JWT_SECRET;
-
-// Authentication must never silently fall back to a publicly known secret.
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET must be configured');
-}
+const { MONGO_URL, DB_NAME, JWT_SECRET } = requireRuntimeEnv();
 
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN;
@@ -352,6 +347,13 @@ async function router(req, method) {
   if (resource === 'auth') {
     if (id === 'login' && method === 'POST') {
       const body = await req.json();
+      const clientIp = (req.headers.get('x-forwarded-for') || 'unknown').split(',')[0].trim();
+      const limit = allowRequest('auth.login', `${clientIp}:${String(body.email || '').toLowerCase()}`);
+      if (!limit.allowed) {
+        const response = json({ error: 'Too many login attempts. Please try again later.' }, 429);
+        response.headers.set('Retry-After', String(limit.retryAfterSeconds));
+        return response;
+      }
       const user = await db.collection('users').findOne({ email: body.email });
       if (!user) return json({ error: 'Invalid credentials' }, 401);
       const ok = await bcrypt.compare(body.password || '', user.password_hash);
