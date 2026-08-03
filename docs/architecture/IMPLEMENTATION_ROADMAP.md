@@ -23,6 +23,7 @@ This roadmap governs implementation after Architecture Gita v1.0. Canonical doma
 | PR #34 | Fees → Payments Consumer Cutover | Completed / merged |
 | PR #37 | Canonical Backup & Restore | Completed / merged |
 | PR #38 | Final Legacy Operational Cutover | In progress / Draft |
+| PR #45 | Student Archive Lifecycle Orchestration | In progress / Draft |
 
 ## Completed capabilities
 
@@ -88,6 +89,14 @@ This phase introduces the canonical transactional Attendance domain:
 - Session attendance summaries sourced from canonical Sessions and Attendance Records.
 - Current-page CSV export using the shared reporting contract.
 - No dashboards, analytics, notifications, legacy collection reads, or mutation behavior.
+
+## PR #45 — Student Archive Lifecycle Orchestration
+
+- Student removal is archival rather than destructive deletion.
+- Active Memberships transition to `inactive`; active Membership Term Participations transition to `withdrawn`.
+- Student, Membership, Participation, Audit, and Outbox writes are transactional.
+- Attendance, Payments, Allocations, and Credit Ledger history are preserved.
+- Repeated archive requests reconcile remaining active downstream records without duplicating lifecycle events.
 
 ## Governance
 
