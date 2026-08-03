@@ -9,7 +9,9 @@ All of the following are required:
 - `NODE_ENV` and `VERCEL_ENV` must not be `production`.
 - `ALLOW_DEVELOPMENT_RESET=true`.
 - `DEVELOPMENT_RESET_CONFIRM=reset-gokulam360-v1`.
-- `RESET_DB_NAME` must match `gokulam360_*` and must differ from `DB_NAME`.
+- `RESET_DB_NAME` may be omitted when `DB_NAME=gokulam360`; otherwise it must match `gokulam360_*`.
+- `RESET_DB_NAME=gokulam360` is accepted only when `DB_NAME=gokulam360`.
+- Other reset databases must differ from `DB_NAME`.
 - `BOOTSTRAP_SUPER_ADMIN_EMAIL` must identify an existing user with role `super_admin` and no `organization_id`.
 - MongoDB must support transactions.
 
@@ -31,12 +33,14 @@ PowerShell example:
 ```powershell
 $env:ALLOW_DEVELOPMENT_RESET='true'
 $env:DEVELOPMENT_RESET_CONFIRM='reset-gokulam360-v1'
-$env:RESET_DB_NAME='gokulam360_ui_freeze'
+$env:DB_NAME='gokulam360'
 $env:BOOTSTRAP_SUPER_ADMIN_EMAIL='super@gokulam360.com'
 yarn db:reset:development
 ```
 
-Do not set `RESET_DB_NAME` to the production database or to the ordinary application database.
+When resetting the dedicated development database, `DB_NAME=gokulam360` is sufficient and `RESET_DB_NAME` may be omitted.
+Do not use this setting in Production or Vercel Production.
+For a separate disposable database, set `RESET_DB_NAME` to a name beginning with `gokulam360_` and keep it different from `DB_NAME` unless it is the explicitly approved `gokulam360` development database.
 
 ## Expected first-run experience
 
