@@ -117,9 +117,11 @@ async function latestRecord(db, organizationId, sessionId, participationId, sess
   );
 }
 
-const debitFor = (record, offering) => creditDebitFor(record.status, creditPolicyFor(offering));
+const debitFor = (record, offering) => record
+  ? creditDebitFor(record.status, creditPolicyFor(offering))
+  : 0;
 
-function ledgerDelta(previous, next, offering) {
+export function ledgerDelta(previous, next, offering) {
   return debitFor(next, offering) - debitFor(previous, offering);
 }
 
