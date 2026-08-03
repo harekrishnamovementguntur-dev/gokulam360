@@ -28,7 +28,8 @@
         "test:legacy-cutover": "node --test test/final-legacy-operational-cutover.test.mjs",
         "test:security": "node --test test/security-foundation.test.mjs",
         "db:reset:development": "node scripts/reset-development-database.mjs",
-        "test:student-archive": "node --test test/student-archive-lifecycle.test.mjs"
+        "test:student-archive": "node --test test/student-archive-lifecycle.test.mjs",
+        "test:membership-ui": "node --test test/membership-program-selector.test.mjs"
     },
     "dependencies": {
         "@hookform/resolvers": "5.1.1",

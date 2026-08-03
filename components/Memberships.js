@@ -52,7 +52,7 @@ export default function Memberships({ request }) {
     setLoading(true);
     try {
       const [membershipResponse, studentResponse, programResponse] = await Promise.all([
-        request('/memberships'), request('/students'), request('/programs'),
+        request('/memberships'), request('/students'), request('/academic-programs'),
       ]);
       setItems(membershipResponse.items || []);
       setStudents(studentResponse.items || []);
@@ -128,7 +128,7 @@ export default function Memberships({ request }) {
       </div>
 
       <div className="rounded-2xl glass p-4 flex flex-wrap gap-3">
-        <div className="relative flex-1 min-w-[220px]"><Search size={14} className="absolute left-3 top-3 text-muted-foreground" /><Input className="pl-9" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search student or program…" /></div>
+        <div className="relative flex-1 min-w-[220px]"><Search size={14} className="absolute left-3 top-3 text-muted-foreground" /><Input className="pl-9" value={query} onChange={event => setQuery(event.target.value)} placeholder="Search student or academic program…" /></div>
         <Select value={status} onValueChange={setStatus}>
           <SelectTrigger className="w-[160px]"><SelectValue /></SelectTrigger>
           <SelectContent><SelectItem value="all">All statuses</SelectItem>{STATUSES.map(value => <SelectItem value={value} key={value}>{value[0].toUpperCase() + value.slice(1)}</SelectItem>)}</SelectContent>
@@ -137,7 +137,7 @@ export default function Memberships({ request }) {
 
       <div className="rounded-2xl glass overflow-hidden">
         <Table>
-          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Program</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Academic Program</TableHead><TableHead>Status</TableHead><TableHead>Created</TableHead><TableHead className="text-right">Actions</TableHead></TableRow></TableHeader>
           <TableBody>
             {loading && <TableRow><TableCell colSpan={5} className="text-center py-10 text-muted-foreground">Loading Memberships…</TableCell></TableRow>}
             {!loading && filtered.length === 0 && <TableRow><TableCell colSpan={5} className="text-center py-10 text-muted-foreground">No Memberships found.</TableCell></TableRow>}
@@ -158,10 +158,10 @@ export default function Memberships({ request }) {
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{editing ? 'Edit Membership' : 'Create Membership'}</DialogTitle><DialogDescription>{editing ? 'Student and Program are immutable. Update operational notes only.' : 'Connect one Student to one Program.'}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? 'Edit Membership' : 'Create Membership'}</DialogTitle><DialogDescription>{editing ? 'Student and Academic Program are immutable. Update operational notes only.' : 'Connect one Student to one Academic Program.'}</DialogDescription></DialogHeader>
           <div className="grid gap-3">
             <div><Label>Student</Label><Select value={form.student_id} onValueChange={value => setForm(current => ({ ...current, student_id: value }))} disabled={!!editing}><SelectTrigger><SelectValue placeholder="Select Student" /></SelectTrigger><SelectContent>{students.map(student => <SelectItem key={student.id} value={student.id}>{nameOf(student)} · {student.student_id}</SelectItem>)}</SelectContent></Select></div>
-            <div><Label>Program</Label><Select value={form.program_id} onValueChange={value => setForm(current => ({ ...current, program_id: value }))} disabled={!!editing}><SelectTrigger><SelectValue placeholder="Select Program" /></SelectTrigger><SelectContent>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label>Academic Program</Label><Select value={form.program_id} onValueChange={value => setForm(current => ({ ...current, program_id: value }))} disabled={!!editing}><SelectTrigger><SelectValue placeholder="Select Academic Program" /></SelectTrigger><SelectContent>{programs.map(program => <SelectItem key={program.id} value={program.id}>{program.name}</SelectItem>)}</SelectContent></Select></div>
             {!editing && <div><Label>Initial Status</Label><Select value={form.status} onValueChange={value => setForm(current => ({ ...current, status: value }))}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="pending">Pending</SelectItem><SelectItem value="active">Active</SelectItem></SelectContent></Select></div>}
             <div><Label>Notes</Label><Textarea rows={3} value={form.notes} onChange={event => setForm(current => ({ ...current, notes: event.target.value }))} placeholder="Optional admission or operational note" /></div>
           </div>
