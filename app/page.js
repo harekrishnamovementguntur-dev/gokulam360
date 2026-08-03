@@ -304,8 +304,8 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
                   <span className={`w-8 h-8 rounded-lg grid place-items-center transition ${active ? 'bg-saffron-gradient text-white shadow' : 'bg-muted text-muted-foreground'}`}>
                     <Icon size={15} />
                   </span>
-                  {item.label}
-                  {active && <ChevronRight className="ml-auto" size={14} />}
+                  <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+                  {active && <ChevronRight className="ml-auto shrink-0" size={14} />}
                 </motion.button>
               );
             })}
@@ -1124,15 +1124,15 @@ function ReviewRow({ icon: Icon, label, value }) {
 /* Page header */
 function PageHeader({ title, subtitle, icon: Icon, action }) {
   return (
-    <div className="flex items-center gap-4 flex-wrap">
-      <div className="w-12 h-12 rounded-2xl bg-saffron-gradient text-white grid place-items-center shadow-lg ring-glow">
+    <div className="flex items-start gap-4 flex-wrap">
+      <div className="w-12 h-12 shrink-0 rounded-2xl bg-saffron-gradient text-white grid place-items-center shadow-lg ring-glow">
         {Icon && <Icon size={20} />}
       </div>
       <div className="flex-1 min-w-0">
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{title}</h1>
-        <p className="text-sm text-muted-foreground">{subtitle}</p>
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight break-words">{title}</h1>
+        <p className="text-sm text-muted-foreground break-words">{subtitle}</p>
       </div>
-      {action}
+      {action && <div className="w-full sm:w-auto shrink-0">{action}</div>}
     </div>
   );
 }
@@ -1317,7 +1317,7 @@ function Students({ students, setStudents }) {
                 <Badge className={`text-[10px] ${s.status === 'active' ? 'bg-emerald-500 hover:bg-emerald-500' : 'bg-muted text-muted-foreground'}`}>{s.status}</Badge>
               </div>
               <div className="text-[11px] text-muted-foreground mt-3 space-y-0.5">
-                {s.mobile && <div className="flex items-center gap-1.5"><Phone size={11} /> {s.mobile}</div>}
+                {s.mobile && <div className="flex min-w-0 items-center gap-1.5"><Phone size={11} className="shrink-0" /><span className="truncate">{s.mobile}</span></div>}
               </div>
               <div className="flex gap-1 mt-3 pt-3 border-t">
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setHistoryOf(s)}><Activity size={13} className="mr-1" /> History</Button>
@@ -1667,13 +1667,13 @@ function Teachers({ teachers, setTeachers }) {
               <div className="flex-1 min-w-0">
                 <div className="font-semibold truncate">{t.name}</div>
                 <div className="text-[10px] font-mono text-muted-foreground">{t.employee_id}</div>
-                <div className="text-[11px] text-primary mt-0.5">{t.qualification}</div>
+                <div className="truncate text-[11px] text-primary mt-0.5">{t.qualification || 'Qualification not provided'}</div>
               </div>
             </div>
-            <div className="mt-3 text-[11px] text-muted-foreground space-y-1">
-              <div className="flex items-center gap-1.5"><Phone size={11} /> {t.mobile || '-'}</div>
-              <div className="flex items-center gap-1.5"><Send size={11} /> {t.email || '-'}</div>
-              {t.skills && <div className="flex items-center gap-1.5"><Sparkles size={11} /> {t.skills}</div>}
+            <div className="mt-3 space-y-1 text-[11px] text-muted-foreground">
+              <div className="flex min-w-0 items-center gap-1.5"><Phone size={11} className="shrink-0" /><span className="truncate">{t.mobile || '-'}</span></div>
+              <div className="flex min-w-0 items-center gap-1.5"><Send size={11} className="shrink-0" /><span className="truncate">{t.email || '-'}</span></div>
+              {t.skills && <div className="flex min-w-0 items-center gap-1.5"><Sparkles size={11} className="shrink-0" /><span className="truncate">{t.skills}</span></div>}
             </div>
             <div className="flex gap-1 mt-3 pt-3 border-t">
               <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => { setEditing(t); setForm({ ...empty, ...t }); setOpen(true); }}><Edit3 size={13} className="mr-1" /> Edit</Button>
