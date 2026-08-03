@@ -24,7 +24,8 @@
         "test:finance-reports": "node --test test/payment-credit-reports.test.mjs",
         "test:enrollment-cutover": "node --test test/enrollment-participation-cutover.test.mjs",
         "test:fees-payments-cutover": "node --test test/fees-payments-cutover.test.mjs",
-        "test:backup": "node --test test/canonical-backup.test.mjs"
+        "test:backup": "node --test test/canonical-backup.test.mjs",
+        "test:legacy-cutover": "node --test test/final-legacy-operational-cutover.test.mjs"
     },
     "dependencies": {
         "@hookform/resolvers": "5.1.1",
