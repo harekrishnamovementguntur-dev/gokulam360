@@ -434,7 +434,7 @@ function Dashboard({ user, org, onNav }) {
   const kpis = [
     { key: 'students', label: 'Total Students', value: stats.totalStudents, sub: `${stats.activeStudents} active`, icon: GraduationCap, grad: 'bg-saffron-gradient', ring: 'from-orange-500/40 to-amber-500/20' },
     { key: 'attendance', label: 'Attendance', value: stats.attendancePct, isPct: true, sub: 'last 4 weeks', icon: CalendarCheck2, grad: 'bg-emerald-gradient', ring: 'from-emerald-500/40 to-teal-500/20' },
-    { key: 'pending', label: 'Pending Fees', value: stats.pendingFees, isMoney: true, sub: `${fmtINR(stats.collectedFees)} collected`, icon: IndianRupee, grad: 'bg-rose-gradient', ring: 'from-rose-500/40 to-pink-500/20' },
+    { key: 'pending', label: 'Pending Payments', value: stats.pendingPayments, isMoney: true, sub: `${fmtINR(stats.collectedPayments)} collected`, icon: IndianRupee, grad: 'bg-rose-gradient', ring: 'from-rose-500/40 to-pink-500/20' },
     { key: 'teachers', label: 'Teachers', value: stats.totalTeachers, sub: 'Faculty on board', icon: Users, grad: 'bg-violet-gradient', ring: 'from-violet-500/40 to-fuchsia-500/20' },
   ];
 
@@ -1173,9 +1173,20 @@ function Students({ students, setStudents }) {
       const eligibleSessions = Object.fromEntries(Object.entries(form.eligible_sessions || {})
         .map(([programId, value]) => [programId, Number(value)])
         .filter(([, value]) => Number.isFinite(value) && value > 0));
-      const payload = { ...form, eligible_sessions: eligibleSessions, program_id: form.program_ids?.[0] || form.program_id }; // keep legacy
-      if (editing) await api(`/students/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
-      else await api('/students', { method: 'POST', body: JSON.stringify(payload) });
+      const payload = { ...form, eligible_sessions: eligibleSessions, program_id: form.program_ids?.[0] || form.program_id };
+      const savedStudent = editing
+        ? await api(`/students/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) })
+        : await api('/students', { method: 'POST', body: JSON.stringify(payload) });
+      for (const programId of form.program_ids || []) {
+        try {
+          await api('/memberships', {
+            method: 'POST',
+            body: JSON.stringify({ student_id: savedStudent.id, program_id: programId, status: 'active' }),
+          });
+        } catch (error) {
+          if (!/already exists/i.test(error.message || '')) throw error;
+        }
+      }
       if (isNew) {
         confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#22c55e', '#0ea5e9'] });
         toast.success(`🎉 ${form.first_name} welcomed to ${org?.name || 'the school'}!`);
@@ -1697,7 +1708,8 @@ function Teachers({ teachers, setTeachers }) {
 ============================================================ */
 function Notifications({ students }) {
   const [items, setItems] = useState([]);
-  const [enrollments, setEnrollments] = useState([]);
+  const [participations, setParticipations] = useState([]);
+  const [memberships, setMemberships] = useState([]);
   const [kind, setKind] = useState('fee_reminder');
   const [target, setTarget] = useState('all_active');
   const [customIds, setCustomIds] = useState([]);
@@ -1705,7 +1717,13 @@ function Notifications({ students }) {
   const [sentIds, setSentIds] = useState(new Set());
   useEffect(() => {
     api('/notifications').then(r => setItems(r.items)).catch(() => {});
-    api('/enrollments').then(r => setEnrollments(r.items)).catch(() => {});
+    Promise.all([
+      api('/membership-term-participations?status=active'),
+      api('/memberships?status=active'),
+    ]).then(([participationResponse, membershipResponse]) => {
+      setParticipations(participationResponse.items || []);
+      setMemberships(membershipResponse.items || []);
+    }).catch(() => {});
   }, []);
 
   const kinds = {
@@ -1725,14 +1743,11 @@ function Notifications({ students }) {
     custom: '',
   };
 
-  // Low-quota target: students with any enrollment having <= 3 sessions remaining
+  // Canonical low-quota target: students with active Membership Term Participation.
   const lowQuotaStudentIds = useMemo(() => {
-    const ids = new Set();
-    enrollments.forEach(e => {
-      if (!e.left_at && e.sessions_credited > 0 && e.sessions_remaining <= 3) ids.add(e.student_id);
-    });
-    return ids;
-  }, [enrollments]);
+    const membershipIds = new Set(participations.map(p => p.membership_id));
+    return new Set(memberships.filter(m => membershipIds.has(m.id)).map(m => m.student_id));
+  }, [participations, memberships]);
 
   const normalize = (raw) => {
     if (!raw) return null;
