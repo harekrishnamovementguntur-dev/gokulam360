@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const source = fs.readFileSync(path.join(root, 'components/Memberships.js'), 'utf8');
+const serviceSource = fs.readFileSync(path.join(root, 'app/api/_lib/memberships.js'), 'utf8');
 
 test('Memberships loads canonical Academic Programs and not the legacy Programs endpoint', () => {
   assert.match(source, /request\('\/academic-programs'\)/);
@@ -15,6 +16,11 @@ test('Memberships loads canonical Academic Programs and not the legacy Programs 
 test('Membership creation keeps the canonical program_id payload', () => {
   assert.match(source, /program_id/);
   assert.match(source, /request\('\/memberships', \{ method: 'POST', body: JSON\.stringify\(form\) \}\)/);
+});
+
+test('Membership creation validates against canonical Academic Programs', () => {
+  assert.match(serviceSource, /db\.collection\('academic_programs'\)\.findOne/);
+  assert.doesNotMatch(serviceSource, /db\.collection\('programs'\)\.findOne/);
 });
 
 test('Membership UI uses canonical Academic Program terminology', () => {
