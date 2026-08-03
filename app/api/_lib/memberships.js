@@ -91,7 +91,7 @@ export async function createMembershipCommand({ db, user, organizationId, body }
 
   const [student, program] = await Promise.all([
     db.collection('students').findOne({ id: studentId, organization_id: organizationId, is_deleted: { $ne: true } }),
-    db.collection('programs').findOne({ id: programId, organization_id: organizationId, is_deleted: { $ne: true } }),
+    db.collection('academic_programs').findOne({ id: programId, organization_id: organizationId, status: { $ne: 'archived' } }),
   ]);
   if (!student) throw new MembershipDomainError('Student not found in this organization', 404);
   if (!program) throw new MembershipDomainError('Program not found in this organization', 404);
