@@ -1281,10 +1281,10 @@ function EnrollStudentWizard({ open, onOpenChange, programs, offerings, terms, o
         </DialogHeader>
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           {['Student', 'Class', 'Payment', 'Review'].map((label, index) => (
-            <React.Fragment key={label}>
+            <span key={label} className="contents">
               <span className={index === step ? 'font-semibold text-primary' : index < step ? 'text-emerald-600' : ''}>{index + 1}. {label}</span>
               {index < 3 && <ChevronRight size={12} />}
-            </React.Fragment>
+            </span>
           ))}
         </div>
         {step === 0 && <div className="grid grid-cols-2 gap-3">
@@ -1309,7 +1309,7 @@ function EnrollStudentWizard({ open, onOpenChange, programs, offerings, terms, o
           </div>}
         </div>}
         {step === 3 && <div className="space-y-3">
-          <div className="rounded-xl border p-4"><div className="font-semibold">{form.first_name} {form.last_name}</div><div className="text-sm text-muted-foreground">{program?.name || 'Class'} · {selectedTerm?.name}</div><div className="text-sm mt-2">{form.addPayment ? 'Payment: ' + fmtINR(Number(form.amount) * 100) + ' · ' + form.credit_quantity + ' credits' : 'No payment recorded now'}</div></div>
+          <div className="rounded-xl border p-4"><div className="font-semibold">{form.first_name} {form.last_name}</div><div className="text-sm text-muted-foreground">{program?.name || 'Class'} · {selectedTerm?.name}</div><div className="text-sm mt-2">{form.addPayment ? 'Payment: ' + fmtINR(Number(form.amount)) + ' · ' + form.credit_quantity + ' credits' : 'No payment recorded now'}</div></div>
           <p className="text-xs text-muted-foreground">The system will create the student’s Membership and class enrollment automatically.</p>
         </div>}
         <DialogFooter>
