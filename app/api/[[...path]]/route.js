@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import twilio from 'twilio';
+import { exportCanonicalBackup, restoreCanonicalBackup } from '../_lib/canonical-backup.js';
 
 const MONGO_URL = process.env.MONGO_URL;
 const DB_NAME = process.env.DB_NAME || 'gokulam360';
@@ -838,63 +839,26 @@ async function router(req, method) {
     return json({ imported: docs.length, errors });
   }
 
-  // Backup export - entire org data as JSON
+  // Canonical backup and restore. Legacy collections are intentionally excluded.
   if (resource === 'backup' && id === 'export' && method === 'GET') {
     if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
-    const scope = { organization_id: user.organization_id };
-    const [organizations, students, teachers, programs, fees, events, notifications, activity] = await Promise.all([
-      user.role === 'super_admin' ? db.collection('organizations').find({}).toArray() : db.collection('organizations').find({ id: user.organization_id }).toArray(),
-      db.collection('students').find(scope).toArray(),
-      db.collection('teachers').find(scope).toArray(),
-      db.collection('programs').find(scope).toArray(),
-      db.collection('fees').find(scope).toArray(),
-      db.collection('events').find(scope).toArray(),
-      db.collection('notifications').find(scope).toArray(),
-      db.collection('activity').find(scope).toArray(),
-    ]);
-    return json({
-      exported_at: new Date().toISOString(),
-      exported_by: user.email,
-      organization_id: user.organization_id,
-      version: '1.0',
-      counts: { students: students.length, teachers: teachers.length, programs: programs.length, fees: fees.length, events: events.length, notifications: notifications.length },
-      data: {
-        organizations: organizations.map(stripId),
-        students: students.map(stripId),
-        teachers: teachers.map(stripId),
-        programs: programs.map(stripId),
-        fees: fees.map(stripId),
-        events: events.map(stripId),
-        notifications: notifications.map(stripId),
-        activity: activity.map(stripId),
-      },
-    });
+    try {
+      return json(await exportCanonicalBackup({ db, user, requestedOrganizationId: new URL(req.url).searchParams.get('organization_id') }));
+    } catch (error) {
+      if (error?.status) return json({ error: { code: error.code, message: error.message } }, error.status);
+      throw error;
+    }
   }
 
-  // Backup restore - accept JSON, replaces the org's data
   if (resource === 'backup' && id === 'restore' && method === 'POST') {
     if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
-    const body = await req.json();
-    const data = body.data || {};
-    if (Array.isArray(data.attendance) && data.attendance.length) {
-      return json({ error: 'Legacy attendance backup restore is not supported; use canonical Attendance records' }, 422);
+    try {
+      const body = await req.json();
+      return json(await restoreCanonicalBackup({ db, client: cachedClient, user, requestedOrganizationId: body.organization_id, backup: body }));
+    } catch (error) {
+      if (error?.status) return json({ error: { code: error.code, message: error.message } }, error.status);
+      throw error;
     }
-    const orgId = user.organization_id;
-    const collections = ['students', 'teachers', 'programs', 'fees', 'events', 'notifications'];
-    const counts = {};
-    for (const c of collections) {
-      const items = (data[c] || []).map(x => ({ ...x, organization_id: orgId, id: x.id || uuidv4() }));
-      // Wipe org's existing data in this collection
-      await db.collection(c).deleteMany({ organization_id: orgId });
-      if (items.length) await db.collection(c).insertMany(items);
-      counts[c] = items.length;
-    }
-    await db.collection('activity').insertOne({
-      id: uuidv4(), organization_id: orgId, kind: 'backup_restored',
-      title: `Data restored from backup: ${Object.values(counts).reduce((a, b) => a + b, 0)} records`,
-      actor: user.name || 'Admin', created_at: new Date().toISOString(),
-    });
-    return json({ restored: counts });
   }
 
   // Cancel or restore a session
