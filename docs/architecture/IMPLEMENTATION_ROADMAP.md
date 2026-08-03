@@ -15,12 +15,12 @@ This roadmap governs implementation after Architecture Gita v1.0. Canonical doma
 | PR #20 | Audit index initialization fix | Completed / merged |
 | PR #22A | Attendance Domain Foundation | Completed / merged |
 | PR #22B | Attendance Administrator UI and canonical roster workflow | Completed / merged |
-| PR #23 | Coordinated Application Cutover | Planned |
-| PR #24 | Legacy Removal and Cleanup | Planned |
+| PR #23 | Attendance Administrator UI and canonical roster workflow | Completed / merged |
+| PR #24 | Reporting Foundation | Completed / merged |
 | PR #29 | Reporting Reconciliation (Members, Memberships, Payments, Credit Ledger) | Completed / merged |
 | PR #31 | Program and Offering Consumer Cutover | Completed / merged |
 | PR #33 | Enrollments → Membership Term Participation Consumer Cutover | Completed / merged |
-| PR #34 | Fees → Payments Consumer Cutover | In progress |
+| PR #34 | Fees → Payments Consumer Cutover | Completed / merged |
 
 ## Completed capabilities
 
@@ -97,25 +97,19 @@ This phase introduces the canonical transactional Attendance domain:
 
 ## Current remaining work
 
-PR #31 removed the legacy Classes & Batches operational consumer and established the canonical Programs & Offerings screen as the sole class-management UI. PR #33 is migrating the Student history/renewal consumer to canonical Membership Term Participation while intentionally leaving Student identity and legacy program fields for later cutover. PR #33 is merged and PR #34 is migrating the administrator Fees consumer to the canonical Payments workflow; Notifications, Parent Portal, and other legacy consumers remain separate workstreams.
+### PR #35 — Attendance Legacy Isolation
 
+- The legacy `/api/attendance-bulk` mutation path is no longer registered.
+- Legacy seed and backup-restore Attendance writes are disabled.
+- Dashboard attendance statistics use canonical `attendance_records`.
+- Parent/public, enrollment, and legacy program-session Attendance reads remain explicitly isolated until their owning consumer workstreams can migrate without dual writes.
+- Canonical Attendance UI, APIs, immutable history, Credit Ledger integration, and reports remain unchanged.
 
-### PR #34 — Fees → Payments Consumer Cutover
+### Remaining roadmap
 
-- Removes the legacy Fees screen from the administrator application shell.
-- Makes the canonical Payments workflow the sole operational payment UI.
-- Removes legacy fee read/write operations from the migrated administrator consumer.
-- Preserves Payment Transactions, Payment Allocations, and Credit Ledger behavior unchanged.
-- Adds focused cutover tests and rollback documentation.
+- Complete authenticated runtime verification of canonical Attendance transactions, audit/outbox persistence, idempotency, organization isolation, and rollback.
+- Migrate remaining legacy parent/public, enrollment, and program-session Attendance read consumers as part of their broader canonical consumer workstreams.
+- Complete Dashboard migration from legacy dashboard/activity endpoints.
+- Complete Parent Portal migration to canonical Membership, Participation, Attendance, and Payment data.
+- Add QR Attendance, Certificates, Notifications, production export/performance hardening, Mobile, AI Assistant, and Analytics as later phases.
 
-### PR #33 — Enrollments → Membership Term Participation Consumer Cutover
-
-- Student history reads canonical Memberships, Program Offerings, Academic Terms, and Membership Term Participations.
-- New term participation actions use the canonical Participation API; legacy enrollment renewal is removed from this consumer.
-- Notifications, Parent Portal, Fees, Payments, Attendance, and Dashboard behavior remain outside this PR.
-
-### PR #29 — Reporting Reconciliation
-
-- Restores the approved Members/Memberships and Payment/Credit Ledger reporting services, UI components, tests, documentation, and route wiring into the current `main` baseline.
-- Preserves the canonical Attendance reporting implementation and the Reporting Foundation.
-- Dashboard implementation remains blocked until this reconciliation is merged.

@@ -15,6 +15,7 @@
         "test:reporting": "node --test test/reporting-foundation.test.mjs",
         "test:reporting-routing": "node --test test/reporting-routing.test.mjs",
         "test:attendance": "node --test test/attendance-domain.test.mjs",
+        "test:attendance-legacy-isolation": "node --test test/attendance-legacy-isolation.test.mjs",
         "seed:attendance": "node scripts/seed-attendance-demo.mjs",
         "test:attendance-reporting": "node --test test/attendance-reporting.test.mjs",
         "test:members-reports": "node --test test/members-membership-reports.test.mjs",
