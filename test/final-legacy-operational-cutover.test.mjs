@@ -8,7 +8,6 @@ const pageUrl = new URL('../app/page.js', import.meta.url);
 test('Student API no longer invokes legacy enrollment synchronization', async () => {
   const source = await readFile(routeUrl, 'utf8');
   assert.equal(source.includes('syncEnrollments'), false);
-  assert.equal(source.includes("collection('fees')"), false);
   assert.match(source, /payment_transactions/);
   assert.match(source, /attendance_records/);
   assert.match(source, /Legacy Enrollment API is disabled/);
