@@ -115,49 +115,6 @@ function generateSessions(program) {
   return sessions;
 }
 
-async function syncEnrollments(db, student, oldProgramIds = []) {
-  const orgId = student.organization_id;
-  const newIds = student.program_ids || [];
-  const now = new Date().toISOString();
-  const today = now.slice(0, 10);
-  const added = newIds.filter(id => !oldProgramIds.includes(id));
-  const removed = oldProgramIds.filter(id => !newIds.includes(id));
-  for (const pid of added) {
-    const existing = await db.collection('enrollments').findOne({ student_id: student.id, program_id: pid, left_at: null });
-    if (existing) continue;
-    const prog = await db.collection('programs').findOne({ id: pid });
-    const allSessions = prog?.sessions || [];
-    // A late admission can be given a custom session credit. When blank, use the
-    // sessions remaining in this term; unused credits are carried into a renewal.
-    const remainingFromToday = allSessions.filter(d => d >= today);
-    const configured = Number(student.eligible_sessions?.[pid]);
-    const defaultCredits = remainingFromToday.length || allSessions.length;
-    const credited = Number.isFinite(configured) && configured > 0
-      ? Math.min(Math.floor(configured), allSessions.length || Math.floor(configured))
-      : defaultCredits;
-    await db.collection('enrollments').insertOne({
-      id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
-      enrolled_at: now, left_at: null, status: 'active',
-      sessions_credited: credited,
-      eligible_sessions: configured > 0 ? credited : null,
-      created_at: now,
-    });
-    if (prog?.fee_amount) {
-      await db.collection('fees').insertOne({
-        id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
-        fee_type: 'Term Fee', amount: prog.fee_amount, paid_amount: 0, status: 'pending',
-        due_date: prog.start_date || today, created_at: now,
-      });
-    }
-  }
-  for (const pid of removed) {
-    await db.collection('enrollments').updateMany(
-      { student_id: student.id, program_id: pid, left_at: null },
-      { $set: { left_at: now, status: 'left' } }
-    );
-  }
-}
-
 // ========== SEED ==========
 async function handleSeed() {
   const db = await getDb();
@@ -473,7 +430,6 @@ async function router(req, method) {
     students: ['org_admin', 'teacher', 'super_admin'],
     teachers: ['org_admin', 'super_admin'],
     programs: ['org_admin', 'teacher', 'super_admin'],
-    fees: ['org_admin', 'super_admin'],
     events: ['org_admin', 'teacher', 'super_admin'],
     attendance: ['org_admin', 'teacher', 'super_admin'],
   };
@@ -521,10 +477,6 @@ async function router(req, method) {
       // Generate sessions for programs
       if (resource === 'programs') doc.sessions = generateSessions(doc);
       await col.insertOne(doc);
-      // Handle student enrollments
-      if (resource === 'students' && doc.program_ids?.length) {
-        await syncEnrollments(db, doc, []);
-      }
       // Log activity for known resources
       if (['students', 'teachers', 'events', 'programs'].includes(resource)) {
         const titleMap = {
@@ -554,10 +506,6 @@ async function router(req, method) {
       if (resource === 'programs') updated.sessions = generateSessions({ ...before, ...body });
       await col.updateOne({ id, ...orgScope(user) }, { $set: updated });
        const doc = await col.findOne({ id, ...orgScope(user) });
-      // Sync student enrollments diff
-      if (resource === 'students' && body.program_ids) {
-        await syncEnrollments(db, doc, before?.program_ids || []);
-      }
       return json(stripId(doc));
     }
     if (method === 'DELETE' && id) {
@@ -579,8 +527,11 @@ async function router(req, method) {
     }
   }
 
-  // Enrollments endpoints
+  // Legacy Enrollment API is disabled for Administrator operations.
   if (resource === 'enrollments') {
+    if (['super_admin', 'org_admin', 'teacher'].includes(user.role)) {
+      return json({ error: 'Legacy Enrollments are disabled; use Memberships and Membership Term Participations' }, 410);
+    }
     if (method === 'GET') {
       const q = orgScope(user);
       const url2 = new URL(req.url);
@@ -658,26 +609,26 @@ async function router(req, method) {
   // Attendance mutations must use /attendance-records so history, credits, audit,
   // outbox, and idempotency remain transactional.
 
-  // Dashboard stats
+  // Dashboard stats. Financial and attendance metrics use canonical collections.
   if (resource === 'dashboard' && method === 'GET') {
     const scope = orgScope(user, { is_deleted: { $ne: true } });
+    const financialScope = orgScope(user);
     const students = await db.collection('students').find(scope).toArray();
     const teachers = await db.collection('teachers').find(scope).toArray();
-    const feesScope = user.role === 'super_admin' ? {} : { organization_id: user.organization_id };
-    const fees = await db.collection('fees').find(feesScope).toArray();
-    const events = await db.collection('events').find(feesScope).toArray();
-    // Dashboard attendance statistics use canonical Attendance Records.
-    const attendance = await db.collection('attendance_records').find(feesScope).toArray();
+    const payments = await db.collection('payment_transactions').find(financialScope).toArray();
+    const ledger = await db.collection('credit_ledger_entries').find(financialScope).toArray();
+    const events = await db.collection('events').find(financialScope).toArray();
+    const attendance = await db.collection('attendance_records').find(financialScope).toArray();
 
     const activeStudents = students.filter(s => s.status === 'active').length;
     const totalStudents = students.length;
-    const pendingFees = fees.filter(f => f.status === 'pending').reduce((sum, f) => sum + (f.amount - (f.paid_amount || 0)), 0);
-    const collectedFees = fees.reduce((sum, f) => sum + (f.paid_amount || 0), 0);
+    const pendingPayments = payments.filter(p => p.status === 'draft').reduce((sum, p) => sum + (Number(p.amount_minor) || 0), 0) / 100;
+    const collectedPayments = payments.filter(p => ['posted', 'partially_refunded', 'refunded'].includes(p.status))
+      .reduce((sum, p) => sum + (Number(p.amount_minor) || 0), 0) / 100;
     const attPresent = attendance.filter(a => a.status === 'present' || a.status === 'late').length;
     const attTotal = attendance.length || 1;
     const attendancePct = Math.round((attPresent / attTotal) * 100);
 
-    // Monthly admissions (last 6 months)
     const monthly = {};
     const now = new Date();
     for (let i = 5; i >= 0; i--) {
@@ -692,7 +643,6 @@ async function router(req, method) {
     });
     const monthlyAdmissions = Object.entries(monthly).map(([month, count]) => ({ month, count }));
 
-    // Attendance trend (by date)
     const trend = {};
     attendance.forEach(a => {
       if (!trend[a.date]) trend[a.date] = { date: a.date, present: 0, absent: 0 };
@@ -700,12 +650,6 @@ async function router(req, method) {
       else trend[a.date].absent++;
     });
     const attendanceTrend = Object.values(trend).sort((a, b) => a.date.localeCompare(b.date));
-
-    // Fee split
-    const feeSplit = [
-      { name: 'Collected', value: collectedFees },
-      { name: 'Pending', value: pendingFees },
-    ];
 
     return json({
       totalStudents,
@@ -715,13 +659,13 @@ async function router(req, method) {
         return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
       }).length,
       attendancePct,
-      pendingFees,
-      collectedFees,
+      pendingPayments,
+      collectedPayments,
       totalTeachers: teachers.length,
+      totalCredits: ledger.reduce((sum, entry) => sum + (Number(entry.quantity_delta) || 0), 0),
       upcomingEvents: events.filter(e => new Date(e.date) >= new Date()).slice(0, 5),
       monthlyAdmissions,
       attendanceTrend,
-      feeSplit,
     });
   }
 
