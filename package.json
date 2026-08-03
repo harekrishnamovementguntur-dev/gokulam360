@@ -26,7 +26,8 @@
         "test:fees-payments-cutover": "node --test test/fees-payments-cutover.test.mjs",
         "test:backup": "node --test test/canonical-backup.test.mjs",
         "test:legacy-cutover": "node --test test/final-legacy-operational-cutover.test.mjs",
-        "test:security": "node --test test/security-foundation.test.mjs"
+        "test:security": "node --test test/security-foundation.test.mjs",
+        "db:reset:development": "node scripts/reset-development-database.mjs"
     },
     "dependencies": {
         "@hookform/resolvers": "5.1.1",
