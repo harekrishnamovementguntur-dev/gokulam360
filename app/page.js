@@ -248,27 +248,36 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
     api('/teachers').then(r => setTeachers(r.items)).catch(() => {});
   }, [user.role]);
 
-  const nav = useMemo(() => {
-    const items = [
+  const [moreOpen, setMoreOpen] = useState(false);
+  const navGroups = useMemo(() => {
+    const primary = [
       { key: 'dashboard', label: 'Dashboard', icon: BarChart3, roles: ['super_admin', 'org_admin', 'teacher'] },
-      { key: 'organizations', label: 'Organizations', icon: Building2, roles: ['super_admin'] },
       { key: 'students', label: 'Students', icon: GraduationCap, roles: ['super_admin', 'org_admin', 'teacher'] },
-      { key: 'memberships', label: 'Memberships', icon: Users, roles: ['super_admin', 'org_admin'] },
-      { key: 'teachers', label: 'Teachers', icon: Users, roles: ['super_admin', 'org_admin'] },
-      { key: 'academic-programs', label: 'Programs & Offerings', icon: BookOpen, roles: ['super_admin', 'org_admin'] },
-      { key: 'academic-calendar', label: 'Academic Calendar', icon: CalendarIcon, roles: ['super_admin', 'org_admin'] },
-      { key: 'participation', label: 'Membership Participation', icon: Users, roles: ['super_admin', 'org_admin'] },
-      { key: 'payments', label: 'Payments', icon: Wallet, roles: ['super_admin', 'org_admin'] },
+      { key: 'academic-programs', label: 'Classes', icon: BookOpen, roles: ['super_admin', 'org_admin'] },
       { key: 'attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['super_admin', 'org_admin', 'teacher'] },
-      { key: 'notifications', label: 'Notifications', icon: Bell, roles: ['super_admin', 'org_admin'] },
+      { key: 'payments', label: 'Payments', icon: Wallet, roles: ['super_admin', 'org_admin'] },
       { key: 'reports', label: 'Reports', icon: FileText, roles: ['super_admin', 'org_admin'] },
-      { key: 'member-reports', label: 'Member Reports', icon: Users, roles: ['super_admin', 'org_admin'] },
-      { key: 'financial-reports', label: 'Payment Reports', icon: Wallet, roles: ['super_admin', 'org_admin'] },
+      { key: 'notifications', label: 'Communications', icon: Bell, roles: ['super_admin', 'org_admin'] },
+    ];
+    const more = [
+      { key: 'organizations', label: 'Organizations', icon: Building2, roles: ['super_admin'] },
+      { key: 'memberships', label: 'Membership details', icon: Users, roles: ['super_admin', 'org_admin'] },
+      { key: 'teachers', label: 'Teachers', icon: Users, roles: ['super_admin', 'org_admin'] },
+      { key: 'academic-calendar', label: 'Calendar setup', icon: CalendarIcon, roles: ['super_admin', 'org_admin'] },
+      { key: 'participation', label: 'Class enrollments', icon: Users, roles: ['super_admin', 'org_admin'] },
+      { key: 'member-reports', label: 'Member details', icon: Users, roles: ['super_admin', 'org_admin'] },
+      { key: 'financial-reports', label: 'Financial details', icon: Wallet, roles: ['super_admin', 'org_admin'] },
       { key: 'events', label: 'Events', icon: CalendarIcon, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'backup', label: 'Backup', icon: Download, roles: ['super_admin', 'org_admin'] },
     ];
-    return items.filter(i => i.roles.includes(user.role));
+    return {
+      primary: primary.filter(item => item.roles.includes(user.role)),
+      more: more.filter(item => item.roles.includes(user.role)),
+    };
   }, [user.role]);
+  const primaryNav = navGroups.primary;
+  const moreNav = navGroups.more;
+  const nav = [...primaryNav, ...moreNav];
 
   if (user.role === 'parent') return <ParentPortal user={user} onLogout={onLogout} dark={dark} setDark={setDark} />;
 
@@ -288,7 +297,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
             </div>
           </div>
           <nav className="flex-1 mt-4 space-y-1 overflow-y-auto pr-1">
-            {nav.map((item, idx) => {
+            {primaryNav.map((item, idx) => {
               const Icon = item.icon; const active = view === item.key;
               return (
                 <motion.button
@@ -309,6 +318,38 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
                 </motion.button>
               );
             })}
+            {moreNav.length > 0 && (
+              <div className="pt-2 mt-2 border-t border-border/50">
+                <button
+                  type="button"
+                  onClick={() => setMoreOpen(value => !value)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-foreground/70 hover:bg-white/40 dark:hover:bg-white/5 hover:text-foreground transition-all"
+                  aria-expanded={moreOpen}
+                >
+                  <span className="w-8 h-8 rounded-lg grid place-items-center bg-muted text-muted-foreground">⋯</span>
+                  <span className="flex-1 text-left">More</span>
+                  <ChevronRight className={`transition-transform ${moreOpen ? 'rotate-90' : ''}`} size={14} />
+                </button>
+                {moreOpen && (
+                  <div className="mt-1 space-y-1 pl-2">
+                    {moreNav.map((item, idx) => {
+                      const Icon = item.icon; const active = view === item.key;
+                      return (
+                        <motion.button
+                          key={item.key}
+                          initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: idx * 0.03 }}
+                          onClick={() => setView(item.key)}
+                          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all ${active ? 'bg-primary/15 text-foreground' : 'text-foreground/65 hover:bg-white/40 dark:hover:bg-white/5'}`}
+                        >
+                          <Icon size={14} className="shrink-0" />
+                          <span className="min-w-0 flex-1 truncate text-left">{item.label}</span>
+                        </motion.button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </nav>
           <div className="mt-3 rounded-2xl p-3 bg-gradient-to-br from-primary/12 via-fuchsia-500/10 to-blue-500/10 border border-primary/20">
             <div className="flex items-center gap-2">
@@ -458,9 +499,10 @@ function Dashboard({ user, org, onNav }) {
             Here's a spiritual snapshot of <span className="font-semibold">{org?.name || 'your organization'}</span>. Every child served is Krishna served.
           </p>
           <div className="flex flex-wrap gap-2 mt-4">
-            <Button size="sm" className="bg-saffron-gradient shadow" onClick={() => onNav('students')}><Plus size={14} className="mr-1" /> Add Student</Button>
-            <Button size="sm" variant="secondary" className="glass" onClick={() => onNav('attendance')}><ClipboardCheck size={14} className="mr-1" /> Mark Attendance</Button>
-            <Button size="sm" variant="secondary" className="glass" onClick={() => onNav('notifications')}><Send size={14} className="mr-1" /> Send Notification</Button>
+            <Button size="sm" className="bg-saffron-gradient shadow" onClick={() => onNav('students')}><UserPlus size={14} className="mr-1" /> Enroll Student</Button>
+            <Button size="sm" variant="secondary" className="glass" onClick={() => onNav('attendance')}><ClipboardCheck size={14} className="mr-1" /> Take Attendance</Button>
+            <Button size="sm" variant="secondary" className="glass" onClick={() => onNav('payments')}><Wallet size={14} className="mr-1" /> Collect Payment</Button>
+            <Button size="sm" variant="secondary" className="glass" onClick={() => onNav('academic-programs')}><BookOpen size={14} className="mr-1" /> Set Up a Class</Button>
             <Button size="sm" variant="secondary" className="glass" onClick={() => onNav('reports')}><FileText size={14} className="mr-1" /> View Reports</Button>
           </div>
         </div>
