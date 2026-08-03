@@ -61,11 +61,12 @@ export async function archiveStudentCommand({ db, user, organizationId, studentI
     );
     if (!student) throw new StudentLifecycleError('Student not found', 404);
 
-    const activeMemberships = await memberships.find(
-      { organization_id: organizationId, student_id: studentId, status: 'active' },
+    const studentMemberships = await memberships.find(
+      { organization_id: organizationId, student_id: studentId },
       { session },
     ).sort({ created_at: 1 }).toArray();
-    const membershipIds = activeMemberships.map((membership) => membership.id);
+    const activeMemberships = studentMemberships.filter((membership) => membership.status === 'active');
+    const membershipIds = studentMemberships.map((membership) => membership.id);
     const activeParticipations = membershipIds.length
       ? await participations.find(
           { organization_id: organizationId, membership_id: { $in: membershipIds }, status: 'active' },
