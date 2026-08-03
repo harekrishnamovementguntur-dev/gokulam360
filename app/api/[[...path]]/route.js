@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
-import { MongoClient } from 'mongodb';
+import { getDb as getSharedDb } from '../_lib/server.js';
+import { archiveStudentCommand } from '../_lib/student-lifecycle.js';
 import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
@@ -8,7 +9,7 @@ import { exportCanonicalBackup, restoreCanonicalBackup } from '../_lib/canonical
 import { requireRuntimeEnv } from '../_lib/env.js';
 import { allowRequest } from '../_lib/rate-limit.js';
 
-const { MONGO_URL, DB_NAME, JWT_SECRET } = requireRuntimeEnv();
+const { JWT_SECRET } = requireRuntimeEnv();
 
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN;
@@ -43,14 +44,7 @@ async function sendTwilioMessage(channel, to, message) {
   }
 }
 
-let cachedClient = null;
-async function getDb() {
-  if (!cachedClient) {
-    cachedClient = new MongoClient(MONGO_URL);
-    await cachedClient.connect();
-  }
-  return cachedClient.db(DB_NAME);
-}
+const getDb = getSharedDb;
 
 function json(data, status = 200) {
   return NextResponse.json(data, { status });
@@ -514,15 +508,19 @@ async function router(req, method) {
       const existing = await col.findOne({ id, ...orgScope(user) });
       if (!existing) return json({ error: 'Not found' }, 404);
       if (resource === 'students') {
-        const fees = await db.collection('fees').deleteMany({ student_id: id, ...orgScope(user) });
-        await col.updateOne({ id, ...orgScope(user) }, { $set: { is_deleted: true, updated_at: new Date().toISOString() } });
-        await db.collection('activity').insertOne({
-          id: uuidv4(), organization_id: existing.organization_id, kind: 'student_deleted',
-          title: `Student deleted: ${existing.first_name || ''} ${existing.last_name || ''}`.trim(),
-          meta: { student_id: id, deleted_fee_records: fees.deletedCount || 0 },
-          actor: user.name || 'Admin', created_at: new Date().toISOString(),
-        });
-        return json({ ok: true, deleted_fee_records: fees.deletedCount || 0 });
+        try {
+          return json(await archiveStudentCommand({
+            db,
+            user,
+            organizationId: existing.organization_id,
+            studentId: id,
+          }));
+        } catch (error) {
+          if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 500) {
+            return json({ error: error.message }, error.status);
+          }
+          throw error;
+        }
       }
       await col.updateOne({ id, ...orgScope(user) }, { $set: { is_deleted: true, updated_at: new Date().toISOString() } });
       return json({ ok: true });
