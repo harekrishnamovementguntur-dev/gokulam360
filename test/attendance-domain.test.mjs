@@ -6,6 +6,7 @@ import {
   creditDebitFor,
   creditPolicyFor,
 } from '../lib/attendance-domain.mjs';
+import { ledgerDelta } from '../app/api/_lib/attendance.js';
 
 const participation = {
   id: 'participation-1',
@@ -75,4 +76,17 @@ test('corrections and voids are append-only events', () => {
   assert.equal(corrected.supersedes_record_id, 'attendance-1');
   assert.equal(voided.status, null);
   assert.equal(voided.supersedes_record_id, 'attendance-2');
+});
+
+
+test('Initial Attendance creation handles a missing previous record', () => {
+  const offering = {
+    attendance_policy: {
+      credit_consumption_enabled: true,
+      credits_per_attendance: 1,
+    },
+  };
+  const next = { status: 'present' };
+
+  assert.equal(ledgerDelta(null, next, offering), -1);
 });
