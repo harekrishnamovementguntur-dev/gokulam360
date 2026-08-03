@@ -21,6 +21,7 @@ This roadmap governs implementation after Architecture Gita v1.0. Canonical doma
 | PR #31 | Program and Offering Consumer Cutover | Completed / merged |
 | PR #33 | Enrollments → Membership Term Participation Consumer Cutover | Completed / merged |
 | PR #34 | Fees → Payments Consumer Cutover | Completed / merged |
+| PR #37 | Canonical Backup & Restore | In progress / Draft |
 
 ## Completed capabilities
 
@@ -104,6 +105,12 @@ This phase introduces the canonical transactional Attendance domain:
 - Dashboard attendance statistics use canonical `attendance_records`.
 - Parent/public, enrollment, and legacy program-session Attendance reads remain explicitly isolated until their owning consumer workstreams can migrate without dual writes.
 - Canonical Attendance UI, APIs, immutable history, Credit Ledger integration, and reports remain unchanged.
+
+### PR #37 — Canonical Backup & Restore
+
+- Versioned export and transaction-bound restore cover canonical academic, membership, payment, ledger, attendance, audit, and outbox collections.
+- Legacy collections are excluded and legacy backup payloads are rejected.
+- Restore requires explicit Super Admin organization targeting and transaction-capable MongoDB.
 
 ### Remaining roadmap
 
