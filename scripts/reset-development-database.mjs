@@ -1,6 +1,7 @@
 import { MongoClient } from 'mongodb';
 
 const REQUIRED_CONFIRMATION = 'reset-gokulam360-v1';
+const DEVELOPMENT_DATABASE = 'gokulam360';
 const SYSTEM_COLLECTIONS = new Set(['system_config', 'system_settings', 'configuration']);
 
 function fail(message) {
@@ -17,25 +18,38 @@ function assertSafeEnvironment() {
   if (process.env.DEVELOPMENT_RESET_CONFIRM !== REQUIRED_CONFIRMATION) {
     fail(`Set DEVELOPMENT_RESET_CONFIRM=${REQUIRED_CONFIRMATION} to confirm the reset.`);
   }
-  const resetDbName = process.env.RESET_DB_NAME;
-  if (!resetDbName || !/^gokulam360_[a-z0-9_-]+$/i.test(resetDbName)) {
-    fail('RESET_DB_NAME must be a dedicated database beginning with gokulam360_.');
+
+  const configuredDbName = process.env.DB_NAME;
+  const resetDbName = process.env.RESET_DB_NAME || (
+    configuredDbName === DEVELOPMENT_DATABASE ? DEVELOPMENT_DATABASE : null
+  );
+
+  if (!resetDbName || (
+    resetDbName !== DEVELOPMENT_DATABASE &&
+    !/^gokulam360_[a-z0-9_-]+$/i.test(resetDbName)
+  )) {
+    fail('The reset database must be gokulam360 or a dedicated database beginning with gokulam360_.');
   }
-  if (resetDbName === (process.env.DB_NAME || 'gokulam360')) {
-    fail('RESET_DB_NAME must not equal DB_NAME.');
+  if (resetDbName === DEVELOPMENT_DATABASE && configuredDbName && configuredDbName !== DEVELOPMENT_DATABASE) {
+    fail('RESET_DB_NAME=gokulam360 requires DB_NAME=gokulam360.');
+  }
+  if (resetDbName === configuredDbName && resetDbName !== DEVELOPMENT_DATABASE) {
+    fail('RESET_DB_NAME must not equal DB_NAME except for the explicitly approved development database gokulam360.');
   }
   if (!process.env.MONGO_URL) fail('MONGO_URL must be configured.');
   if (!process.env.BOOTSTRAP_SUPER_ADMIN_EMAIL) fail('BOOTSTRAP_SUPER_ADMIN_EMAIL must be configured.');
+
+  return resetDbName;
 }
 
 async function resetDevelopmentDatabase() {
-  assertSafeEnvironment();
+  const resetDbName = assertSafeEnvironment();
 
   const client = new MongoClient(process.env.MONGO_URL);
   await client.connect();
-  const db = client.db(process.env.RESET_DB_NAME);
+  const db = client.db(resetDbName);
   const bootstrapEmail = process.env.BOOTSTRAP_SUPER_ADMIN_EMAIL.trim().toLowerCase();
-  const summary = { database: process.env.RESET_DB_NAME, removed: {}, preserved: [] };
+  const summary = { database: resetDbName, removed: {}, preserved: [] };
   const session = client.startSession();
 
   try {
