@@ -79,10 +79,10 @@ export default function AttendanceAdministrator({ request }) {
       // Calendar data is required to open Attendance. Roster metadata is
       // supplementary and must not prevent the Offering/Term selectors from loading.
       const [offeringResult, termResult, membershipResult, studentResult] = await Promise.allSettled([
-        request(freshRead('/program-offerings')),
-        request(freshRead('/academic-terms')),
-        request(freshRead('/memberships')),
-        request(freshRead('/students')),
+        request('/program-offerings'),
+        request('/academic-terms'),
+        request('/memberships'),
+        request('/students'),
       ]);
       if (offeringResult.status === 'rejected') throw offeringResult.reason;
       if (termResult.status === 'rejected') throw termResult.reason;
