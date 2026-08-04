@@ -68,18 +68,32 @@ export default function AttendanceAdministrator({ request }) {
     setLoading(true);
     setError('');
     try {
-      const [offeringResponse, termResponse, membershipResponse, studentResponse] = await Promise.all([
+      // Calendar data is required to open Attendance. Roster metadata is
+      // supplementary and must not prevent the Offering/Term selectors from loading.
+      const [offeringResult, termResult, membershipResult, studentResult] = await Promise.allSettled([
         request('/program-offerings'),
         request('/academic-terms'),
         request('/memberships'),
         request('/students'),
       ]);
-      setOfferings((offeringResponse.items || []).filter((item) => item.status !== 'archived'));
-      setTerms((termResponse.items || []).filter((item) => item.status !== 'archived'));
-      setMemberships(membershipResponse.items || []);
-      setStudents(studentResponse.items || []);
+      if (offeringResult.status === 'rejected') throw offeringResult.reason;
+      if (termResult.status === 'rejected') throw termResult.reason;
+
+      const offeringItems = Array.isArray(offeringResult.value?.items) ? offeringResult.value.items : [];
+      const termItems = Array.isArray(termResult.value?.items) ? termResult.value.items : [];
+      setOfferings(offeringItems.filter((item) => item.status !== 'archived'));
+      setTerms(termItems.filter((item) => item.status !== 'archived'));
+      setMemberships(membershipResult.status === 'fulfilled' && Array.isArray(membershipResult.value?.items)
+        ? membershipResult.value.items
+        : []);
+      setStudents(studentResult.status === 'fulfilled' && Array.isArray(studentResult.value?.items)
+        ? studentResult.value.items
+        : []);
+
+      const optionalFailure = [membershipResult, studentResult].find((result) => result.status === 'rejected');
+      if (optionalFailure) setError(optionalFailure.reason?.message || 'Roster details could not be loaded.');
     } catch (loadError) {
-      setError(loadError.message);
+      setError(loadError.message || 'Attendance setup could not be loaded.');
     } finally {
       setLoading(false);
     }
