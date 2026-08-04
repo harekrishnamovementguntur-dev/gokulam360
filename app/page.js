@@ -40,6 +40,7 @@ import Payments from '@/components/Payments';
 import MemberMembershipReports from '@/components/MemberMembershipReports';
 import PaymentCreditReports from '@/components/PaymentCreditReports';
 import AttendanceAdministrator from '@/components/AttendanceAdministrator';
+import { calculateAdmissionCredits } from '@/lib/admission-credit-policy.mjs';
 
 const API = '/api';
 
@@ -226,6 +227,85 @@ function Login({ onLoggedIn }) {
 }
 
 /* ============================================================
+   ADMINISTRATOR ASSISTANT
+============================================================ */
+function AdministratorAssistant({ user, organization }) {
+  const [question, setQuestion] = useState('');
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [organizations, setOrganizations] = useState([]);
+  const [targetOrganizationId, setTargetOrganizationId] = useState(organization?.id || '');
+  const examples = ['How many were present?', 'How many were absent?', 'Give me the phone numbers of absentees', 'What payments are pending?', 'What are the next sessions?'];
+
+  useEffect(() => {
+    if (user.role !== 'super_admin') {
+      setTargetOrganizationId(organization?.id || '');
+      return;
+    }
+    api('/organizations')
+      .then(data => setOrganizations(Array.isArray(data.items) ? data.items : []))
+      .catch(error => setResult({ error: error.message || 'Organizations could not be loaded.' }));
+  }, [user.role, organization?.id]);
+
+  const ask = async (value = question) => {
+    const q = String(value || '').trim();
+    if (!q || !targetOrganizationId) return;
+    setLoading(true); setResult(null);
+    try {
+      setResult(await api('/ai/ask', {
+        method: 'POST',
+        body: JSON.stringify({ question: q, organization_id: targetOrganizationId }),
+      }));
+    } catch (error) {
+      setResult({ error: error.message || 'The assistant could not answer that.' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const needsOrganization = user.role === 'super_admin' && !targetOrganizationId;
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      <div className="rounded-3xl bg-mesh-warm border p-6 md:p-8">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-violet-gradient grid place-items-center text-white shadow-lg"><Sparkles size={22} /></div>
+          <div>
+            <div className="text-xs uppercase tracking-wider text-indigo-900/60">Ask Gokulam360</div>
+            <h1 className="text-2xl md:text-3xl font-bold text-indigo-950 mt-1">Your daily office assistant</h1>
+            <p className="text-sm text-indigo-900/70 mt-2 max-w-2xl">Ask in plain language. Answers are calculated from canonical attendance and payment records, with phone details protected by your role.</p>
+          </div>
+        </div>
+
+        {user.role === 'super_admin' && (
+          <div className="mt-6 max-w-md">
+            <Label htmlFor="assistant-organization">Organization</Label>
+            <Select value={targetOrganizationId} onValueChange={setTargetOrganizationId}>
+              <SelectTrigger id="assistant-organization" className="mt-1 h-11 bg-white/80">
+                <SelectValue placeholder="Select an organization" />
+              </SelectTrigger>
+              <SelectContent>
+                {organizations.map(item => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-indigo-900/60 mt-1.5">Choose the organization whose records you want to ask about.</p>
+          </div>
+        )}
+
+        <div className="flex gap-2 mt-6">
+          <Input value={question} onChange={e => setQuestion(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') ask(); }} placeholder="For example: how many students were absent?" className="h-12 bg-white/80" aria-label="Ask the administrator assistant" />
+          <Button onClick={() => ask()} disabled={loading || !question.trim() || needsOrganization} className="h-12 px-5"><Sparkles size={16} className="mr-2" />{loading ? 'Checking…' : 'Ask'}</Button>
+        </div>
+        {needsOrganization && <div className="text-xs text-amber-700 mt-2">Select an organization before asking a question.</div>}
+      </div>
+      {!result && <div className="rounded-2xl glass p-5"><div className="text-sm font-semibold mb-3">Try a question</div><div className="flex flex-wrap gap-2">{examples.map(example => <Button key={example} variant="outline" size="sm" disabled={needsOrganization} onClick={() => { setQuestion(example); ask(example); }}>{example}</Button>)}</div></div>}
+      {result?.error && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 text-rose-700 p-5">{result.error}</div>}
+      {result && !result.error && <div className="rounded-2xl glass p-6 space-y-4" aria-live="polite"><div className="flex items-center gap-2 text-xs text-muted-foreground"><CheckCircle2 size={15} className="text-emerald-600" /> Verified from canonical records</div><div className="text-lg font-semibold">{result.answer}</div>{result.data?.counts && <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{Object.entries(result.data.counts).map(([key, value]) => <div key={key} className="rounded-xl bg-white/60 dark:bg-white/5 border p-3"><div className="text-xs text-muted-foreground capitalize">{key}</div><div className="text-2xl font-bold mt-1">{value}</div></div>)}</div>}{result.data?.contacts && <div className="space-y-2">{result.data.contacts.map(contact => <div key={contact.student_id} className="flex items-center justify-between border-b py-2 text-sm"><span>{contact.name}</span><span className="font-mono text-muted-foreground">{contact.phone || 'Contact restricted'}</span></div>)}</div>}{result.data?.sessions?.length > 0 && <div className="space-y-2">{result.data.sessions.map(session => <div key={session.id} className="flex justify-between border-b py-2 text-sm"><span>{session.date}</span><span className="text-muted-foreground">{session.start_time || 'Scheduled'}</span></div>)}</div>}</div>}
+    </div>
+  );
+}
+
+/* ============================================================
    SHELL
 ============================================================ */
 function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
@@ -252,6 +332,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
   const navGroups = useMemo(() => {
     const primary = [
       { key: 'dashboard', label: 'Dashboard', icon: BarChart3, roles: ['super_admin', 'org_admin', 'teacher'] },
+      { key: 'assistant', label: 'Ask Assistant', icon: Sparkles, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'students', label: 'Students', icon: GraduationCap, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'academic-programs', label: 'Classes', icon: BookOpen, roles: ['super_admin', 'org_admin'] },
       { key: 'attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['super_admin', 'org_admin', 'teacher'] },
@@ -393,8 +474,9 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
           <AnimatePresence mode="wait">
             <motion.div key={view} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
               {view === 'dashboard' && <Dashboard user={user} org={org} onNav={setView} />}
+              {view === 'assistant' && <AdministratorAssistant user={user} organization={org} />}
               {view === 'organizations' && <Organizations />}
-              {view === 'students' && <Students students={students} setStudents={setStudents} />}
+              {view === 'students' && <Students user={user} students={students} setStudents={setStudents} />}
               {view === 'memberships' && <Memberships request={api} />}
               {view === 'academic-programs' && <ProgramsOfferings request={api} />}
               {view === 'academic-calendar' && <AcademicCalendar request={api} />}
@@ -1182,14 +1264,16 @@ function PageHeader({ title, subtitle, icon: Icon, action }) {
 /* ============================================================
    STUDENTS
 ============================================================ */
-function EnrollStudentForm({ open, onOpenChange, programs, offerings, terms, organization, onComplete }) {
+function EnrollStudentForm({ open, onOpenChange, programs, offerings, terms, organization, user, onComplete }) {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(null);
+  const [organizations, setOrganizations] = useState([]);
+  const [targetOrganizationId, setTargetOrganizationId] = useState(organization?.id || '');
   const [form, setForm] = useState({
     first_name: '', last_name: '', dob: '', gender: 'Male', mobile: '', email: '',
     father_name: '', mother_name: '', address: '', offering_id: '',
     paymentNow: false, amount: '', payment_method: 'cash', reference: '',
-    receipt_number: '', credit_quantity: '', description: '',
+    receipt_number: '', credit_quantity: '', credit_policy: 'remaining', custom_credits: '', description: '',
   });
 
   const reset = () => {
@@ -1198,15 +1282,26 @@ function EnrollStudentForm({ open, onOpenChange, programs, offerings, terms, org
       first_name: '', last_name: '', dob: '', gender: 'Male', mobile: '', email: '',
       father_name: '', mother_name: '', address: '', offering_id: '',
       paymentNow: false, amount: '', payment_method: 'cash', reference: '',
-      receipt_number: '', credit_quantity: '', description: '',
+      receipt_number: '', credit_quantity: '', credit_policy: 'remaining', custom_credits: '', description: '',
     });
   };
 
   useEffect(() => { if (open) reset(); }, [open]);
+  useEffect(() => {
+    if (user?.role === 'super_admin' && open) {
+      api('/organizations').then(data => setOrganizations(data.items || [])).catch(error => toast.error(error.message || 'Unable to load organizations'));
+    }
+  }, [open, user?.role]);
+  useEffect(() => { if (organization?.id) setTargetOrganizationId(organization.id); }, [organization?.id]);
 
-  const activeOfferings = offerings.filter(item => item.status !== 'archived');
+  const isSuperAdmin = user?.role === 'super_admin';
+  const scopedOrganizationId = isSuperAdmin ? targetOrganizationId : organization?.id;
+  const availablePrograms = programs.filter(item => !isSuperAdmin || item.organization_id === scopedOrganizationId);
+  const availableOfferings = offerings.filter(item => !isSuperAdmin || item.organization_id === scopedOrganizationId);
+  const availableTerms = terms.filter(item => !isSuperAdmin || item.organization_id === scopedOrganizationId);
+  const activeOfferings = availableOfferings.filter(item => item.status !== 'archived');
   const selectedOffering = activeOfferings.find(item => item.id === form.offering_id);
-  const offeringTerms = terms
+  const offeringTerms = availableTerms
     .filter(item => item.program_offering_id === form.offering_id && item.status !== 'archived')
     .sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || '')));
   const today = new Date().toISOString().slice(0, 10);
@@ -1215,11 +1310,39 @@ function EnrollStudentForm({ open, onOpenChange, programs, offerings, terms, org
     || offeringTerms.find(item => item.start_date >= today)
     || offeringTerms[0];
   const currentProgram = programs.find(item => item.id === selectedOffering?.program_id) || null;
+  const [termSessions, setTermSessions] = useState([]);
   const className = selectedOffering?.name || selectedOffering?.cohort || selectedOffering?.academic_year || 'Class';
   const scheduleLabel = typeof selectedOffering?.schedule === 'string' ? selectedOffering.schedule : selectedOffering?.schedule?.label || '';
   const inferredFee = selectedOffering?.fee_amount ?? selectedOffering?.metadata?.fee_amount;
   const inferredCredits = selectedOffering?.credits ?? selectedOffering?.metadata?.credits;
   const inferredTeacher = selectedOffering?.teacher_name || selectedOffering?.teacher?.name || selectedOffering?.metadata?.teacher_name;
+  const creditSummary = calculateAdmissionCredits({
+    sessions: termSessions,
+    policy: form.credit_policy,
+    customCredits: form.custom_credits,
+    asOf: today,
+  });
+  const { completedSessions: completedSessionCount, remainingCredits, fullCredits } = creditSummary;
+  const effectiveCredits = creditSummary.credits || (form.credit_policy === 'remaining' ? 0 : Number(inferredCredits) || 0);
+  const suggestedAmount = inferredFee != null && fullCredits > 0
+    ? Math.round(Number(inferredFee) * (effectiveCredits / fullCredits))
+    : '';
+
+  useEffect(() => {
+    if (!selectedTerm?.id) {
+      setTermSessions([]);
+      return;
+    }
+    api('/academic-sessions?term_id=' + encodeURIComponent(selectedTerm.id))
+      .then(data => setTermSessions(Array.isArray(data.items) ? data.items : []))
+      .catch(() => setTermSessions([]));
+  }, [selectedTerm?.id]);
+
+  useEffect(() => {
+    if (form.paymentNow && form.credit_policy !== 'custom' && effectiveCredits > 0 && !form.credit_quantity) {
+      update('credit_quantity', String(effectiveCredits));
+    }
+  }, [form.paymentNow, form.credit_policy, effectiveCredits, form.credit_quantity]);
 
   const update = (key, value) => setForm(current => ({ ...current, [key]: value }));
 
@@ -1228,18 +1351,24 @@ function EnrollStudentForm({ open, onOpenChange, programs, offerings, terms, org
       toast.error('Enter the student’s first and last name');
       return;
     }
+    if (isSuperAdmin && !scopedOrganizationId) {
+      toast.error('Choose the organization for this admission');
+      return;
+    }
     if (!selectedOffering || !selectedTerm) {
       toast.error('Choose a class with an active term');
       return;
     }
-    if (form.paymentNow && (!Number(form.amount) || Number(form.amount) <= 0 || !Number(form.credit_quantity) || Number(form.credit_quantity) <= 0)) {
-      toast.error('Enter the payment amount and classes covered');
+    if (form.paymentNow && (!Number(form.amount) || Number(form.amount) <= 0 || !Number.isInteger(effectiveCredits) || effectiveCredits <= 0)) {
+      toast.error('Enter the payment amount and a valid number of classes');
       return;
     }
     setSaving(true);
     try {
-      const student = await api('/students', {
+      const admissionKey = crypto.randomUUID();
+      const result = await api('/admissions', {
         method: 'POST',
+        headers: { 'Idempotency-Key': admissionKey },
         body: JSON.stringify({
           first_name: form.first_name.trim(),
           last_name: form.last_name.trim(),
@@ -1250,52 +1379,21 @@ function EnrollStudentForm({ open, onOpenChange, programs, offerings, terms, org
           father_name: form.father_name,
           mother_name: form.mother_name,
           address: form.address,
-          status: 'active',
           program_id: selectedOffering.program_id,
-        }),
-      });
-      const membership = await api('/memberships', {
-        method: 'POST',
-        body: JSON.stringify({ student_id: student.id, program_id: selectedOffering.program_id, status: 'active' }),
-      });
-      await api('/membership-term-participations', {
-        method: 'POST',
-        body: JSON.stringify({
-          membership_id: membership.id,
-          program_offering_id: selectedOffering.id,
+          offering_id: selectedOffering.id,
           term_id: selectedTerm.id,
+          payment_now: form.paymentNow,
+          amount_minor: form.paymentNow ? Math.round(Number(form.amount) * 100) : 0,
+          currency: organization?.currency || 'INR',
+          payment_method: form.payment_method,
+          payment_description: form.description || ('Admission for ' + form.first_name.trim() + ' ' + form.last_name.trim()),
+          credit_policy: form.credit_policy,
+          custom_credits: form.credit_policy === 'custom' ? Number(form.custom_credits) : undefined,
+          admission_date: today,
+          organization_id: scopedOrganizationId,
         }),
       });
-
-      let receipt = null;
-      if (form.paymentNow) {
-        const amountMinor = Math.round(Number(form.amount) * 100);
-        const draft = await api('/payments', {
-          method: 'POST',
-          headers: { 'Idempotency-Key': crypto.randomUUID() },
-          body: JSON.stringify({
-            amount_minor: amountMinor,
-            currency: organization?.currency || 'INR',
-            payment_method: form.payment_method,
-            reference: form.reference || undefined,
-            receipt_number: form.receipt_number || undefined,
-            description: form.description || ('Admission for ' + form.first_name.trim() + ' ' + form.last_name.trim()),
-          }),
-        });
-        const posted = await api('/payments/' + draft.id, {
-          method: 'POST',
-          headers: { 'Idempotency-Key': crypto.randomUUID() },
-          body: JSON.stringify({
-            allocations: [{
-              membership_id: membership.id,
-              amount_minor: amountMinor,
-              credit_quantity: Number(form.credit_quantity),
-              description: form.description || 'Admission payment',
-            }],
-          }),
-        });
-        receipt = posted?.payment?.receipt_number || posted?.receipt_number || draft.receipt_number || null;
-      }
+      const receipt = result.payment?.receipt_number || null;
 
       setSuccess({ name: form.first_name.trim() + ' ' + form.last_name.trim(), receipt });
       confetti({ particleCount: 140, spread: 85, origin: { y: 0.55 }, colors: ['#7c3aed', '#4f46e5', '#22c55e', '#f59e0b'] });
@@ -1345,6 +1443,7 @@ function EnrollStudentForm({ open, onOpenChange, programs, offerings, terms, org
 
             <section className="rounded-2xl border bg-white/35 p-4 dark:bg-white/5">
               <div className="mb-3 flex items-center gap-2"><BookOpen size={16} className="text-primary" /><h3 className="font-semibold">Class</h3></div>
+              {isSuperAdmin && <div className="mb-3"><Label>Organization</Label><Select value={targetOrganizationId} onValueChange={value => { setTargetOrganizationId(value); update('offering_id', ''); }}><SelectTrigger><SelectValue placeholder="Choose an organization" /></SelectTrigger><SelectContent>{organizations.map(item => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select></div>}
               <div><Label>Class</Label><Select value={form.offering_id} onValueChange={value => update('offering_id', value)}><SelectTrigger><SelectValue placeholder="Choose a class" /></SelectTrigger><SelectContent>{activeOfferings.map(item => <SelectItem key={item.id} value={item.id}>{item.name || item.cohort || item.academic_year || 'Class'}</SelectItem>)}</SelectContent></Select></div>
               {selectedOffering && (
                 <div className="mt-3 grid gap-2 rounded-xl bg-primary/5 p-3 text-sm sm:grid-cols-2">
@@ -1366,8 +1465,24 @@ function EnrollStudentForm({ open, onOpenChange, programs, offerings, terms, org
                 <label className="flex cursor-pointer items-center gap-2 rounded-xl border p-3"><input type="radio" name="admit-payment" checked={form.paymentNow} onChange={() => update('paymentNow', true)} /><span><span className="block font-medium text-sm">Collect payment now</span><span className="block text-xs text-muted-foreground">Post it while admitting the student.</span></span></label>
               </div>
               {form.paymentNow && <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <div><Label htmlFor="admit-amount">Amount</Label><Input id="admit-amount" type="number" min="0" step="0.01" value={form.amount} onChange={event => update('amount', event.target.value)} placeholder="₹ 0" /></div>
-                <div><Label htmlFor="admit-credits">Classes covered</Label><Input id="admit-credits" type="number" min="1" value={form.credit_quantity} onChange={event => update('credit_quantity', event.target.value)} placeholder="e.g. 16" /></div>
+                <div><Label htmlFor="admit-amount">Amount</Label><Input id="admit-amount" type="number" min="0" step="0.01" value={form.amount} onChange={event => update('amount', event.target.value)} placeholder={suggestedAmount ? 'Suggested ₹ ' + suggestedAmount : '₹ 0'} /></div>
+                <div>
+                  <Label>Classes covered</Label>
+                  <div className="mt-1 grid gap-2">
+                    {[
+                      ['remaining', 'Remaining classes', remainingCredits + ' of ' + fullCredits + ' available'],
+                      ['full', 'Full term', fullCredits + ' classes'],
+                      ['custom', 'Custom', 'Choose manually'],
+                    ].map(([value, label, detail]) => (
+                      <label key={value} className="flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                        <input type="radio" name="admit-credit-policy" checked={form.credit_policy === value} onChange={() => update('credit_policy', value)} />
+                        <span><span className="block font-medium">{label}</span><span className="block text-xs text-muted-foreground">{detail}</span></span>
+                      </label>
+                    ))}
+                  </div>
+                  {form.credit_policy === 'custom' && <Input className="mt-2" aria-label="Custom classes covered" type="number" min="1" value={form.custom_credits} onChange={event => update('custom_credits', event.target.value)} placeholder="Number of classes" />}
+                  <div className="mt-2 text-xs text-muted-foreground">Based on {completedSessionCount} completed/elapsed attendable sessions, the recommended grant is <b>{effectiveCredits || 0} classes</b>.</div>
+                </div>
                 <div><Label>Payment method</Label><Select value={form.payment_method} onValueChange={value => update('payment_method', value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{[['cash', 'Cash'], ['bank_transfer', 'Bank transfer'], ['upi', 'UPI'], ['card', 'Card'], ['online', 'Online'], ['other', 'Other']].map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
                 <div><Label htmlFor="admit-reference">Reference (optional)</Label><Input id="admit-reference" value={form.reference} onChange={event => update('reference', event.target.value)} placeholder="Receipt or UPI reference" /></div>
                 <div className="sm:col-span-2"><Label htmlFor="admit-note">Note (optional)</Label><Textarea id="admit-note" value={form.description} onChange={event => update('description', event.target.value)} placeholder="Anything the office should remember" /></div>
@@ -1380,7 +1495,7 @@ function EnrollStudentForm({ open, onOpenChange, programs, offerings, terms, org
                 <div><span className="text-muted-foreground">Student</span><div className="font-medium">{form.first_name || '—'} {form.last_name}</div></div>
                 <div><span className="text-muted-foreground">Class</span><div className="font-medium">{selectedOffering ? className : '—'}</div></div>
                 <div><span className="text-muted-foreground">Term</span><div className="font-medium">{selectedTerm?.name || 'Choose a class'}</div></div>
-                <div><span className="text-muted-foreground">Payment</span><div className="font-medium">{form.paymentNow ? fmtINR(Number(form.amount) || 0) + ' · ' + (form.credit_quantity || '—') + ' classes' : 'Collect later'}</div></div>
+                <div><span className="text-muted-foreground">Payment</span><div className="font-medium">{form.paymentNow ? fmtINR(Number(form.amount) || 0) + ' · ' + (effectiveCredits || '—') + ' classes (' + form.credit_policy + ')' : 'Collect later'}</div></div>
               </div>
               <p className="mt-3 text-xs text-muted-foreground">The class and term setup will be connected automatically. You do not need to manage memberships or class enrollments separately.</p>
             </section>
@@ -1392,7 +1507,7 @@ function EnrollStudentForm({ open, onOpenChange, programs, offerings, terms, org
   );
 }
 
-function Students({ students, setStudents }) {
+function Students({ user, students, setStudents }) {
   const [programs, setPrograms] = useState([]);
   const [offerings, setOfferings] = useState([]);
   const [terms, setTerms] = useState([]);
@@ -1535,6 +1650,7 @@ function Students({ students, setStudents }) {
         offerings={offerings}
         terms={terms}
         organization={org}
+        user={user}
         onComplete={() => { setEnrollmentOpen(false); load(); }}
       />
       <PageHeader title="Students" subtitle={`${filtered.length} of ${students.length} students`} icon={GraduationCap}
