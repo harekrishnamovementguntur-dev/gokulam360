@@ -5,7 +5,7 @@ export function classifyAssistantQuestion(question = '') {
   if (!text) return { intent: 'summary' };
   if (/(phone|mobile|contact).*(absent|absence)|(absent|absence).*(phone|mobile|contact)/.test(text)) return { intent: 'absent_contacts' };
   if (/(absent|absence)/.test(text)) return { intent: 'attendance_status', status: 'absent' };
-  if (/how many.*present|present.*(count|how many)/.test(text)) return { intent: 'attendance_status', status: 'present' };
+  if (/how many.*present|present.*(count|how many)|\bwho\b.*\bpresent\b|\bpresent\b.*\b(who|which|list|students?|names?)\b/.test(text)) return { intent: 'attendance_status', status: 'present' };
   if (/(late|tardy)/.test(text)) return { intent: 'attendance_status', status: 'late' };
   if (/excused/.test(text)) return { intent: 'attendance_status', status: 'excused' };
   if (/(due|outstanding|pending).*(payment|fee)|payment.*(due|pending|outstanding)/.test(text)) return { intent: 'payments_due' };
