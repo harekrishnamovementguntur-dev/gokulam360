@@ -2395,8 +2395,8 @@ function Reports() {
 
   const exportCSV = () => {
     if (tab === 'attendance-summary' && attSummary) {
-      const headers = ['Session Date', 'Session ID', 'Present', 'Late', 'Absent', 'Excused', 'Total'];
-      const lines = (attSummary.items || []).map(s => [s.session_date || '', s.session_id, s.present, s.late, s.absent, s.excused, s.total]);
+      const headers = ['Session Date', 'Session', 'Present', 'Late', 'Absent', 'Excused', 'Total'];
+      const lines = (attSummary.items || []).map(s => [s.session_date || '', s.session_label || 'Session', s.present, s.late, s.absent, s.excused, s.total]);
       const csv = [headers.join(','), ...lines.map(l => l.map(v => `"${v}"`).join(','))].join('\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `attendance-summary${dateRangeSuffix}.csv`; a.click();
@@ -2410,7 +2410,7 @@ function Reports() {
     const XLSX = await import('xlsx');
     let ws, sheet = tab;
     if (tab === 'attendance-summary' && attSummary) {
-      const data = (attSummary.items || []).map(s => ({ 'Session Date': s.session_date || '', 'Session ID': s.session_id, Present: s.present, Late: s.late, Absent: s.absent, Excused: s.excused, Total: s.total }));
+      const data = (attSummary.items || []).map(s => ({ 'Session Date': s.session_date || '', Session: s.session_label || 'Session', Present: s.present, Late: s.late, Absent: s.absent, Excused: s.excused, Total: s.total }));
       ws = XLSX.utils.json_to_sheet(data);
       sheet = 'attendance-summary';
     } else {
@@ -2520,7 +2520,7 @@ function CanonicalAttendanceSummaryTable({ data, loading }) {
         <Table>
           <TableHeader><TableRow><TableHead>Session Date</TableHead><TableHead>Session</TableHead><TableHead className="text-center">Present</TableHead><TableHead className="text-center">Late</TableHead><TableHead className="text-center">Absent</TableHead><TableHead className="text-center">Excused</TableHead><TableHead className="text-center">Total</TableHead></TableRow></TableHeader>
           <TableBody>{items.map(item => <TableRow key={item.session_id}>
-            <TableCell>{item.session_date || '-'}</TableCell><TableCell className="font-mono text-xs">{item.session_id}</TableCell>
+            <TableCell>{item.session_date || '-'}</TableCell><TableCell>{item.session_label || 'Session'}</TableCell>
             <TableCell className="text-center">{item.present || 0}</TableCell><TableCell className="text-center">{item.late || 0}</TableCell><TableCell className="text-center">{item.absent || 0}</TableCell><TableCell className="text-center">{item.excused || 0}</TableCell><TableCell className="text-center">{item.total || 0}</TableCell>
           </TableRow>)}</TableBody>
         </Table>
