@@ -8,6 +8,7 @@ import twilio from 'twilio';
 import { exportCanonicalBackup, restoreCanonicalBackup } from '../_lib/canonical-backup.js';
 import { requireRuntimeEnv } from '../_lib/env.js';
 import { allowRequest } from '../_lib/rate-limit.js';
+import { summarizeStudentCredits } from '../../../lib/student-credit-summary.mjs';
 
 const { JWT_SECRET } = requireRuntimeEnv();
 
@@ -444,6 +445,27 @@ async function router(req, method) {
          if (!['organization_id', 'is_deleted', '_id'].includes(k)) q[k] = params[k];
        });
       const items = await col.find(q).sort({ created_at: -1 }).limit(500).toArray();
+      if (resource === 'students' && items.length) {
+        const studentIds = items.map(item => item.id);
+        const memberships = await db.collection('memberships').find(
+          orgScope(user, { student_id: { $in: studentIds }, status: { $nin: ['archived'] } }),
+          { projection: { id: 1, student_id: 1 } },
+        ).toArray();
+        const membershipIds = memberships.map(membership => membership.id);
+        const entries = membershipIds.length
+          ? await db.collection('credit_ledger_entries').find(
+              orgScope(user, { membership_id: { $in: membershipIds } }),
+              { projection: { membership_id: 1, quantity_delta: 1 } },
+            ).toArray()
+          : [];
+        const creditSummary = summarizeStudentCredits(memberships, entries);
+        return json({
+          items: items.map(item => ({
+            ...stripId(item),
+            credit_summary: creditSummary.get(item.id) || { granted: 0, remaining: 0 },
+          })),
+        });
+      }
       return json({ items: items.map(stripId) });
     }
     if (method === 'GET' && id && !sub) {

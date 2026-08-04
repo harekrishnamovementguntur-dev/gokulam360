@@ -300,7 +300,7 @@ function AdministratorAssistant({ user, organization }) {
       </div>
       {!result && <div className="rounded-2xl glass p-5"><div className="text-sm font-semibold mb-3">Try a question</div><div className="flex flex-wrap gap-2">{examples.map(example => <Button key={example} variant="outline" size="sm" disabled={needsOrganization} onClick={() => { setQuestion(example); ask(example); }}>{example}</Button>)}</div></div>}
       {result?.error && <div role="alert" className="rounded-2xl border border-rose-200 bg-rose-50 text-rose-700 p-5">{result.error}</div>}
-      {result && !result.error && <div className="rounded-2xl glass p-6 space-y-4" aria-live="polite"><div className="flex items-center gap-2 text-xs text-muted-foreground"><CheckCircle2 size={15} className="text-emerald-600" /> Verified from canonical records</div><div className="text-lg font-semibold">{result.answer}</div>{result.data?.counts && <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{Object.entries(result.data.counts).map(([key, value]) => <div key={key} className="rounded-xl bg-white/60 dark:bg-white/5 border p-3"><div className="text-xs text-muted-foreground capitalize">{key}</div><div className="text-2xl font-bold mt-1">{value}</div></div>)}</div>}{result.data?.contacts && <div className="space-y-2">{result.data.contacts.map(contact => <div key={contact.student_id} className="flex items-center justify-between border-b py-2 text-sm"><span>{contact.name}</span><span className="font-mono text-muted-foreground">{contact.phone || 'Contact restricted'}</span></div>)}</div>}{result.data?.sessions?.length > 0 && <div className="space-y-2">{result.data.sessions.map(session => <div key={session.id} className="flex justify-between border-b py-2 text-sm"><span>{session.date}</span><span className="text-muted-foreground">{session.start_time || 'Scheduled'}</span></div>)}</div>}</div>}
+      {result && !result.error && <div className="rounded-2xl glass p-6 space-y-4" aria-live="polite"><div className="flex items-center gap-2 text-xs text-muted-foreground"><CheckCircle2 size={15} className="text-emerald-600" /> Verified from canonical records</div><div className="text-lg font-semibold">{result.answer}</div>{result.data?.counts && <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{Object.entries(result.data.counts).map(([key, value]) => <div key={key} className="rounded-xl bg-white/60 dark:bg-white/5 border p-3"><div className="text-xs text-muted-foreground capitalize">{key}</div><div className="text-2xl font-bold mt-1">{value}</div></div>)}</div>}{result.data?.students && <div className="space-y-2"><div className="text-sm font-semibold">Students</div>{result.data.students.length ? result.data.students.map(student => <div key={student.student_id} className="border-b py-2 text-sm"><span>{student.name}</span></div>) : <div className="text-sm text-muted-foreground">No matching students found.</div>}</div>}{result.data?.contacts && <div className="space-y-2">{result.data.contacts.map(contact => <div key={contact.student_id} className="flex items-center justify-between border-b py-2 text-sm"><span>{contact.name}</span><span className="font-mono text-muted-foreground">{contact.phone || 'Contact restricted'}</span></div>)}</div>}{result.data?.sessions?.length > 0 && <div className="space-y-2">{result.data.sessions.map(session => <div key={session.id} className="flex justify-between border-b py-2 text-sm"><span>{session.date}</span><span className="text-muted-foreground">{session.start_time || 'Scheduled'}</span></div>)}</div>}</div>}
     </div>
   );
 }
@@ -1707,6 +1707,12 @@ function Students({ user, students, setStudents }) {
               </div>
               <div className="text-[11px] text-muted-foreground mt-3 space-y-0.5">
                 {s.mobile && <div className="flex min-w-0 items-center gap-1.5"><Phone size={11} className="shrink-0" /><span className="truncate">{s.mobile}</span></div>}
+                <div className="flex items-center justify-between gap-2 rounded-lg bg-primary/5 border border-primary/10 px-2 py-1.5">
+                  <span className="text-[10px] font-medium text-foreground">Credits</span>
+                  <span className="text-[10px] font-semibold text-primary">
+                    {s.credit_summary?.granted ?? 0} given · {s.credit_summary?.remaining ?? 0} left
+                  </span>
+                </div>
               </div>
               <div className="flex gap-1 mt-3 pt-3 border-t">
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setHistoryOf(s)}><Activity size={13} className="mr-1" /> History</Button>
@@ -2335,6 +2341,25 @@ function Notifications({ students }) {
 /* ============================================================
    REPORTS
 ============================================================ */
+function reportColumnLabel(column) {
+  return {
+    amount_minor: 'Amount',
+    student_name: 'Student',
+    student_id: 'Student ID',
+    membership_id: 'Membership ID',
+  }[column] || column.replace(/_/g, ' ');
+}
+
+function reportValue(tab, column, row) {
+  if (tab === 'payments' && column === 'amount_minor') {
+    return fmtINR((Number(row.amount_minor) || 0) / 100);
+  }
+  if (tab === 'attendance' && column === 'student_name') {
+    return row.student_name || 'Unknown student';
+  }
+  return row[column] ?? '';
+}
+
 function Reports() {
   const [tab, setTab] = useState('members');
   const [rows, setRows] = useState([]);
@@ -2377,7 +2402,7 @@ function Reports() {
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `attendance-summary${dateRangeSuffix}.csv`; a.click();
       return;
     }
-    const csv = [columns.join(','), ...rows.map(r => columns.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    const csv = [columns.map(reportColumnLabel).join(','), ...rows.map(r => columns.map(c => `"${String(reportValue(tab, c, r)).replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${tab}-report${dateRangeSuffix}.csv`; a.click();
   };
@@ -2389,7 +2414,7 @@ function Reports() {
       ws = XLSX.utils.json_to_sheet(data);
       sheet = 'attendance-summary';
     } else {
-      ws = XLSX.utils.json_to_sheet(rows.map(r => Object.fromEntries(columns.map(c => [c, r[c] ?? '']))));
+      ws = XLSX.utils.json_to_sheet(rows.map(r => Object.fromEntries(columns.map(c => [reportColumnLabel(c), reportValue(tab, c, r)]))));
     }
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, sheet);
     XLSX.writeFile(wb, `${sheet}-report${dateRangeSuffix}.xlsx`);
@@ -2401,7 +2426,9 @@ function Reports() {
     doc.setTextColor(255); doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.text('Gokulam360', 14, 13);
     doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(`${tab.toUpperCase()} REPORT${dateRangeSuffix ? ` — ${fromDate || 'Start'} to ${toDate || 'Today'}` : ''} — ${new Date().toLocaleDateString()}`, 100, 13);
     const pdfColumns = tab === 'attendance-summary' ? ['student_id', 'name', 'overall', 'total_sessions', 'present'] : columns;
-    const pdfRows = tab === 'attendance-summary' ? (attSummary?.students || []).map(student => ({ ...student, overall: student.overall + '%' })) : rows;
+    const pdfRows = tab === 'attendance-summary'
+      ? (attSummary?.students || []).map(student => ({ ...student, overall: student.overall + '%' }))
+      : rows.map(row => Object.fromEntries(columns.map(column => [column, reportValue(tab, column, row)])));
     doc.setTextColor(30);
     let y = 28;
     doc.setFontSize(9); doc.setFont('helvetica', 'bold');
@@ -2446,11 +2473,11 @@ function Reports() {
                 rows.length === 0 ? <EmptyState text="No data in this report" /> : (
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader><TableRow>{columns.map(c => <TableHead key={c} className="whitespace-nowrap">{c.replace(/_/g, ' ')}</TableHead>)}</TableRow></TableHeader>
+                      <TableHeader><TableRow>{columns.map(c => <TableHead key={c} className="whitespace-nowrap">{reportColumnLabel(c)}</TableHead>)}</TableRow></TableHeader>
                       <TableBody>
                         {rows.slice(0, 200).map((r, i) => (
                           <TableRow key={i}>
-                            {columns.map(c => <TableCell key={c} className="whitespace-nowrap text-xs">{String(r[c] ?? '-')}</TableCell>)}
+                            {columns.map(c => <TableCell key={c} className="whitespace-nowrap text-xs">{String(reportValue(tab, c, r) || '-')}</TableCell>)}
                           </TableRow>
                         ))}
                       </TableBody>

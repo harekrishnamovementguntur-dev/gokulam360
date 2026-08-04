@@ -8,18 +8,33 @@ function response(data, status = 200) {
   return NextResponse.json(data, { status });
 }
 
-function dateFilter(question) {
+function requestedDate(question) {
   const text = String(question || '').toLowerCase();
-  if (!text.includes('today')) return null;
-  const today = new Date().toISOString().slice(0, 10);
-  return { $or: [{ date: today }, { session_date: today }, { attendance_date: today }] };
+  const explicitDate = text.match(/\b20\d{2}-\d{2}-\d{2}\b/)?.[0] || null;
+  return text.includes('today') ? new Date().toISOString().slice(0, 10) : explicitDate;
 }
 
-async function findAttendance(db, organizationId, question) {
+async function findTerm(db, organizationId, question) {
+  const text = String(question || '').toLowerCase();
+  const terms = await db.collection('academic_terms').find({ organization_id: organizationId }).toArray();
+  return terms
+    .filter(term => term.name && text.includes(String(term.name).toLowerCase()))
+    .sort((a, b) => String(b.name).length - String(a.name).length)[0] || null;
+}
+
+async function findAttendance(db, organizationId, question, termId = null) {
   const filter = { organization_id: organizationId };
-  const date = dateFilter(question);
-  if (date) Object.assign(filter, date);
-  return db.collection('attendance_records').find(filter).sort({ date: -1, created_at: -1 }).limit(5000).toArray();
+  const date = requestedDate(question);
+  if (date) {
+    const sessionFilter = { organization_id: organizationId, date };
+    if (termId) sessionFilter.term_id = termId;
+    const sessions = await db.collection('academic_sessions')
+      .find(sessionFilter, { projection: { id: 1 } })
+      .toArray();
+    filter.session_id = { $in: sessions.map(session => session.id) };
+  }
+  if (termId) filter.term_id = termId;
+  return db.collection('attendance_records').find(filter).sort({ recorded_at: -1, created_at: -1 }).limit(5000).toArray();
 }
 
 function answerForSummary(records) {
@@ -35,9 +50,20 @@ function answerForSummary(records) {
   };
 }
 
-function answerForStatus(records, status) {
+function answerForStatus(records, students, status) {
   const matching = records.filter(item => String(item.status || '').toLowerCase() === status);
-  return { answer: `${matching.length} student${matching.length === 1 ? '' : 's'} marked ${statusLabel(status)}.`, data: { status, count: matching.length, records: matching.map(item => ({ id: item.id, student_id: item.student_id, session_id: item.session_id, date: item.date })) } };
+  const byId = new Map(students.map(student => [student.id, student]));
+  const studentRows = [...new Set(matching.map(item => item.student_id).filter(Boolean))].map(studentId => {
+    const student = byId.get(studentId);
+    return {
+      student_id: studentId,
+      name: student ? [student.first_name, student.last_name].filter(Boolean).join(' ') : 'Unknown student',
+    };
+  });
+  return {
+    answer: `${studentRows.length} student${studentRows.length === 1 ? '' : 's'} marked ${statusLabel(status)}.`,
+    data: { status, count: studentRows.length, students: studentRows },
+  };
 }
 
 function answerForAbsentContacts(records, students, canViewPhones) {
@@ -86,9 +112,16 @@ export async function POST(req) {
 
     const db = await getDb();
     const intent = classifyAssistantQuestion(question);
-    const records = await findAttendance(db, organizationId, question);
+    const term = await findTerm(db, organizationId, question);
+    const records = await findAttendance(db, organizationId, question, term?.id);
     let result;
-    if (intent.intent === 'attendance_status') result = answerForStatus(records, intent.status);
+    if (intent.intent === 'attendance_status') {
+      const ids = [...new Set(records.filter(item => String(item.status || '').toLowerCase() === intent.status).map(item => item.student_id).filter(Boolean))];
+      const students = ids.length
+        ? await db.collection('students').find({ organization_id: organizationId, id: { $in: ids }, is_deleted: { $ne: true } }).toArray()
+        : [];
+      result = answerForStatus(records, students, intent.status);
+    }
     else if (intent.intent === 'absent_contacts') {
       const ids = [...new Set(records.filter(item => String(item.status || '').toLowerCase() === 'absent').map(item => item.student_id).filter(Boolean))];
       const students = ids.length ? await db.collection('students').find({ organization_id: organizationId, id: { $in: ids }, is_deleted: { $ne: true } }).toArray() : [];

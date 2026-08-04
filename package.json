@@ -32,7 +32,8 @@
         "test:membership-ui": "node --test test/membership-program-selector.test.mjs",
         "test:assistant": "node --test test/administrator-assistant.test.mjs",
         "test:admission-credit-policy": "node --test test/admission-credit-policy.test.mjs",
-        "test:admission": "node --test test/admission-credit-policy.test.mjs test/admission-orchestration.test.mjs"
+        "test:admission": "node --test test/admission-credit-policy.test.mjs test/admission-orchestration.test.mjs",
+        "test:student-credits": "node --test test/student-credit-summary.test.mjs"
     },
     "dependencies": {
         "@hookform/resolvers": "5.1.1",

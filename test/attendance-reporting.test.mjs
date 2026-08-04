@@ -5,6 +5,7 @@ import {
   attendanceCounts,
   attendanceCsv,
   normalizeAttendanceFilters,
+  studentDisplayName,
   sessionSummaryCounts,
 } from '../lib/attendance-reporting.mjs';
 
@@ -36,4 +37,9 @@ test('exports the current page as escaped CSV', () => {
 
 test('keeps the status contract explicit', () => {
   assert.deepEqual(ATTENDANCE_REPORT_STATUSES, ['present', 'late', 'absent', 'excused']);
+});
+
+test('prefers the canonical student first and last name in report rows', () => {
+  assert.equal(studentDisplayName({ first_name: 'Radha', last_name: 'Devi' }), 'Radha Devi');
+  assert.equal(studentDisplayName({ first_name: 'Radha', last_name: 'Devi', student_id: 'S-1' }), 'Radha Devi');
 });
