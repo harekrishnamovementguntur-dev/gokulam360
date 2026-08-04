@@ -1182,7 +1182,7 @@ function PageHeader({ title, subtitle, icon: Icon, action }) {
 /* ============================================================
    STUDENTS
 ============================================================ */
-function EnrollStudentForm({ open, onOpenChange, offerings, terms, organization, onComplete }) {
+function EnrollStudentForm({ open, onOpenChange, programs, offerings, terms, organization, onComplete }) {
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(null);
   const [form, setForm] = useState({
@@ -1214,9 +1214,9 @@ function EnrollStudentForm({ open, onOpenChange, offerings, terms, organization,
     || offeringTerms.find(item => item.status === 'active')
     || offeringTerms.find(item => item.start_date >= today)
     || offeringTerms[0];
-  const currentProgram = selectedOffering?.program || null;
+  const currentProgram = programs.find(item => item.id === selectedOffering?.program_id) || null;
   const className = selectedOffering?.name || selectedOffering?.cohort || selectedOffering?.academic_year || 'Class';
-  const scheduleLabel = selectedOffering?.schedule?.label || selectedOffering?.schedule || '';
+  const scheduleLabel = typeof selectedOffering?.schedule === 'string' ? selectedOffering.schedule : selectedOffering?.schedule?.label || '';
   const inferredFee = selectedOffering?.fee_amount ?? selectedOffering?.metadata?.fee_amount;
   const inferredCredits = selectedOffering?.credits ?? selectedOffering?.metadata?.credits;
   const inferredTeacher = selectedOffering?.teacher_name || selectedOffering?.teacher?.name || selectedOffering?.metadata?.teacher_name;
