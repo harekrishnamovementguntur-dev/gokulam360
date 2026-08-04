@@ -55,6 +55,13 @@ export function studentDisplayName(student = {}) {
     || null;
 }
 
+export function sessionDisplayName(session = {}) {
+  return session.name
+    || session.topic
+    || session.title
+    || (session.session_number ? `Session ${session.session_number}` : 'Session');
+}
+
 function reportItem(record, maps) {
   const session = maps.sessions.get(record.session_id) || {};
   const participation = maps.participations.get(record.membership_term_participation_id) || {};
@@ -120,11 +127,21 @@ export async function listSessionAttendanceSummary({ db, user, filters }) {
   const sessions = await db.collection('academic_sessions').find({ organization_id: organizationId, id: { $in: sessionIds } }).toArray();
   const sessionMap = new Map(sessions.map((item) => [item.id, item]));
   const items = summaries
-    .map((item) => ({ ...item, ...(sessionMap.get(item.session_id) ? {
-      session_date: sessionMap.get(item.session_id).date,
-      session_status: sessionMap.get(item.session_id).status,
-      term_id: sessionMap.get(item.session_id).term_id,
-    } : {}) }))
+    .map((item) => {
+      const session = sessionMap.get(item.session_id);
+      return {
+        ...item,
+        ...(session ? {
+          session_date: session.date,
+          session_status: session.status,
+          session_number: session.session_number ?? null,
+          session_label: sessionDisplayName(session),
+          term_id: session.term_id,
+        } : {
+          session_label: 'Session',
+        }),
+      };
+    })
     .sort((a, b) => String(a.session_date || '').localeCompare(String(b.session_date || '')));
   const start = normalized.cursor ? items.findIndex((item) => item.session_id === normalized.cursor.id) + 1 : 0;
   const pageItems = items.slice(start, start + normalized.page_size);
