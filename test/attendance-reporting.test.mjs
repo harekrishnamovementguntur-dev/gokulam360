@@ -7,6 +7,7 @@ import {
   normalizeAttendanceFilters,
   studentDisplayName,
   sessionSummaryCounts,
+  sessionDisplayName,
 } from '../lib/attendance-reporting.mjs';
 
 test('normalizes canonical attendance filters and rejects unknown statuses', () => {
@@ -42,4 +43,10 @@ test('keeps the status contract explicit', () => {
 test('prefers the canonical student first and last name in report rows', () => {
   assert.equal(studentDisplayName({ first_name: 'Radha', last_name: 'Devi' }), 'Radha Devi');
   assert.equal(studentDisplayName({ first_name: 'Radha', last_name: 'Devi', student_id: 'S-1' }), 'Radha Devi');
+});
+
+test('uses a human-readable session label instead of an internal session id', () => {
+  assert.equal(sessionDisplayName({ name: 'Damodara Term - Week 1' }), 'Damodara Term - Week 1');
+  assert.equal(sessionDisplayName({ topic: 'Bhagavad Gita' }), 'Bhagavad Gita');
+  assert.equal(sessionDisplayName({ session_number: 3 }), 'Session 3');
 });
