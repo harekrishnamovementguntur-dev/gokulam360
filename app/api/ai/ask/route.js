@@ -8,12 +8,10 @@ function response(data, status = 200) {
   return NextResponse.json(data, { status });
 }
 
-function dateFilter(question) {
+function requestedDate(question) {
   const text = String(question || '').toLowerCase();
   const explicitDate = text.match(/\b20\d{2}-\d{2}-\d{2}\b/)?.[0] || null;
-  const date = text.includes('today') ? new Date().toISOString().slice(0, 10) : explicitDate;
-  if (!date) return null;
-  return { $or: [{ date }, { session_date: date }, { attendance_date: date }] };
+  return text.includes('today') ? new Date().toISOString().slice(0, 10) : explicitDate;
 }
 
 async function findTerm(db, organizationId, question) {
@@ -26,10 +24,17 @@ async function findTerm(db, organizationId, question) {
 
 async function findAttendance(db, organizationId, question, termId = null) {
   const filter = { organization_id: organizationId };
-  const date = dateFilter(question);
-  if (date) Object.assign(filter, date);
+  const date = requestedDate(question);
+  if (date) {
+    const sessionFilter = { organization_id: organizationId, date };
+    if (termId) sessionFilter.term_id = termId;
+    const sessions = await db.collection('academic_sessions')
+      .find(sessionFilter, { projection: { id: 1 } })
+      .toArray();
+    filter.session_id = { $in: sessions.map(session => session.id) };
+  }
   if (termId) filter.term_id = termId;
-  return db.collection('attendance_records').find(filter).sort({ date: -1, created_at: -1 }).limit(5000).toArray();
+  return db.collection('attendance_records').find(filter).sort({ recorded_at: -1, created_at: -1 }).limit(5000).toArray();
 }
 
 function answerForSummary(records) {
