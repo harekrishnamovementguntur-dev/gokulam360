@@ -2341,6 +2341,25 @@ function Notifications({ students }) {
 /* ============================================================
    REPORTS
 ============================================================ */
+function reportColumnLabel(column) {
+  return {
+    amount_minor: 'Amount',
+    student_name: 'Student',
+    student_id: 'Student ID',
+    membership_id: 'Membership ID',
+  }[column] || column.replace(/_/g, ' ');
+}
+
+function reportValue(tab, column, row) {
+  if (tab === 'payments' && column === 'amount_minor') {
+    return fmtINR((Number(row.amount_minor) || 0) / 100);
+  }
+  if (tab === 'attendance' && column === 'student_name') {
+    return row.student_name || 'Unknown student';
+  }
+  return row[column] ?? '';
+}
+
 function Reports() {
   const [tab, setTab] = useState('members');
   const [rows, setRows] = useState([]);
@@ -2383,7 +2402,7 @@ function Reports() {
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `attendance-summary${dateRangeSuffix}.csv`; a.click();
       return;
     }
-    const csv = [columns.join(','), ...rows.map(r => columns.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    const csv = [columns.map(reportColumnLabel).join(','), ...rows.map(r => columns.map(c => `"${String(reportValue(tab, c, r)).replace(/"/g, '""')}"`).join(','))].join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${tab}-report${dateRangeSuffix}.csv`; a.click();
   };
@@ -2395,7 +2414,7 @@ function Reports() {
       ws = XLSX.utils.json_to_sheet(data);
       sheet = 'attendance-summary';
     } else {
-      ws = XLSX.utils.json_to_sheet(rows.map(r => Object.fromEntries(columns.map(c => [c, r[c] ?? '']))));
+      ws = XLSX.utils.json_to_sheet(rows.map(r => Object.fromEntries(columns.map(c => [reportColumnLabel(c), reportValue(tab, c, r)]))));
     }
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, sheet);
     XLSX.writeFile(wb, `${sheet}-report${dateRangeSuffix}.xlsx`);
@@ -2407,7 +2426,9 @@ function Reports() {
     doc.setTextColor(255); doc.setFontSize(16); doc.setFont('helvetica', 'bold'); doc.text('Gokulam360', 14, 13);
     doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.text(`${tab.toUpperCase()} REPORT${dateRangeSuffix ? ` — ${fromDate || 'Start'} to ${toDate || 'Today'}` : ''} — ${new Date().toLocaleDateString()}`, 100, 13);
     const pdfColumns = tab === 'attendance-summary' ? ['student_id', 'name', 'overall', 'total_sessions', 'present'] : columns;
-    const pdfRows = tab === 'attendance-summary' ? (attSummary?.students || []).map(student => ({ ...student, overall: student.overall + '%' })) : rows;
+    const pdfRows = tab === 'attendance-summary'
+      ? (attSummary?.students || []).map(student => ({ ...student, overall: student.overall + '%' }))
+      : rows.map(row => Object.fromEntries(columns.map(column => [column, reportValue(tab, column, row)])));
     doc.setTextColor(30);
     let y = 28;
     doc.setFontSize(9); doc.setFont('helvetica', 'bold');
@@ -2452,11 +2473,11 @@ function Reports() {
                 rows.length === 0 ? <EmptyState text="No data in this report" /> : (
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader><TableRow>{columns.map(c => <TableHead key={c} className="whitespace-nowrap">{c.replace(/_/g, ' ')}</TableHead>)}</TableRow></TableHeader>
+                      <TableHeader><TableRow>{columns.map(c => <TableHead key={c} className="whitespace-nowrap">{reportColumnLabel(c)}</TableHead>)}</TableRow></TableHeader>
                       <TableBody>
                         {rows.slice(0, 200).map((r, i) => (
                           <TableRow key={i}>
-                            {columns.map(c => <TableCell key={c} className="whitespace-nowrap text-xs">{String(r[c] ?? '-')}</TableCell>)}
+                            {columns.map(c => <TableCell key={c} className="whitespace-nowrap text-xs">{String(reportValue(tab, c, r) || '-')}</TableCell>)}
                           </TableRow>
                         ))}
                       </TableBody>
