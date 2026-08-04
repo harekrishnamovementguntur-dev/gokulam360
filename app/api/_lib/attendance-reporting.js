@@ -48,6 +48,13 @@ async function relatedMaps(db, organizationId, records) {
   };
 }
 
+export function studentDisplayName(student = {}) {
+  return [student.first_name, student.last_name].filter(Boolean).join(' ')
+    || student.name
+    || student.full_name
+    || null;
+}
+
 function reportItem(record, maps) {
   const session = maps.sessions.get(record.session_id) || {};
   const participation = maps.participations.get(record.membership_term_participation_id) || {};
@@ -58,7 +65,7 @@ function reportItem(record, maps) {
     session_date: session.date || null,
     session_status: session.status || null,
     student_id: membership.student_id || null,
-    student_name: [student.first_name, student.last_name].filter(Boolean).join(' ') || student.name || student.full_name || null,
+    student_name: studentDisplayName(student),
     program_offering_id: record.program_offering_id || participation.program_offering_id || null,
     term_id: record.term_id || participation.term_id || session.term_id || null,
   };
