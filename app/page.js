@@ -1182,35 +1182,60 @@ function PageHeader({ title, subtitle, icon: Icon, action }) {
 /* ============================================================
    STUDENTS
 ============================================================ */
-function EnrollStudentWizard({ open, onOpenChange, programs, offerings, terms, organization, onComplete }) {
-  const [step, setStep] = useState(0);
+function EnrollStudentForm({ open, onOpenChange, offerings, terms, organization, onComplete }) {
   const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState(null);
   const [form, setForm] = useState({
-    first_name: '', last_name: '', dob: '', mobile: '', email: '',
-    offering_id: '', term_id: '', addPayment: false,
-    amount: '', credit_quantity: '', payment_method: 'cash', description: '',
+    first_name: '', last_name: '', dob: '', gender: 'Male', mobile: '', email: '',
+    father_name: '', mother_name: '', address: '', offering_id: '',
+    paymentNow: false, amount: '', payment_method: 'cash', reference: '',
+    receipt_number: '', credit_quantity: '', description: '',
   });
 
   const reset = () => {
-    setStep(0);
-    setForm({ first_name: '', last_name: '', dob: '', mobile: '', email: '', offering_id: '', term_id: '', addPayment: false, amount: '', credit_quantity: '', payment_method: 'cash', description: '' });
+    setSuccess(null);
+    setForm({
+      first_name: '', last_name: '', dob: '', gender: 'Male', mobile: '', email: '',
+      father_name: '', mother_name: '', address: '', offering_id: '',
+      paymentNow: false, amount: '', payment_method: 'cash', reference: '',
+      receipt_number: '', credit_quantity: '', description: '',
+    });
   };
-  const offering = offerings.find(item => item.id === form.offering_id);
-  const program = programs.find(item => item.id === offering?.program_id);
-  const availableTerms = terms.filter(item => item.program_offering_id === form.offering_id && item.status !== 'archived');
-  const selectedTerm = availableTerms.find(item => item.id === form.term_id);
 
   useEffect(() => { if (open) reset(); }, [open]);
 
-  const continueStep = () => {
-    if (step === 0 && (!form.first_name.trim() || !form.last_name.trim())) return toast.error('Enter the student’s first and last name');
-    if (step === 1 && (!offering || !selectedTerm)) return toast.error('Choose a class and term');
-    if (step === 2 && form.addPayment && (!Number(form.amount) || !Number(form.credit_quantity))) return toast.error('Enter the payment amount and credits');
-    setStep(value => Math.min(value + 1, 3));
-  };
+  const activeOfferings = offerings.filter(item => item.status !== 'archived');
+  const selectedOffering = activeOfferings.find(item => item.id === form.offering_id);
+  const offeringTerms = terms
+    .filter(item => item.program_offering_id === form.offering_id && item.status !== 'archived')
+    .sort((a, b) => String(a.start_date || '').localeCompare(String(b.start_date || '')));
+  const today = new Date().toISOString().slice(0, 10);
+  const selectedTerm = offeringTerms.find(item => item.status === 'active' && item.start_date <= today && item.end_date >= today)
+    || offeringTerms.find(item => item.status === 'active')
+    || offeringTerms.find(item => item.start_date >= today)
+    || offeringTerms[0];
+  const currentProgram = selectedOffering?.program || null;
+  const className = selectedOffering?.name || selectedOffering?.cohort || selectedOffering?.academic_year || 'Class';
+  const scheduleLabel = selectedOffering?.schedule?.label || selectedOffering?.schedule || '';
+  const inferredFee = selectedOffering?.fee_amount ?? selectedOffering?.metadata?.fee_amount;
+  const inferredCredits = selectedOffering?.credits ?? selectedOffering?.metadata?.credits;
+  const inferredTeacher = selectedOffering?.teacher_name || selectedOffering?.teacher?.name || selectedOffering?.metadata?.teacher_name;
+
+  const update = (key, value) => setForm(current => ({ ...current, [key]: value }));
 
   const submit = async () => {
-    if (!offering || !selectedTerm) return;
+    if (!form.first_name.trim() || !form.last_name.trim()) {
+      toast.error('Enter the student’s first and last name');
+      return;
+    }
+    if (!selectedOffering || !selectedTerm) {
+      toast.error('Choose a class with an active term');
+      return;
+    }
+    if (form.paymentNow && (!Number(form.amount) || Number(form.amount) <= 0 || !Number(form.credit_quantity) || Number(form.credit_quantity) <= 0)) {
+      toast.error('Enter the payment amount and classes covered');
+      return;
+    }
     setSaving(true);
     try {
       const student = await api('/students', {
@@ -1219,103 +1244,149 @@ function EnrollStudentWizard({ open, onOpenChange, programs, offerings, terms, o
           first_name: form.first_name.trim(),
           last_name: form.last_name.trim(),
           dob: form.dob,
+          gender: form.gender,
           mobile: form.mobile,
           email: form.email,
+          father_name: form.father_name,
+          mother_name: form.mother_name,
+          address: form.address,
           status: 'active',
-          program_id: offering.program_id,
+          program_id: selectedOffering.program_id,
         }),
       });
       const membership = await api('/memberships', {
         method: 'POST',
-        body: JSON.stringify({ student_id: student.id, program_id: offering.program_id, status: 'active' }),
+        body: JSON.stringify({ student_id: student.id, program_id: selectedOffering.program_id, status: 'active' }),
       });
       await api('/membership-term-participations', {
         method: 'POST',
         body: JSON.stringify({
           membership_id: membership.id,
-          program_offering_id: offering.id,
+          program_offering_id: selectedOffering.id,
           term_id: selectedTerm.id,
         }),
       });
 
-      if (form.addPayment) {
+      let receipt = null;
+      if (form.paymentNow) {
+        const amountMinor = Math.round(Number(form.amount) * 100);
         const draft = await api('/payments', {
           method: 'POST',
           headers: { 'Idempotency-Key': crypto.randomUUID() },
           body: JSON.stringify({
-            amount_minor: Math.round(Number(form.amount) * 100),
+            amount_minor: amountMinor,
             currency: organization?.currency || 'INR',
             payment_method: form.payment_method,
-            description: form.description,
+            reference: form.reference || undefined,
+            receipt_number: form.receipt_number || undefined,
+            description: form.description || ('Admission for ' + form.first_name.trim() + ' ' + form.last_name.trim()),
           }),
         });
-        await api('/payments/' + draft.id, {
+        const posted = await api('/payments/' + draft.id, {
           method: 'POST',
           headers: { 'Idempotency-Key': crypto.randomUUID() },
           body: JSON.stringify({
             allocations: [{
               membership_id: membership.id,
-              amount_minor: Math.round(Number(form.amount) * 100),
+              amount_minor: amountMinor,
               credit_quantity: Number(form.credit_quantity),
-              description: form.description,
+              description: form.description || 'Admission payment',
             }],
           }),
         });
+        receipt = posted?.payment?.receipt_number || posted?.receipt_number || draft.receipt_number || null;
       }
 
-      toast.success(form.addPayment ? 'Student enrolled and payment recorded' : 'Student enrolled successfully');
+      setSuccess({ name: form.first_name.trim() + ' ' + form.last_name.trim(), receipt });
+      confetti({ particleCount: 140, spread: 85, origin: { y: 0.55 }, colors: ['#7c3aed', '#4f46e5', '#22c55e', '#f59e0b'] });
+      toast.success('Student admitted successfully');
       onComplete();
     } catch (error) {
-      toast.error(error.message || 'Unable to complete enrollment');
+      toast.error(error.message || 'Unable to complete admission');
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(value) => { if (!value && !saving) onOpenChange(false); }}>
-      <DialogContent className="max-w-xl">
+    <Dialog open={open} onOpenChange={(value) => { if (!value && !saving) { onOpenChange(false); reset(); } }}>
+      <DialogContent className="max-w-3xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Enroll Student</DialogTitle>
-          <DialogDescription>Set up the student’s class in one guided workflow.</DialogDescription>
+          <DialogTitle>{success ? 'Admission complete' : 'Admit Student'}</DialogTitle>
+          <DialogDescription>{success ? 'Everything is ready for the next step.' : 'One simple form — we’ll take care of the setup behind the scenes.'}</DialogDescription>
         </DialogHeader>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          {['Student', 'Class', 'Payment', 'Review'].map((label, index) => (
-            <span key={label} className="contents">
-              <span className={index === step ? 'font-semibold text-primary' : index < step ? 'text-emerald-600' : ''}>{index + 1}. {label}</span>
-              {index < 3 && <ChevronRight size={12} />}
-            </span>
-          ))}
-        </div>
-        {step === 0 && <div className="grid grid-cols-2 gap-3">
-          <div><Label>First name</Label><Input value={form.first_name} onChange={event => setForm({ ...form, first_name: event.target.value })} autoFocus /></div>
-          <div><Label>Last name</Label><Input value={form.last_name} onChange={event => setForm({ ...form, last_name: event.target.value })} /></div>
-          <div><Label>Date of birth</Label><Input type="date" value={form.dob} onChange={event => setForm({ ...form, dob: event.target.value })} /></div>
-          <div><Label>Mobile</Label><Input value={form.mobile} onChange={event => setForm({ ...form, mobile: event.target.value })} /></div>
-          <div className="col-span-2"><Label>Email</Label><Input type="email" value={form.email} onChange={event => setForm({ ...form, email: event.target.value })} /></div>
-        </div>}
-        {step === 1 && <div className="grid gap-3">
-          <div><Label>Class</Label><Select value={form.offering_id} onValueChange={value => setForm({ ...form, offering_id: value, term_id: '' })}><SelectTrigger><SelectValue placeholder="Choose a class" /></SelectTrigger><SelectContent>{offerings.filter(item => item.status !== 'archived').map(item => <SelectItem key={item.id} value={item.id}>{item.academic_year}{item.cohort ? ' · ' + item.cohort : ''}</SelectItem>)}</SelectContent></Select></div>
-          <div><Label>Term</Label><Select value={form.term_id} onValueChange={value => setForm({ ...form, term_id: value })} disabled={!form.offering_id}><SelectTrigger><SelectValue placeholder="Choose a term" /></SelectTrigger><SelectContent>{availableTerms.map(item => <SelectItem key={item.id} value={item.id}>{item.name} · {item.start_date} → {item.end_date}</SelectItem>)}</SelectContent></Select></div>
-          {program && <div className="rounded-xl bg-primary/5 border p-3 text-sm"><div className="font-medium">{program.name}</div><div className="text-xs text-muted-foreground">{program.description || 'Academic program'}</div></div>}
-        </div>}
-        {step === 2 && <div className="grid gap-3">
-          <label className="flex items-center gap-2 rounded-xl border p-3 cursor-pointer"><input type="checkbox" checked={form.addPayment} onChange={event => setForm({ ...form, addPayment: event.target.checked })} /><span><span className="block font-medium text-sm">Record payment now</span><span className="block text-xs text-muted-foreground">Optional — you can collect payment later.</span></span></label>
-          {form.addPayment && <div className="grid grid-cols-2 gap-3">
-            <div><Label>Amount</Label><Input type="number" step="0.01" min="0" value={form.amount} onChange={event => setForm({ ...form, amount: event.target.value })} placeholder="0.00" /></div>
-            <div><Label>Credits / classes covered</Label><Input type="number" min="1" value={form.credit_quantity} onChange={event => setForm({ ...form, credit_quantity: event.target.value })} placeholder="e.g. 16" /></div>
-            <div><Label>Payment method</Label><Select value={form.payment_method} onValueChange={value => setForm({ ...form, payment_method: value })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{[['cash', 'Cash'], ['bank_transfer', 'Bank transfer'], ['upi', 'UPI'], ['card', 'Card'], ['online', 'Online'], ['other', 'Other']].map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
-            <div className="col-span-2"><Label>Note</Label><Textarea value={form.description} onChange={event => setForm({ ...form, description: event.target.value })} placeholder="Optional note" /></div>
-          </div>}
-        </div>}
-        {step === 3 && <div className="space-y-3">
-          <div className="rounded-xl border p-4"><div className="font-semibold">{form.first_name} {form.last_name}</div><div className="text-sm text-muted-foreground">{program?.name || 'Class'} · {selectedTerm?.name}</div><div className="text-sm mt-2">{form.addPayment ? 'Payment: ' + fmtINR(Number(form.amount)) + ' · ' + form.credit_quantity + ' credits' : 'No payment recorded now'}</div></div>
-          <p className="text-xs text-muted-foreground">The system will create the student’s Membership and class enrollment automatically.</p>
-        </div>}
-        <DialogFooter>
-          <Button variant="outline" onClick={() => step ? setStep(value => value - 1) : onOpenChange(false)} disabled={saving}>Back</Button>
-          {step < 3 ? <Button className="bg-saffron-gradient" onClick={continueStep}>Continue <ChevronRight size={14} className="ml-1" /></Button> : <Button className="bg-saffron-gradient" onClick={submit} disabled={saving}>{saving ? 'Saving…' : 'Complete enrollment'}</Button>}
-        </DialogFooter>
+
+        {success ? (
+          <div className="py-8 text-center space-y-4">
+            <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-emerald-100 text-emerald-600"><CheckCircle2 size={32} /></div>
+            <div><div className="text-xl font-semibold">🎉 {success.name} admitted successfully.</div><p className="mt-1 text-sm text-muted-foreground">The student is ready for attendance.</p></div>
+            {success.receipt && <div className="mx-auto max-w-sm rounded-xl border bg-muted/30 p-3 text-sm">Receipt generated: <span className="font-mono font-semibold">{success.receipt}</span></div>}
+            <div className="flex flex-wrap justify-center gap-2">
+              {success.receipt && <Button variant="outline" onClick={() => window.print()}><Printer size={14} className="mr-1" /> Print receipt</Button>}
+              <Button variant="outline" onClick={() => { reset(); }}>Admit another student</Button>
+              <Button className="bg-saffron-gradient" onClick={() => onOpenChange(false)}>Done</Button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-5">
+            <section className="rounded-2xl border bg-white/35 p-4 dark:bg-white/5">
+              <div className="mb-3 flex items-center gap-2"><UserCircle2 size={16} className="text-primary" /><h3 className="font-semibold">Student</h3></div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div><Label htmlFor="admit-first-name">First name</Label><Input id="admit-first-name" value={form.first_name} onChange={event => update('first_name', event.target.value)} autoFocus /></div>
+                <div><Label htmlFor="admit-last-name">Last name</Label><Input id="admit-last-name" value={form.last_name} onChange={event => update('last_name', event.target.value)} /></div>
+                <div><Label htmlFor="admit-dob">Date of birth</Label><Input id="admit-dob" type="date" value={form.dob} onChange={event => update('dob', event.target.value)} /></div>
+                <div><Label>Gender</Label><Select value={form.gender} onValueChange={value => update('gender', value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="Male">Male</SelectItem><SelectItem value="Female">Female</SelectItem></SelectContent></Select></div>
+                <div><Label htmlFor="admit-mobile">Parent phone</Label><Input id="admit-mobile" value={form.mobile} onChange={event => update('mobile', event.target.value)} /></div>
+                <div><Label htmlFor="admit-email">Parent email</Label><Input id="admit-email" type="email" value={form.email} onChange={event => update('email', event.target.value)} /></div>
+                <div><Label htmlFor="admit-father">Parent / guardian</Label><Input id="admit-father" value={form.father_name} onChange={event => update('father_name', event.target.value)} /></div>
+                <div><Label htmlFor="admit-address">Address (optional)</Label><Input id="admit-address" value={form.address} onChange={event => update('address', event.target.value)} /></div>
+              </div>
+            </section>
+
+            <section className="rounded-2xl border bg-white/35 p-4 dark:bg-white/5">
+              <div className="mb-3 flex items-center gap-2"><BookOpen size={16} className="text-primary" /><h3 className="font-semibold">Class</h3></div>
+              <div><Label>Class</Label><Select value={form.offering_id} onValueChange={value => update('offering_id', value)}><SelectTrigger><SelectValue placeholder="Choose a class" /></SelectTrigger><SelectContent>{activeOfferings.map(item => <SelectItem key={item.id} value={item.id}>{item.name || item.cohort || item.academic_year || 'Class'}</SelectItem>)}</SelectContent></Select></div>
+              {selectedOffering && (
+                <div className="mt-3 grid gap-2 rounded-xl bg-primary/5 p-3 text-sm sm:grid-cols-2">
+                  <div><span className="text-muted-foreground">Academic program</span><div className="font-medium">{currentProgram?.name || selectedOffering.program_name || 'Assigned automatically'}</div></div>
+                  <div><span className="text-muted-foreground">Current term</span><div className="font-medium">{selectedTerm ? selectedTerm.name + ' · ' + selectedTerm.start_date + ' to ' + selectedTerm.end_date : 'No active term'}</div></div>
+                  {inferredTeacher && <div><span className="text-muted-foreground">Teacher</span><div className="font-medium">{inferredTeacher}</div></div>}
+                  {scheduleLabel && <div><span className="text-muted-foreground">Schedule</span><div className="font-medium">{scheduleLabel}</div></div>}
+                  {inferredFee != null && <div><span className="text-muted-foreground">Fee</span><div className="font-medium">{fmtINR(Number(inferredFee))}</div></div>}
+                  {inferredCredits != null && <div><span className="text-muted-foreground">Classes included</span><div className="font-medium">{inferredCredits}</div></div>}
+                </div>
+              )}
+              {form.offering_id && !selectedTerm && <p className="mt-2 text-sm text-amber-700">This class has no active term yet. Set up the class calendar before admitting a student.</p>}
+            </section>
+
+            <section className="rounded-2xl border bg-white/35 p-4 dark:bg-white/5">
+              <div className="mb-3 flex items-center gap-2"><Wallet size={16} className="text-primary" /><h3 className="font-semibold">Payment <span className="text-xs font-normal text-muted-foreground">(optional)</span></h3></div>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="flex cursor-pointer items-center gap-2 rounded-xl border p-3"><input type="radio" name="admit-payment" checked={!form.paymentNow} onChange={() => update('paymentNow', false)} /><span><span className="block font-medium text-sm">Collect later</span><span className="block text-xs text-muted-foreground">You can record it from Payments.</span></span></label>
+                <label className="flex cursor-pointer items-center gap-2 rounded-xl border p-3"><input type="radio" name="admit-payment" checked={form.paymentNow} onChange={() => update('paymentNow', true)} /><span><span className="block font-medium text-sm">Collect payment now</span><span className="block text-xs text-muted-foreground">Post it while admitting the student.</span></span></label>
+              </div>
+              {form.paymentNow && <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <div><Label htmlFor="admit-amount">Amount</Label><Input id="admit-amount" type="number" min="0" step="0.01" value={form.amount} onChange={event => update('amount', event.target.value)} placeholder="₹ 0" /></div>
+                <div><Label htmlFor="admit-credits">Classes covered</Label><Input id="admit-credits" type="number" min="1" value={form.credit_quantity} onChange={event => update('credit_quantity', event.target.value)} placeholder="e.g. 16" /></div>
+                <div><Label>Payment method</Label><Select value={form.payment_method} onValueChange={value => update('payment_method', value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{[['cash', 'Cash'], ['bank_transfer', 'Bank transfer'], ['upi', 'UPI'], ['card', 'Card'], ['online', 'Online'], ['other', 'Other']].map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
+                <div><Label htmlFor="admit-reference">Reference (optional)</Label><Input id="admit-reference" value={form.reference} onChange={event => update('reference', event.target.value)} placeholder="Receipt or UPI reference" /></div>
+                <div className="sm:col-span-2"><Label htmlFor="admit-note">Note (optional)</Label><Textarea id="admit-note" value={form.description} onChange={event => update('description', event.target.value)} placeholder="Anything the office should remember" /></div>
+              </div>}
+            </section>
+
+            <section className="rounded-2xl border bg-primary/5 p-4">
+              <div className="mb-3 flex items-center gap-2"><CheckCircle2 size={16} className="text-primary" /><h3 className="font-semibold">Summary</h3></div>
+              <div className="grid gap-2 text-sm sm:grid-cols-2">
+                <div><span className="text-muted-foreground">Student</span><div className="font-medium">{form.first_name || '—'} {form.last_name}</div></div>
+                <div><span className="text-muted-foreground">Class</span><div className="font-medium">{selectedOffering ? className : '—'}</div></div>
+                <div><span className="text-muted-foreground">Term</span><div className="font-medium">{selectedTerm?.name || 'Choose a class'}</div></div>
+                <div><span className="text-muted-foreground">Payment</span><div className="font-medium">{form.paymentNow ? fmtINR(Number(form.amount) || 0) + ' · ' + (form.credit_quantity || '—') + ' classes' : 'Collect later'}</div></div>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">The class and term setup will be connected automatically. You do not need to manage memberships or class enrollments separately.</p>
+            </section>
+          </div>
+        )}
+        {!success && <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button><Button className="bg-saffron-gradient" onClick={submit} disabled={saving || !selectedOffering || !selectedTerm}>{saving ? 'Saving…' : 'Save Admission'}</Button></DialogFooter>}
       </DialogContent>
     </Dialog>
   );
@@ -1457,7 +1528,7 @@ function Students({ students, setStudents }) {
 
   return (
     <div className="space-y-5">
-      <EnrollStudentWizard
+      <EnrollStudentForm
         open={enrollmentOpen}
         onOpenChange={setEnrollmentOpen}
         programs={programs}
@@ -2445,8 +2516,8 @@ function Events() {
   return (
     <div className="space-y-5">
       <PageHeader title="Events" subtitle={`Celebrations, festivals & activities · ${announcementCount}/3 shown to parents`} icon={CalendarIcon}
-        action={<Button className="bg-saffron-gradient shadow" onClick={openEnrollment}><Plus size={15} className="mr-1" /> New Event</Button>} />
-      {items.length === 0 ? <EmptyState text="No events yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openEnrollment}><Plus size={14} className="mr-1" />Create first event</Button>} /> : (
+        action={<Button className="bg-saffron-gradient shadow" onClick={openNew}><Plus size={15} className="mr-1" /> New Event</Button>} />
+      {items.length === 0 ? <EmptyState text="No events yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openNew}><Plus size={14} className="mr-1" />Create first event</Button>} /> : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map((e, i) => (
             <motion.div key={e.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
