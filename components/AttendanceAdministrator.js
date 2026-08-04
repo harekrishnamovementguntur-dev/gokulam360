@@ -91,8 +91,8 @@ export default function AttendanceAdministrator({ request }) {
       const termItems = responseItems(termResult.value);
       setOfferings(offeringItems.filter((item) => item.status !== 'archived'));
       setTerms(termItems.filter((item) => item.status !== 'archived'));
-      setMemberships(membershipResult.status === 'fulfilled' && Array.isArray(responseItems(membershipResult.value));
-      setStudents(studentResult.status === 'fulfilled' && Array.isArray(responseItems(studentResult.value));
+      setMemberships(membershipResult.status === 'fulfilled' ? responseItems(membershipResult.value) : []);
+      setStudents(studentResult.status === 'fulfilled' ? responseItems(studentResult.value) : []);
 
       const optionalFailure = [membershipResult, studentResult].find((result) => result.status === 'rejected');
       if (optionalFailure) setError(optionalFailure.reason?.message || 'Roster details could not be loaded.');
