@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const emptyProgram = { name: '', description: '', age_group: '', status: 'active' };
-const emptyOffering = { program_id: '', academic_year: '', cohort: '', start_date: '', end_date: '', capacity: 0, schedule: { label: '' }, status: 'active' };
+const emptyOffering = { program_id: '', academic_year: '', cohort: '', start_date: '', end_date: '', capacity: 0, schedule: { label: '' }, metadata: { attendance_policy: { credit_consumption_enabled: false, credits_per_attendance: 1 } }, status: 'active' };
 export default function ProgramsOfferings({ request }) {
   const [programs, setPrograms] = useState([]);
   const [offerings, setOfferings] = useState([]);
@@ -54,6 +54,13 @@ export default function ProgramsOfferings({ request }) {
       end_date: offering.end_date,
       capacity: offering.capacity || 0,
       schedule: offering.schedule || { label: '' },
+      metadata: {
+        ...(offering.metadata || {}),
+        attendance_policy: {
+          credit_consumption_enabled: offering.metadata?.attendance_policy?.credit_consumption_enabled === true,
+          credits_per_attendance: Number(offering.metadata?.attendance_policy?.credits_per_attendance || 1),
+        },
+      },
     } : emptyOffering);
   };
 
@@ -171,6 +178,48 @@ export default function ProgramsOfferings({ request }) {
             <div className="grid grid-cols-2 gap-3"><div><Label htmlFor="offering-start">Start date</Label><Input id="offering-start" type="date" value={form.start_date || ''} onChange={(event) => setForm({ ...form, start_date: event.target.value })} /></div><div><Label htmlFor="offering-end">End date</Label><Input id="offering-end" type="date" value={form.end_date || ''} onChange={(event) => setForm({ ...form, end_date: event.target.value })} /></div></div>
             <div><Label htmlFor="offering-capacity">Capacity</Label><Input id="offering-capacity" type="number" min="0" value={form.capacity ?? 0} onChange={(event) => setForm({ ...form, capacity: Number(event.target.value) })} /></div>
             <div><Label htmlFor="offering-schedule">Schedule label</Label><Input id="offering-schedule" placeholder="For example: Sunday 10:00–11:00" value={form.schedule?.label || ''} onChange={(event) => setForm({ ...form, schedule: { ...form.schedule, label: event.target.value } })} /></div>
+            <div className="rounded-xl border bg-muted/20 p-3">
+              <div className="text-sm font-medium">Attendance credits</div>
+              <label className="mt-2 flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.metadata?.attendance_policy?.credit_consumption_enabled === true}
+                  onChange={(event) => setForm({
+                    ...form,
+                    metadata: {
+                      ...form.metadata,
+                      attendance_policy: {
+                        ...form.metadata?.attendance_policy,
+                        credit_consumption_enabled: event.target.checked,
+                      },
+                    },
+                  })}
+                />
+                Consume credits when a student is Present or Late
+              </label>
+              <div className="mt-2">
+                <Label htmlFor="offering-credits-per-attendance">Credits per Present/Late attendance</Label>
+                <Input
+                  id="offering-credits-per-attendance"
+                  type="number"
+                  min="1"
+                  step="1"
+                  disabled={form.metadata?.attendance_policy?.credit_consumption_enabled !== true}
+                  value={form.metadata?.attendance_policy?.credits_per_attendance ?? 1}
+                  onChange={(event) => setForm({
+                    ...form,
+                    metadata: {
+                      ...form.metadata,
+                      attendance_policy: {
+                        ...form.metadata?.attendance_policy,
+                        credits_per_attendance: Math.max(1, Number(event.target.value) || 1),
+                      },
+                    },
+                  })}
+                />
+              </div>
+              <p className="mt-1 text-xs text-muted-foreground">Absent, Excused, Holiday, and Cancelled sessions never consume credits.</p>
+            </div>
           </div>}
           <DialogFooter><Button variant="outline" disabled={saving} onClick={() => setDialog(null)}>Cancel</Button><Button disabled={saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</Button></DialogFooter>
         </DialogContent>
