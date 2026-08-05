@@ -1123,6 +1123,7 @@ function PageHeader({ title, subtitle, icon: Icon, action }) {
 ============================================================ */
 function Students({ students, setStudents }) {
   const [programs, setPrograms] = useState([]);
+  const [enrollments, setEnrollments] = useState([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [cardOf, setCardOf] = useState(null);
@@ -1135,7 +1136,14 @@ function Students({ students, setStudents }) {
   const fileRef = useRef(null);
 
   const load = () => api('/students').then(r => setStudents(r.items));
-  useEffect(() => { api('/programs').then(r => setPrograms(r.items)); api('/auth/me').then(r => setOrg(r.organization)); }, []);
+  const loadEnrollments = () => api('/enrollments').then(r => setEnrollments(r.items || []));
+  useEffect(() => {
+    api('/programs').then(r => setPrograms(r.items || []));
+    api('/auth/me').then(r => setOrg(r.organization));
+    loadEnrollments();
+  }, []);
+
+  const batches = useMemo(() => programs.filter(p => p.parent_program_id), [programs]);
 
   const filtered = useMemo(() => {
     let list = students;
@@ -1156,7 +1164,7 @@ function Students({ students, setStudents }) {
         confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#22c55e', '#0ea5e9'] });
         toast.success(`🎉 ${form.first_name} welcomed to ${org?.name || 'the school'}!`);
       } else toast.success('Student updated');
-      setOpen(false); load();
+      setOpen(false); load(); loadEnrollments();
     } catch (e) { toast.error(e.message); }
   };
   const del = async (s) => { if (!confirm(`Remove ${s.first_name}?`)) return; await api(`/students/${s.id}`, { method: 'DELETE' }); toast.success('Removed'); load(); };
@@ -1204,6 +1212,11 @@ function Students({ students, setStudents }) {
     doc.setTextColor(76, 29, 149); doc.setFontSize(6); doc.text('Hare Krishna \u2022 Serve with devotion', 27, 84, { align: 'center' });
     doc.save(`idcard-${cardOf.student_id}.pdf`);
   };
+
+  const creditsFor = (studentId) => enrollments.filter(e => e.student_id === studentId).reduce((total, e) => ({
+    given: total.given + Number(e.sessions_credited || 0),
+    remaining: total.remaining + Number(e.sessions_remaining || 0),
+  }), { given: 0, remaining: 0 });
 
   const counts = useMemo(() => {
     return {
@@ -1268,8 +1281,15 @@ function Students({ students, setStudents }) {
                 </div>
                 <Badge className={`text-[10px] ${s.status === 'active' ? 'bg-emerald-500 hover:bg-emerald-500' : 'bg-muted text-muted-foreground'}`}>{s.status}</Badge>
               </div>
-              <div className="text-[11px] text-muted-foreground mt-3 space-y-0.5">
+              <div className="text-[11px] text-muted-foreground mt-3 space-y-1">
                 {s.mobile && <div className="flex items-center gap-1.5"><Phone size={11} /> {s.mobile}</div>}
+                {(() => {
+                  const credits = creditsFor(s.id);
+                  return <div className="flex items-center justify-between rounded-lg bg-primary/5 px-2 py-1.5">
+                    <span>Credits given</span>
+                    <span className="font-semibold text-foreground">{credits.given} · {credits.remaining} left</span>
+                  </div>;
+                })()}
               </div>
               <div className="flex gap-1 mt-3 pt-3 border-t">
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setHistoryOf(s)}><Activity size={13} className="mr-1" /> History</Button>
@@ -1333,10 +1353,11 @@ function Students({ students, setStudents }) {
               <div><Label>Mobile</Label><Input value={form.mobile} onChange={e => setForm({ ...form, mobile: e.target.value })} /></div>
               <div><Label>Email</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
               <div className="col-span-2"><Label>Address</Label><Textarea rows={2} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
-              <div className="col-span-2"><Label>Enroll in Classes (select multiple)</Label>
+              <div className="col-span-2"><Label>Enroll in Batches (select multiple)</Label>
                 <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 rounded-lg border bg-white/30 dark:bg-white/5">
-                  {programs.map(p => {
+                  {batches.length === 0 ? <div className="col-span-2 p-3 text-xs text-muted-foreground">Create a batch under Programs first.</div> : batches.map(p => {
                     const selected = form.program_ids?.includes(p.id);
+                    const parent = programs.find(program => program.id === p.parent_program_id);
                     return (
                       <label key={p.id} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-xs transition ${selected ? 'bg-primary/15 border border-primary/40' : 'bg-white/50 dark:bg-white/5 border border-transparent hover:border-primary/30'}`}>
                         <input type="checkbox" className="accent-primary" checked={!!selected} onChange={() => {
@@ -1344,14 +1365,14 @@ function Students({ students, setStudents }) {
                           setForm({ ...form, program_ids: selected ? ids.filter(x => x !== p.id) : [...ids, p.id] });
                         }} />
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{p.name}</div>
-                          <div className="text-[9px] text-muted-foreground">{(p.days_of_week || []).map(d => DAY_LABELS[d]).join(', ')} · {fmtINR(p.fee_amount || 0)}</div>
+                          <div className="font-medium truncate">{parent ? `${parent.name} · ` : ''}{p.name}</div>
+                          <div className="text-[9px] text-muted-foreground">{(p.days_of_week || []).map(d => DAY_LABELS[d]).join(', ')}</div>
                         </div>
                       </label>
                     );
                   })}
                 </div>
-                <div className="text-[10px] text-muted-foreground mt-1">{(form.program_ids || []).length} class(es) selected</div>
+                <div className="text-[10px] text-muted-foreground mt-1">{(form.program_ids || []).length} batch{(form.program_ids || []).length === 1 ? '' : 'es'} selected</div>
               </div>
             </TabsContent>
             <TabsContent value="family" className="grid grid-cols-2 gap-3 mt-2">
