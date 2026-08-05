@@ -416,7 +416,7 @@ function Dashboard({ user, org, onNav }) {
     { key: 'students', label: 'Total Students', value: stats.totalStudents, sub: `${stats.activeStudents} active`, icon: GraduationCap, grad: 'bg-saffron-gradient', ring: 'from-orange-500/40 to-amber-500/20' },
     { key: 'attendance', label: 'Attendance', value: stats.attendancePct, isPct: true, sub: 'last 4 weeks', icon: CalendarCheck2, grad: 'bg-emerald-gradient', ring: 'from-emerald-500/40 to-teal-500/20' },
     { key: 'pending', label: 'Pending Fees', value: stats.pendingFees, isMoney: true, sub: `${fmtINR(stats.collectedFees)} collected`, icon: IndianRupee, grad: 'bg-rose-gradient', ring: 'from-rose-500/40 to-pink-500/20' },
-    { key: 'teachers', label: 'Teachers', value: stats.totalTeachers, sub: 'Faculty on board', icon: Users, grad: 'bg-violet-gradient', ring: 'from-violet-500/40 to-fuchsia-500/20' },
+    { key: 'teachers', label: 'Faculty', value: stats.totalTeachers, sub: 'Faculty on board', icon: Users, grad: 'bg-violet-gradient', ring: 'from-violet-500/40 to-fuchsia-500/20' },
   ];
 
   return (
@@ -2119,6 +2119,10 @@ function Attendance() {
   return (
     <div className="space-y-5">
       <PageHeader title="Attendance" subtitle="Session-based marking · scheduled auto-generated" icon={ClipboardCheck} />
+      <div className="flex gap-2">
+        <Button size="sm" className="bg-saffron-gradient text-white">Student Attendance</Button>
+        <Button size="sm" variant="outline" onClick={() => { setAttendanceMode('faculty'); setFacultyDate(localDateKey()); }}>Faculty Attendance</Button>
+      </div>
 
       {/* Batch picker */}
       <div className="rounded-2xl glass p-4 flex flex-wrap gap-3 items-end">
