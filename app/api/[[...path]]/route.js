@@ -88,6 +88,76 @@ async function requireAuth(req, roles = null) {
   return { user };
 }
 
+
+function localToday() {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
+}
+function studentDisplayName(student) {
+  return `${student?.first_name || ''} ${student?.last_name || ''}`.trim() || 'Unknown student';
+}
+function answerRows(intent, title, columns, rows, summary, answer) {
+  return { intent, title, answer, summary, columns, rows, exportable: rows.length > 0 };
+}
+async function answerAskAI(db, user, question) {
+  const q = String(question || '').trim().toLowerCase();
+  if (!q) return json({ error: 'Ask a question about your organization data' }, 422);
+  const scope = orgScope(user);
+  const [students, programs, attendanceLegacy, attendanceCanonical, fees, payments, enrollments, participations] = await Promise.all([
+    db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray(),
+    db.collection('programs').find({ ...scope, is_deleted: { $ne: true } }).toArray(),
+    db.collection('attendance').find(scope).toArray(),
+    db.collection('attendance_records').find(scope).toArray(),
+    db.collection('fees').find(scope).toArray(),
+    db.collection('payments').find(scope).toArray(),
+    db.collection('enrollments').find(scope).toArray(),
+    db.collection('membership_term_participations').find(scope).toArray(),
+  ]);
+  const attendance = [...attendanceLegacy, ...attendanceCanonical];
+  const feeRecords = [...fees, ...payments];
+  const enrollmentRecords = [...enrollments, ...participations];
+  const studentMap = new Map(students.map(s => [s.id, s]));
+  const programMap = new Map(programs.map(p => [p.id, p]));
+  const requestedDate = q.match(/\\b\\d{4}-\\d{2}-\\d{2}\\b/)?.[0] || (q.includes('today') ? localToday() : null);
+  const program = programs.map(p => ({ p, overlap: String(p.name || '').toLowerCase().split(/\\s+/).filter(w => w.length > 2 && q.includes(w)).length })).sort((a, b) => b.overlap - a.overlap)[0]?.p;
+  const withStudent = row => studentMap.get(row.student_id || row.membership_student_id || row.studentId);
+  const isAbsent = a => String(a.status || '').toLowerCase() === 'absent';
+  const isPresent = a => ['present', 'late'].includes(String(a.status || '').toLowerCase());
+  const rowsFor = predicate => attendance.filter(a => (!requestedDate || String(a.date || a.session_date || '').slice(0, 10) === requestedDate) && predicate(a)).map(a => {
+    const s = withStudent(a); return { student: studentDisplayName(s), phone: s?.mobile || s?.phone || '—', date: a.date || a.session_date || '—', status: a.status };
+  });
+  if (q.includes('upcoming') || q.includes('next session')) {
+    const today = localToday();
+    const rows = programs.flatMap(p => (Array.isArray(p.sessions) ? p.sessions : []).filter(s => String(s.date || '').slice(0,10) >= today).map(s => ({ date: s.date, program: p.name || '—', batch: s.batch_name || s.batch || '—', status: s.status || 'scheduled' }))).sort((a,b) => String(a.date).localeCompare(String(b.date)));
+    return answerRows('upcoming_sessions', 'Upcoming sessions', ['date','program','batch','status'], rows, { sessions: rows.length }, rows.length ? `${rows.length} upcoming session(s)` : 'No upcoming sessions found');
+  }
+  if (q.includes('credit') && (q.includes('less') || q.includes('below') || q.includes('low') || q.includes('3'))) {
+    const rows = enrollmentRecords.map(e => {
+      const s = studentMap.get(e.student_id); const granted = Number(e.credits_granted ?? e.total_credits ?? e.credit_quantity ?? 0); const used = Number(e.credits_used ?? 0);
+      return { student: studentDisplayName(s), phone: s?.mobile || s?.phone || '—', program: programMap.get(e.program_id)?.name || e.program_name || '—', granted, used, remaining: Number(e.credits_remaining ?? granted - used) };
+    }).filter(r => r.remaining <= 3 && r.remaining >= 0);
+    return answerRows('low_credits', 'Students with 3 or fewer credits', ['student','phone','program','granted','used','remaining'], rows, { students: rows.length }, rows.length ? `${rows.length} student(s) need attention` : 'No students have 3 or fewer credits');
+  }
+  if (q.includes('absent') || q.includes('absence')) {
+    const rows = rowsFor(isAbsent);
+    return answerRows('absentees', 'Absent students', ['student','phone','date','status'], rows, { absent: rows.length }, rows.length ? `${rows.length} absent record(s)` : 'No absences found');
+  }
+  if (q.includes('present') || q.includes('attend')) {
+    const rows = rowsFor(isPresent);
+    return answerRows('attendance', 'Present students', ['student','phone','date','status'], rows, { present: rows.length }, rows.length ? `${rows.length} present record(s)` : 'No present records found');
+  }
+  if (q.includes('payment') || q.includes('fee') || q.includes('paid')) {
+    const rows = feeRecords.map(f => {
+      const s = studentMap.get(f.student_id); return { student: studentDisplayName(s), phone: s?.mobile || s?.phone || '—', amount: Number(f.amount_minor ?? f.amount ?? 0) / 100, paid: Number(f.paid_minor ?? f.amount_paid_minor ?? f.paid ?? 0) / 100, status: f.status || '—' };
+    });
+    return answerRows('payments', 'Payments and fees', ['student','phone','amount','paid','status'], rows, { records: rows.length }, `${rows.length} payment record(s)`);
+  }
+  if (q.includes('student') || q.includes('member')) {
+    const rows = students.map(s => ({ student: studentDisplayName(s), student_id: s.student_id || s.id, phone: s.mobile || s.phone || '—', email: s.email || '—', status: s.status || '—' }));
+    return answerRows('students', 'Students', ['student','student_id','phone','email','status'], rows, { students: rows.length }, `${rows.length} student(s)`);
+  }
+  return json({ error: 'I can answer about attendance, absentees, upcoming sessions, low credits, students, and payments.' }, 422);
+}
+
 // Scope filter: super_admin sees all; others limited to their org
 function orgScope(user, extra = {}) {
   if (user.role === 'super_admin') return { ...extra };
@@ -588,6 +658,11 @@ async function router(req, method) {
   const authRes = await requireAuth(req);
   if (authRes.error) return authRes.error;
   const user = authRes.user;
+
+  if (resource === 'ask-ai' && method === 'POST' && !id) {
+    const body = await req.json();
+    return answerAskAI(db, user, body.question);
+  }
 
   // Organizations
   if (resource === 'organizations') {
@@ -1329,62 +1404,68 @@ async function router(req, method) {
     return json({ months: allMonths, students: summary });
   }
 
-  // Backup export - entire org data as JSON
+
+  // Versioned backup/restore for every non-system collection.
+  const BACKUP_VERSION = '2.0';
+  const BACKUP_EXCLUDED_COLLECTIONS = new Set(['system.profile', 'system.users', 'system.js']);
+  async function listBackupCollections() {
+    const names = await db.listCollections({}, { nameOnly: true }).toArray();
+    return names.map(x => x.name).filter(name => !name.startsWith('system.') && !BACKUP_EXCLUDED_COLLECTIONS.has(name)).sort();
+  }
+  function backupDocument(doc, includeSecrets = false) {
+    const { _id, ...rest } = doc || {};
+    if (!includeSecrets) delete rest.password_hash;
+    return rest;
+  }
+  function validateBackupPayload(body) {
+    if (!body || body.format !== 'gokulam360-backup' || body.version !== BACKUP_VERSION) return 'Unsupported backup format or version';
+    if (!body.data || typeof body.data !== 'object') return 'Backup data is missing';
+    if (!Array.isArray(body.collections) || body.collections.some(name => typeof name !== 'string' || name.startsWith('system.'))) return 'Invalid collection manifest';
+    for (const [name, docs] of Object.entries(body.data)) if (!Array.isArray(docs)) return `Collection ${name} must be an array`;
+    return null;
+  }
   if (resource === 'backup' && id === 'export' && method === 'GET') {
     if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
-    const scope = { organization_id: user.organization_id };
-    const [organizations, students, teachers, programs, attendance, fees, events, notifications, activity] = await Promise.all([
-      user.role === 'super_admin' ? db.collection('organizations').find({}).toArray() : db.collection('organizations').find({ id: user.organization_id }).toArray(),
-      db.collection('students').find(scope).toArray(),
-      db.collection('teachers').find(scope).toArray(),
-      db.collection('programs').find(scope).toArray(),
-      db.collection('attendance').find(scope).toArray(),
-      db.collection('fees').find(scope).toArray(),
-      db.collection('events').find(scope).toArray(),
-      db.collection('notifications').find(scope).toArray(),
-      db.collection('activity').find(scope).toArray(),
-    ]);
-    return json({
-      exported_at: new Date().toISOString(),
-      exported_by: user.email,
-      organization_id: user.organization_id,
-      version: '1.0',
-      counts: { students: students.length, teachers: teachers.length, programs: programs.length, attendance: attendance.length, fees: fees.length, events: events.length, notifications: notifications.length },
-      data: {
-        organizations: organizations.map(stripId),
-        students: students.map(stripId),
-        teachers: teachers.map(stripId),
-        programs: programs.map(stripId),
-        attendance: attendance.map(stripId),
-        fees: fees.map(stripId),
-        events: events.map(stripId),
-        notifications: notifications.map(stripId),
-        activity: activity.map(stripId),
-      },
-    });
+    const names = await listBackupCollections();
+    const fullSystem = user.role === 'super_admin';
+    const data = {};
+    for (const name of names) {
+      const filter = fullSystem ? {} : { organization_id: user.organization_id };
+      data[name] = (await db.collection(name).find(filter).toArray()).map(doc => backupDocument(doc, fullSystem));
+    }
+    const counts = Object.fromEntries(Object.entries(data).map(([name, docs]) => [name, docs.length]));
+    return json({ format: 'gokulam360-backup', version: BACKUP_VERSION, exported_at: new Date().toISOString(), exported_by: user.email, scope: fullSystem ? 'system' : 'organization', organization_id: fullSystem ? null : user.organization_id, collections: names, counts, data });
   }
-
-  // Backup restore - accept JSON, replaces the org's data
   if (resource === 'backup' && id === 'restore' && method === 'POST') {
     if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
     const body = await req.json();
-    const data = body.data || {};
-    const orgId = user.organization_id;
-    const collections = ['students', 'teachers', 'programs', 'attendance', 'fees', 'events', 'notifications'];
+    const validationError = validateBackupPayload(body);
+    if (validationError) return json({ error: validationError }, 422);
+    const fullSystem = body.scope === 'system';
+    if (fullSystem && user.role !== 'super_admin') return json({ error: 'Only Super Admin can restore a system backup' }, 403);
+    if (!fullSystem && body.organization_id !== user.organization_id) return json({ error: 'Backup belongs to a different organization' }, 403);
+    const names = body.collections.filter(name => !BACKUP_EXCLUDED_COLLECTIONS.has(name));
+    const session = cachedClient.startSession();
     const counts = {};
-    for (const c of collections) {
-      const items = (data[c] || []).map(x => ({ ...x, organization_id: orgId, id: x.id || uuidv4() }));
-      // Wipe org's existing data in this collection
-      await db.collection(c).deleteMany({ organization_id: orgId });
-      if (items.length) await db.collection(c).insertMany(items);
-      counts[c] = items.length;
+    try {
+      await session.withTransaction(async () => {
+        for (const name of names) {
+          const docs = body.data[name] || [];
+          const filter = fullSystem ? {} : { organization_id: user.organization_id };
+          await db.collection(name).deleteMany(filter, { session });
+          const normalized = docs.map(doc => ({ ...doc, id: doc.id || uuidv4(), ...(fullSystem ? {} : { organization_id: user.organization_id }) }));
+          if (normalized.length) await db.collection(name).insertMany(normalized, { session });
+          counts[name] = normalized.length;
+        }
+        await db.collection('activity').insertOne({ id: uuidv4(), ...(fullSystem ? {} : { organization_id: user.organization_id }), kind: 'backup_restored', title: 'Backup restored', actor: user.name || user.email, created_at: new Date().toISOString() }, { session });
+      });
+    } catch (error) {
+      console.error('Backup restore transaction failed', error);
+      return json({ error: 'Restore failed; no changes were committed' }, 422);
+    } finally {
+      await session.endSession();
     }
-    await db.collection('activity').insertOne({
-      id: uuidv4(), organization_id: orgId, kind: 'backup_restored',
-      title: `Data restored from backup: ${Object.values(counts).reduce((a, b) => a + b, 0)} records`,
-      actor: user.name || 'Admin', created_at: new Date().toISOString(),
-    });
-    return json({ restored: counts });
+    return json({ restored: counts, atomic: true });
   }
 
   // Cancel, restore, or postpone a session
