@@ -2697,36 +2697,69 @@ function Reports() {
   const [rows, setRows] = useState([]);
   const [attSummary, setAttSummary] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [reportPrograms, setReportPrograms] = useState([]);
+  const [reportStudents, setReportStudents] = useState([]);
+  const [paymentProgramFilter, setPaymentProgramFilter] = useState('');
+  const [paymentBatchFilter, setPaymentBatchFilter] = useState('');
+  const [paymentStudentFilter, setPaymentStudentFilter] = useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
   useEffect(() => {
     setLoading(true);
     setRows([]);
     setAttSummary(null);
+    setReportError('');
+    const params = new URLSearchParams();
+    if (tab === 'fees') {
+      if (paymentProgramFilter) params.set('program_id', paymentProgramFilter);
+      if (paymentBatchFilter) params.set('batch_id', paymentBatchFilter);
+      if (paymentStudentFilter) params.set('student_id', paymentStudentFilter);
+      if (paymentStatusFilter) params.set('status', paymentStatusFilter);
+    }
+    if ((tab === 'attendance' || tab === 'attendance-summary' || tab === 'fees') && fromDate) params.set('from', fromDate);
+    if ((tab === 'attendance' || tab === 'attendance-summary' || tab === 'fees') && toDate) params.set('to', toDate);
+    const query = params.toString() ? `?${params.toString()}` : '';
     if (tab === 'attendance-summary') {
-      api('/reports/attendance-summary').then(setAttSummary).finally(() => setLoading(false));
+      api(`/reports/attendance-summary${query}`).then(setAttSummary).catch(e => setReportError(e.message || 'Unable to load Monthly Summary')).finally(() => setLoading(false));
     } else {
-      api(`/reports/${tab}`).then(r => {
+      api(`/reports/${tab}${query}`).then(r => {
         setRows(Array.isArray(r.items) ? r.items : []);
         if (tab === 'attendance') setAttSummary({ items: r.items || [], summary: r.summary || {} });
       }).finally(() => setLoading(false));
     }
+  }, [tab, fromDate, toDate, paymentProgramFilter, paymentBatchFilter, paymentStudentFilter, paymentStatusFilter]);
+  useEffect(() => {
+    if (tab !== 'fees') return;
+    Promise.all([api('/programs'), api('/students')]).then(([programs, students]) => {
+      setReportPrograms(programs.items || []);
+      setReportStudents(students.items || []);
+    });
   }, [tab]);
 
   const columns = {
     students: ['student_id', 'first_name', 'last_name', 'gender', 'mobile', 'email', 'status'],
     attendance: ['session_date', 'student_name', 'status'],
-    fees: ['student_name', 'fee_type', 'amount', 'paid_amount', 'status', 'due_date'],
+    fees: ['student_name', 'program_name', 'batch_name', 'amount_minor', 'amount_paid_minor', 'pending_amount_minor', 'payment_date', 'payment_mode', 'collected_by', 'status'],
   }[tab];
 
+  const reportLabel = { student_name: 'Student', program_name: 'Program', batch_name: 'Batch', amount_minor: 'Amount', amount_paid_minor: 'Amount Paid', pending_amount_minor: 'Pending Amount', payment_date: 'Payment Date', payment_mode: 'Payment Mode', collected_by: 'Collected By', status: 'Status' };
+  const displayReportValue = (column, row) => {
+    if (column === 'amount_minor' || column === 'amount_paid_minor' || column === 'pending_amount_minor') return fmtINR(Number(row[column] || 0) / 100);
+    if (column === 'payment_date' && row[column]) return String(row[column]).slice(0, 10);
+    return row[column] ?? '';
+  };
   const exportCSV = () => {
     if (tab === 'attendance-summary' && attSummary) {
-      const headers = ['Session Date', 'Session ID', 'Present', 'Late', 'Absent', 'Excused', 'Total'];
-      const lines = (attSummary.items || []).map(s => [s.session_date || '', s.session_id, s.present, s.late, s.absent, s.excused, s.total]);
-      const csv = [headers.join(','), ...lines.map(l => l.map(v => `"${v}"`).join(','))].join('\n');
+      const headers = ['Student', 'Student ID', 'Overall', 'Present', 'Total Sessions', ...(attSummary.months || [])];
+      const lines = (attSummary.students || []).map(s => [s.name, s.student_id, `${s.overall}%`, s.present, s.total_sessions, ...(attSummary.months || []).map(m => s.monthly?.[m] === undefined ? '' : `${s.monthly?.[m]}%`)]);
+      const csv = [headers.join(','), ...lines.map(l => l.map(v => `"${v ?? ''}"`).join(','))].join('\\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'attendance-summary.csv'; a.click();
       return;
     }
-    const csv = [columns.join(','), ...rows.map(r => columns.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    const csv = [columns.map(c => reportLabel[c] || c).join(','), ...rows.map(r => columns.map(c => `"${String(displayReportValue(c, r)).replace(/"/g, '""')}"`).join(','))].join('\\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${tab}-report.csv`; a.click();
   };
@@ -2734,11 +2767,14 @@ function Reports() {
     const XLSX = await import('xlsx');
     let ws, sheet = tab;
     if (tab === 'attendance-summary' && attSummary) {
-      const data = (attSummary.items || []).map(s => ({ 'Session Date': s.session_date || '', 'Session ID': s.session_id, Present: s.present, Late: s.late, Absent: s.absent, Excused: s.excused, Total: s.total }));
+      const data = (attSummary.students || []).map(s => Object.fromEntries([
+        ['Student', s.name], ['Student ID', s.student_id], ['Overall', `${s.overall}%`], ['Present', s.present], ['Total Sessions', s.total_sessions],
+        ...(attSummary.months || []).map(m => [m, s.monthly?.[m] === undefined ? '' : `${s.monthly[m]}%`])
+      ]));
       ws = XLSX.utils.json_to_sheet(data);
       sheet = 'attendance-summary';
     } else {
-      ws = XLSX.utils.json_to_sheet(rows.map(r => Object.fromEntries(columns.map(c => [c, r[c] ?? '']))));
+      ws = XLSX.utils.json_to_sheet(rows.map(r => Object.fromEntries(columns.map(c => [reportLabel[c] || c, displayReportValue(c, r)]))));
     }
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, sheet);
     XLSX.writeFile(wb, `${sheet}-report.xlsx`);
@@ -2752,10 +2788,10 @@ function Reports() {
     doc.setTextColor(30);
     let y = 28;
     doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-    columns.forEach((c, i) => doc.text(c.replace(/_/g, ' ').toUpperCase(), 14 + i * 40, y));
+    columns.forEach((c, i) => doc.text((reportLabel[c] || c.replace(/_/g, ' ')).toUpperCase(), 14 + i * 40, y));
     y += 5; doc.setFont('helvetica', 'normal');
     rows.slice(0, 30).forEach(r => {
-      columns.forEach((c, i) => doc.text(String(r[c] ?? '').slice(0, 22), 14 + i * 40, y));
+      columns.forEach((c, i) => doc.text(String(displayReportValue(c, r)).slice(0, 22), 14 + i * 40, y));
       y += 5.5; if (y > 195) { doc.addPage(); y = 20; }
     });
     doc.save(`${tab}-report.pdf`);
@@ -2775,11 +2811,32 @@ function Reports() {
           <TabsTrigger value="students">Students</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="attendance-summary">Monthly Summary</TabsTrigger>
-          <TabsTrigger value="fees">Fees</TabsTrigger>
+          <TabsTrigger value="fees">Payments</TabsTrigger>
         </TabsList>
+        {(tab === 'attendance' || tab === 'attendance-summary' || tab === 'fees') && (
+          <div className="mt-4 rounded-2xl glass p-4 flex flex-wrap items-end gap-3">
+            <div>
+              <Label className="text-xs">From date</Label>
+              <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">To date</Label>
+              <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
+            </div>
+            {(fromDate || toDate) && <Button variant="ghost" onClick={() => { setFromDate(''); setToDate(''); }}>Clear dates</Button>}
+          </div>
+        )}
+        {tab === 'fees' && (
+          <div className="mt-4 rounded-2xl glass p-4 flex flex-wrap items-end gap-3">
+            <div><Label className="text-xs">Program</Label><Select value={paymentProgramFilter || 'all'} onValueChange={v => { setPaymentProgramFilter(v === 'all' ? '' : v); setPaymentBatchFilter(''); }}><SelectTrigger className="w-48"><SelectValue placeholder="All programs" /></SelectTrigger><SelectContent><SelectItem value="all">All programs</SelectItem>{reportPrograms.filter(p => !p.parent_program_id).map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label className="text-xs">Batch</Label><Select value={paymentBatchFilter || 'all'} onValueChange={v => setPaymentBatchFilter(v === 'all' ? '' : v)}><SelectTrigger className="w-48"><SelectValue placeholder="All batches" /></SelectTrigger><SelectContent><SelectItem value="all">All batches</SelectItem>{reportPrograms.filter(p => p.parent_program_id && (!paymentProgramFilter || p.parent_program_id === paymentProgramFilter)).map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label className="text-xs">Student</Label><Select value={paymentStudentFilter || 'all'} onValueChange={v => setPaymentStudentFilter(v === 'all' ? '' : v)}><SelectTrigger className="w-52"><SelectValue placeholder="All students" /></SelectTrigger><SelectContent><SelectItem value="all">All students</SelectItem>{reportStudents.map(s => <SelectItem key={s.id} value={s.id}>{[s.first_name, s.last_name].filter(Boolean).join(' ') || s.student_id}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label className="text-xs">Status</Label><Select value={paymentStatusFilter || 'all'} onValueChange={v => setPaymentStatusFilter(v === 'all' ? '' : v)}><SelectTrigger className="w-36"><SelectValue placeholder="All statuses" /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="paid">Paid</SelectItem><SelectItem value="pending">Pending</SelectItem></SelectContent></Select></div>
+          </div>
+        )}
         <TabsContent value={tab} className="mt-4">
           {tab === 'attendance-summary' ? (
-            <CanonicalAttendanceSummaryTable data={attSummary} loading={loading} />
+            <AttendanceSummaryTable data={attSummary} loading={loading} error={reportError} />
           ) : (
             <div className="rounded-2xl glass overflow-hidden">
               {tab === 'attendance' && !loading && <AttendanceStatusSummary summary={attSummary?.summary} />}
@@ -2787,11 +2844,11 @@ function Reports() {
                 rows.length === 0 ? <EmptyState text="No data in this report" /> : (
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader><TableRow>{columns.map(c => <TableHead key={c} className="whitespace-nowrap">{c.replace(/_/g, ' ')}</TableHead>)}</TableRow></TableHeader>
+                      <TableHeader><TableRow>{columns.map(c => <TableHead key={c} className="whitespace-nowrap">{tab === 'attendance' && c === 'status' ? 'Attendance Status' : (reportLabel[c] || c.replace(/_/g, ' '))}</TableHead>)}</TableRow></TableHeader>
                       <TableBody>
                         {rows.slice(0, 200).map((r, i) => (
                           <TableRow key={i}>
-                            {columns.map(c => <TableCell key={c} className="whitespace-nowrap text-xs">{String(r[c] ?? '-')}</TableCell>)}
+                            {columns.map(c => <TableCell key={c} className="whitespace-nowrap text-xs">{String(displayReportValue(c, r) || '-')}</TableCell>)}
                           </TableRow>
                         ))}
                       </TableBody>
@@ -2810,12 +2867,10 @@ function Reports() {
 function AttendanceStatusSummary({ summary = {} }) {
   const cards = [
     ['Present', summary.present],
-    ['Late', summary.late],
     ['Absent', summary.absent],
-    ['Excused', summary.excused],
     ['Total', summary.total],
   ];
-  return <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 border-b border-border/50">
+  return <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 border-b border-border/50">
     {cards.map(([label, value]) => <div key={label} className="rounded-xl bg-background/40 p-3">
       <div className="text-2xl font-bold"><Counter value={Number(value || 0)} /></div>
       <div className="text-xs text-muted-foreground">{label}</div>
@@ -2843,9 +2898,12 @@ function CanonicalAttendanceSummaryTable({ data, loading }) {
   </div>;
 }
 
-function AttendanceSummaryTable({ data, loading }) {
-  if (loading || !data) return <div className="rounded-2xl glass p-6 space-y-2">{[...Array(8)].map((_, i) => <Skeleton key={i} className="h-8" />)}</div>;
-  if (!data.students.length) return <EmptyState text="No attendance recorded yet" />;
+function AttendanceSummaryTable({ data, loading, error }) {
+  if (loading) return <div className="rounded-2xl glass p-6 space-y-2">{[...Array(8)].map((_, i) => <Skeleton key={i} className="h-8" />)}</div>;
+  if (error) return <EmptyState text={error} />;
+  const students = Array.isArray(data?.students) ? data.students : [];
+  const months = Array.isArray(data?.months) ? data.months : [];
+  if (!students.length) return <EmptyState text="No attendance recorded yet" />;
   const pctColor = (p) => {
     if (p === undefined || p === null || p === '-') return 'bg-muted text-muted-foreground';
     if (p >= 90) return 'bg-emerald-500 text-white';
@@ -2854,7 +2912,7 @@ function AttendanceSummaryTable({ data, loading }) {
     if (p >= 25) return 'bg-orange-500 text-white';
     return 'bg-rose-500 text-white';
   };
-  const sorted = [...data.students].sort((a, b) => b.overall - a.overall);
+  const sorted = [...students].sort((a, b) => b.overall - a.overall);
   const avg = sorted.length ? Math.round(sorted.reduce((s, x) => s + x.overall, 0) / sorted.length) : 0;
   const top = sorted.slice(0, 3);
   const bottom = sorted.slice(-3).reverse();
@@ -2864,7 +2922,7 @@ function AttendanceSummaryTable({ data, loading }) {
       <div className="grid md:grid-cols-3 gap-3">
         <div className="rounded-2xl glass p-4 flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-saffron-gradient grid place-items-center text-white shadow"><Users size={18} /></div>
-          <div><div className="text-2xl font-bold"><Counter value={data.students.length} /></div><div className="text-[10px] text-muted-foreground">Students tracked</div></div>
+          <div><div className="text-2xl font-bold"><Counter value={students.length} /></div><div className="text-[10px] text-muted-foreground">Students tracked</div></div>
         </div>
         <div className="rounded-2xl glass p-4 flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-emerald-gradient grid place-items-center text-white shadow"><TrendingUp size={18} /></div>
@@ -2872,7 +2930,7 @@ function AttendanceSummaryTable({ data, loading }) {
         </div>
         <div className="rounded-2xl glass p-4 flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-violet-gradient grid place-items-center text-white shadow"><CalendarIcon size={18} /></div>
-          <div><div className="text-2xl font-bold"><Counter value={data.months.length} /></div><div className="text-[10px] text-muted-foreground">Months tracked</div></div>
+          <div><div className="text-2xl font-bold"><Counter value={months.length} /></div><div className="text-[10px] text-muted-foreground">Months tracked</div></div>
         </div>
       </div>
       <div className="grid md:grid-cols-2 gap-3">
@@ -2903,7 +2961,7 @@ function AttendanceSummaryTable({ data, loading }) {
                 <TableHead>Student</TableHead>
                 <TableHead className="text-center">Overall</TableHead>
                 <TableHead className="text-center">Sessions</TableHead>
-                {data.months.map(m => <TableHead key={m} className="text-center whitespace-nowrap">{new Date(m + '-01').toLocaleString('en', { month: 'short', year: '2-digit' })}</TableHead>)}
+                {months.map(m => <TableHead key={m} className="text-center whitespace-nowrap">{new Date(m + '-01').toLocaleString('en', { month: 'short', year: '2-digit' })}</TableHead>)}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -2919,7 +2977,7 @@ function AttendanceSummaryTable({ data, loading }) {
                   <TableCell className="text-center text-xs">{s.present}/{s.total_sessions}</TableCell>
                   {data.months.map(m => (
                     <TableCell key={m} className="text-center">
-                      {s.monthly[m] !== undefined ? (
+                      {s.monthly?.[m] !== undefined ? (
                         <div className={`inline-flex w-11 h-6 items-center justify-center rounded text-[11px] font-semibold ${pctColor(s.monthly[m])}`}>{s.monthly[m]}%</div>
                       ) : <span className="text-muted-foreground text-xs">—</span>}
                     </TableCell>
