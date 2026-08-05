@@ -1620,6 +1620,30 @@ function DaysPicker({ value = [], onChange }) {
 /* ============================================================
    PROGRAMS → BATCHES → SESSION SCHEDULER
 ============================================================ */
+function localDateKey(date = new Date()) {
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+}
+
+function getScheduledSessionDates(batch) {
+  if (Array.isArray(batch.sessions) && batch.sessions.length) {
+    return [...new Set(batch.sessions)].sort();
+  }
+  if (!batch.start_date || !batch.end_date || !(batch.days_of_week || []).length) return [];
+  const cancelled = new Set(batch.cancelled_dates || []);
+  const postponed = batch.postponed_dates || {};
+  const dates = new Set();
+  const cur = new Date(batch.start_date + 'T00:00:00');
+  const end = new Date(batch.end_date + 'T00:00:00');
+  while (cur <= end) {
+    if ((batch.days_of_week || []).includes(cur.getDay())) {
+      const date = cur.toISOString().slice(0, 10);
+      if (!cancelled.has(date)) dates.add(postponed[date] || date);
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return [...dates].sort();
+}
+
 function Classes() {
   const [items, setItems] = useState([]);
   const [students, setStudents] = useState([]);
@@ -1693,11 +1717,14 @@ function Classes() {
                     {batches.map(batch => {
                       const enrolled = enrolledCount(batch);
                       const days = batch.days_of_week || [];
+                      const scheduledDates = getScheduledSessionDates(batch);
+                      const scheduledCount = scheduledDates.length;
+                      const remainingCount = scheduledDates.filter(date => date >= localDateKey()).length;
                       const pct = Math.min(100, Math.round((enrolled / (batch.capacity || 1)) * 100));
                       return <div key={batch.id} className="rounded-2xl bg-white/50 dark:bg-black/10 border p-4">
                         <div className="flex items-start justify-between gap-2"><div className="font-semibold truncate">{batch.name}</div><Badge variant="outline">Batch</Badge></div>
                         <div className="mt-2 flex flex-wrap gap-1">{days.length ? days.map(d => <span key={d} className="rounded-md bg-primary/10 px-2 py-1 text-[10px] font-medium">{DAY_LABELS[d]}</span>) : <span className="text-xs text-muted-foreground">Schedule not set</span>}</div>
-                        <div className="mt-3 grid grid-cols-3 text-center gap-2"><div><div className="font-bold">{enrolled}</div><div className="text-[10px] text-muted-foreground">Enrolled</div></div><div><div className="font-bold">{batch.capacity || 0}</div><div className="text-[10px] text-muted-foreground">Capacity</div></div><div><div className="font-bold">{fmtINR(batch.fee_amount || 0)}</div><div className="text-[10px] text-muted-foreground">Fee</div></div></div>
+                        <div className="mt-3 grid grid-cols-2 md:grid-cols-4 text-center gap-2"><div><div className="font-bold">{enrolled}</div><div className="text-[10px] text-muted-foreground">Enrolled</div></div><div><div className="font-bold">{batch.capacity || 0}</div><div className="text-[10px] text-muted-foreground">Capacity</div></div><div><div className="font-bold">{scheduledCount}</div><div className="text-[10px] text-muted-foreground">Scheduled</div></div><div><div className="font-bold text-primary">{remainingCount}</div><div className="text-[10px] text-muted-foreground">Remaining</div></div></div>
                         <div className="mt-3"><div className="flex justify-between text-[10px] text-muted-foreground mb-1"><span>Fill rate</span><span>{pct}%</span></div><Progress value={pct} className="h-1.5" /></div>
                         <div className="mt-3 text-[10px] text-muted-foreground">{batch.start_date || 'No start date'} → {batch.end_date || 'No end date'}</div>
                         <div className="flex gap-1 mt-3 pt-3 border-t"><Button size="sm" variant="secondary" className="flex-1 text-xs h-8" onClick={() => setSchedulerBatch(batch)}><CalendarIcon size={13} className="mr-1" /> Sessions</Button><Button size="sm" variant="ghost" className="text-xs h-8" onClick={() => openEdit(batch)}><Edit3 size={13} /></Button><Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(batch)}><Trash2 size={13} /></Button></div>
@@ -1720,11 +1747,9 @@ function Classes() {
             {!parentProgram && <div className="col-span-2"><Label>Age group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="6-14" /></div>}
             {parentProgram && <>
               <div className="col-span-2"><Label>Session days *</Label><DaysPicker value={form.days_of_week} onChange={v => setForm({ ...form, days_of_week: v })} /><div className="text-[10px] text-muted-foreground mt-1.5">{form.days_of_week.length ? `Runs ${form.days_of_week.map(d => DAY_FULL[d]).join(', ')}` : 'Select at least one day'}</div></div>
-              <div><Label>Fee (per term)</Label><Input type="number" value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
               <div><Label>Capacity</Label><Input type="number" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} /></div>
               <div><Label>Start date</Label><Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} /></div>
               <div><Label>End date</Label><Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} /></div>
-              <div><Label>Duration (months)</Label><Input type="number" value={form.duration_months} onChange={e => setForm({ ...form, duration_months: e.target.value })} /></div>
             </>}
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient" disabled={!!parentProgram && form.days_of_week.length === 0}>{editing ? 'Update' : `Create ${parentProgram ? 'Batch' : 'Program'}`}</Button></DialogFooter>
@@ -1738,10 +1763,72 @@ function Classes() {
 function SessionScheduler({ batch, onClose }) {
   const [sessions, setSessions] = useState([]);
   const [loading, setLoading] = useState(false);
-  const load = () => { if (!batch) return; setLoading(true); api(`/programs/${batch.id}/sessions`).then(r => setSessions(r.sessions || [])).catch(e => toast.error(e.message)).finally(() => setLoading(false)); };
+  const [postponeTarget, setPostponeTarget] = useState(null);
+  const [postponeDate, setPostponeDate] = useState('');
+
+  const load = () => {
+    if (!batch) return;
+    setLoading(true);
+    api(`/programs/${batch.id}/sessions`)
+      .then(r => setSessions(r.sessions || []))
+      .catch(e => toast.error(e.message))
+      .finally(() => setLoading(false));
+  };
   useEffect(() => { load(); }, [batch?.id]);
-  const cancel = async (session) => { if (!confirm(`Cancel the session on ${session.date}?`)) return; try { await api(`/programs/${batch.id}/cancel-session`, { method: 'POST', body: JSON.stringify({ date: session.date, action: 'cancel' }) }); toast.success('Session cancelled'); load(); } catch (e) { toast.error(e.message); } };
-  return <Dialog open={!!batch} onOpenChange={open => !open && onClose()}><DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>Session Scheduler</DialogTitle><DialogDescription>{batch?.name} · {batch?.days_of_week?.length || 0} scheduled day{batch?.days_of_week?.length === 1 ? '' : 's'}</DialogDescription></DialogHeader>{loading ? <div className="py-10 text-center text-sm text-muted-foreground">Loading sessions…</div> : sessions.length === 0 ? <EmptyState text="No sessions generated yet. Edit the batch and add dates and session days." /> : <div className="grid grid-cols-2 md:grid-cols-3 gap-2">{sessions.map(s => <div key={s.date} className={`rounded-xl border p-3 ${s.marked ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-card'}`}><div className="text-sm font-semibold">{new Date(`${s.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</div><div className="text-[11px] text-muted-foreground mt-1">{s.marked ? `${s.present}/${s.total} present` : 'Not marked'}</div>{!s.marked && <Button size="sm" variant="ghost" className="h-7 mt-2 text-xs text-rose-600" onClick={() => cancel(s)}><Trash2 size={12} className="mr-1" /> Cancel</Button>}</div>)}</div>}<DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter></DialogContent></Dialog>;
+
+  const cancel = async (session) => {
+    if (!confirm(`Cancel the session on ${session.date}?`)) return;
+    try {
+      await api(`/programs/${batch.id}/cancel-session`, {
+        method: 'POST',
+        body: JSON.stringify({ date: session.date, action: 'cancel' })
+      });
+      toast.success('Session cancelled');
+      load();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  const postpone = async (session) => {
+    if (!postponeDate) return toast.error('Choose the new session date');
+    if (postponeDate === session.date) return toast.error('Choose a different date');
+    try {
+      await api(`/programs/${batch.id}/cancel-session`, {
+        method: 'POST',
+        body: JSON.stringify({ date: session.date, new_date: postponeDate, action: 'postpone' })
+      });
+      toast.success(`Session postponed to ${postponeDate}`);
+      setPostponeTarget(null);
+      setPostponeDate('');
+      load();
+    } catch (e) { toast.error(e.message); }
+  };
+
+  return <Dialog open={!!batch} onOpenChange={open => !open && onClose()}>
+    <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogHeader>
+        <DialogTitle>Session Scheduler</DialogTitle>
+        <DialogDescription>{batch?.name} · {batch?.days_of_week?.length || 0} scheduled day{batch?.days_of_week?.length === 1 ? '' : 's'}</DialogDescription>
+      </DialogHeader>
+      {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Loading sessions…</div> :
+        sessions.length === 0 ? <EmptyState text="No sessions generated yet. Edit the batch and add dates and session days." /> :
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+          {sessions.map(s => <div key={s.date} className={`rounded-xl border p-3 ${s.marked ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-card'}`}>
+            <div className="text-sm font-semibold">{new Date(`${s.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</div>
+            <div className="text-[11px] text-muted-foreground mt-1">{s.marked ? `${s.present}/${s.total} present` : 'Not marked'}</div>
+            {!s.marked && <div className="mt-2 space-y-1.5">
+              {postponeTarget === s.date && <Input type="date" value={postponeDate} onChange={e => setPostponeDate(e.target.value)} className="h-8 text-xs" />}
+              <div className="flex gap-1">
+                <Button size="sm" variant="ghost" className="h-7 text-xs text-rose-600" onClick={() => cancel(s)}><Trash2 size={12} className="mr-1" /> Cancel</Button>
+                {postponeTarget === s.date ?
+                  <Button size="sm" className="h-7 text-xs bg-saffron-gradient" onClick={() => postpone(s)}>Save date</Button> :
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-primary" onClick={() => { setPostponeTarget(s.date); setPostponeDate(''); }}>Postpone</Button>}
+              </div>
+            </div>}
+          </div>)}
+        </div>}
+      <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
+    </DialogContent>
+  </Dialog>;
 }
 
 /* ============================================================

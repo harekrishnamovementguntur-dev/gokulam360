@@ -100,18 +100,19 @@ function generateSessions(program) {
   const days = program.days_of_week || [];
   if (!days.length || !program.start_date || !program.end_date) return [];
   const cancelled = new Set(program.cancelled_dates || []);
-  const sessions = [];
+  const postponed = program.postponed_dates || {};
+  const sessions = new Set();
   const start = new Date(program.start_date + 'T00:00:00');
   const end = new Date(program.end_date + 'T00:00:00');
   const cur = new Date(start);
   while (cur <= end) {
     if (days.includes(cur.getDay())) {
       const d = cur.toISOString().slice(0, 10);
-      if (!cancelled.has(d)) sessions.push(d);
+      if (!cancelled.has(d)) sessions.add(postponed[d] || d);
     }
     cur.setDate(cur.getDate() + 1);
   }
-  return sessions;
+  return [...sessions].sort();
 }
 
 async function syncEnrollments(db, student, oldProgramIds = []) {
@@ -1021,19 +1022,33 @@ async function router(req, method) {
     return json({ restored: counts });
   }
 
-  // Cancel or restore a session
+  // Cancel, restore, or postpone a session
   if (resource === 'programs' && id && sub === 'cancel-session' && method === 'POST') {
     if (!['org_admin', 'super_admin', 'teacher'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
-    const body = await req.json(); // { date, reason?, action: 'cancel'|'restore' }
+    const body = await req.json(); // { date, new_date?, reason?, action: 'cancel'|'restore'|'postpone' }
     const prog = await db.collection('programs').findOne({ id, ...orgScope(user) });
     if (!prog) return json({ error: 'Not found' }, 404);
     const cancelled = new Set(prog.cancelled_dates || []);
-    if (body.action === 'restore') cancelled.delete(body.date);
-    else cancelled.add(body.date);
-    const updated = { cancelled_dates: [...cancelled] };
-    updated.sessions = generateSessions({ ...prog, cancelled_dates: updated.cancelled_dates });
+    const postponed = { ...(prog.postponed_dates || {}) };
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date || '')) return json({ error: 'A valid session date is required' }, 422);
+    if (body.action === 'postpone') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(body.new_date || '')) return json({ error: 'A valid new session date is required' }, 422);
+      if (body.date === body.new_date) return json({ error: 'Choose a different date for postponement' }, 422);
+      postponed[body.date] = body.new_date;
+      cancelled.delete(body.date);
+    } else if (body.action === 'restore') {
+      cancelled.delete(body.date);
+      delete postponed[body.date];
+    } else {
+      cancelled.add(body.date);
+      delete postponed[body.date];
+    }
+
+    const updated = { cancelled_dates: [...cancelled], postponed_dates: postponed };
+    updated.sessions = generateSessions({ ...prog, ...updated });
     await db.collection('programs').updateOne({ id }, { $set: updated });
-    return json({ ok: true, cancelled_dates: updated.cancelled_dates });
+    return json({ ok: true, cancelled_dates: updated.cancelled_dates, postponed_dates: updated.postponed_dates });
   }
 
   return json({ error: 'Not found', path: url.pathname, method }, 404);
