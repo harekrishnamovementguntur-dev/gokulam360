@@ -115,7 +115,7 @@ curl -X POST http://localhost:3000/api/seed
 Password change and password recovery use email OTP. Configure these server-side variables:
 
 - `RESEND_API_KEY`: Resend API key.
-- `AUTH_EMAIL_FROM` or `RESEND_FROM_EMAIL`: verified sender address.
+- `AUTH_EMAIL_FROM` or `RESEND_FROM_EMAIL`: optional sender address. If omitted, development uses `Gokulam360 <onboarding@resend.dev>`; Resend restricts this default sender to your own Resend account email until a custom domain is verified.
 
 Keep these values out of source control. If they are missing, OTP delivery is rejected safely rather than exposing verification codes.
 
