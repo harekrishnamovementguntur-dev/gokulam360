@@ -9,7 +9,7 @@ import {
   Building2, LogOut, Menu, Moon, Sun, Search, Plus, Edit3, Trash2, Archive, IdCard, Printer,
   UserCircle2, TrendingUp, ChevronRight, Sparkles, Flame, BookOpen, ClipboardCheck,
   Bell, Send, MessageSquare, Camera, FileText, Download, FileSpreadsheet, Command as CmdIcon,
-  Rocket, Award, Heart, Activity, ArrowUpRight, Phone, PartyPopper, Zap,
+  Rocket, Award, Heart, Activity, ArrowUpRight, Phone, PartyPopper, Zap, RefreshCw,
   ChevronLeft, Upload, Check, CheckCircle2, Circle, Palette, Wallet, UserPlus
 } from 'lucide-react';
 import {
