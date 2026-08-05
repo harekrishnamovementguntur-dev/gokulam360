@@ -1723,7 +1723,7 @@ function Classes() {
   const [parentProgram, setParentProgram] = useState(null);
   const [schedulerBatch, setSchedulerBatch] = useState(null);
   const [showCompleted, setShowCompleted] = useState(false);
-  const empty = { name: '', description: '', age_group: '', duration_months: 4, capacity: 30, start_date: '', end_date: '', days_of_week: [0], fee_amount: 1500 };
+  const empty = { name: '', description: '', age_group: '', billing_model: 'credit', duration_months: 4, capacity: 30, start_date: '', end_date: '', days_of_week: [0], fee_amount: 0 };
   const [form, setForm] = useState(empty);
   const load = () => api('/programs').then(r => setItems(r.items || []));
   useEffect(() => { load(); api('/students').then(r => setStudents(r.items || [])); }, []);
@@ -1738,10 +1738,10 @@ function Classes() {
     try {
       const payload = {
         ...form,
-        ...(parentProgram ? { parent_program_id: parentProgram.id } : { parent_program_id: null }),
-        duration_months: Number(form.duration_months) || 0,
+        billing_model: parentProgram?.billing_model || form.billing_model || 'credit',
+        ...(parentProgram ? { parent_program_id: parentProgram.id } : { parent_program_id: null, age_group: undefined, fee_amount: undefined, duration_months: undefined }),
         capacity: Number(form.capacity) || 0,
-        fee_amount: Number(form.fee_amount) || 0,
+        fee_amount: parentProgram && form.billing_model === 'date' ? Number(form.fee_amount) || 0 : undefined,
       };
       if (editing) await api(`/programs/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       else await api('/programs', { method: 'POST', body: JSON.stringify(payload) });
@@ -1752,7 +1752,7 @@ function Classes() {
   };
   const del = async (p) => { if (!confirm(`Delete ${p.name}?`)) return; await api(`/programs/${p.id}`, { method: 'DELETE' }); toast.success('Deleted'); load(); };
   const openNewProgram = () => { setEditing(null); setParentProgram(null); setForm(empty); setOpen(true); };
-  const openNewBatch = (program) => { setEditing(null); setParentProgram(program); setForm({ ...empty, name: `${program.name} Batch`, age_group: program.age_group || '' }); setOpen(true); };
+  const openNewBatch = (program) => { setEditing(null); setParentProgram(program); setForm({ ...empty, name: `${program.name} Batch`, age_group: '', billing_model: program.billing_model || 'credit', fee_amount: program.billing_model === 'date' ? 0 : 0 }); setOpen(true); };
   const openEdit = (p) => { setEditing(p); setParentProgram(p.parent_program_id ? programs.find(x => x.id === p.parent_program_id) : null); setForm({ ...empty, ...p, days_of_week: p.days_of_week || [0] }); setOpen(true); };
 
   return (
@@ -1779,7 +1779,7 @@ function Classes() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2"><h2 className="text-lg font-bold truncate">{p.name}</h2><Badge variant="secondary">Program</Badge></div>
                       <p className="text-sm text-muted-foreground mt-1 max-w-2xl">{p.description || 'Academic program'}</p>
-                      <div className="text-xs text-muted-foreground mt-2">{batches.length} batch{batches.length !== 1 ? 'es' : ''} · {p.age_group || 'All age groups'}</div>
+                      <div className="text-xs text-muted-foreground mt-2">{batches.length} batch{batches.length !== 1 ? 'es' : ''} · {p.billing_model === 'date' ? 'Date model' : 'Credit model'}</div>
                     </div>
                   </div>
                   <div className="flex gap-1 shrink-0">
@@ -1824,10 +1824,12 @@ function Classes() {
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2"><Label>{parentProgram ? 'Batch name' : 'Program name'}</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder={parentProgram ? 'e.g. Sunday School — 2026 Batch A' : 'e.g. Sunday School'} /></div>
             <div className="col-span-2"><Label>Description</Label><Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder={parentProgram ? 'Describe this batch' : 'Describe the program'} /></div>
-            {!parentProgram && <div className="col-span-2"><Label>Age group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="6-14" /></div>}
+            {!parentProgram && <div className="col-span-2 rounded-xl border bg-primary/5 p-3"><Label>Program model</Label><div className="grid grid-cols-2 gap-2 mt-2"><label className={`flex items-center gap-2 rounded-lg border p-3 text-sm cursor-pointer ${form.billing_model === 'credit' ? 'border-primary bg-primary/10' : ''}`}><input type="checkbox" checked={form.billing_model === 'credit'} onChange={() => setForm({ ...form, billing_model: 'credit' })} /> Credit model</label><label className={`flex items-center gap-2 rounded-lg border p-3 text-sm cursor-pointer ${form.billing_model === 'date' ? 'border-primary bg-primary/10' : ''}`}><input type="checkbox" checked={form.billing_model === 'date'} onChange={() => setForm({ ...form, billing_model: 'date' })} /> Date model</label></div><div className="text-[10px] text-muted-foreground mt-2">Credit model uses purchased credits. Date model uses the batch fee and duration.</div></div>}
             {parentProgram && <>
+              <div className="col-span-2"><Label>Age group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="e.g. 6-14" /></div>
               <div className="col-span-2"><Label>Session days *</Label><DaysPicker value={form.days_of_week} onChange={v => setForm({ ...form, days_of_week: v })} /><div className="text-[10px] text-muted-foreground mt-1.5">{form.days_of_week.length ? `Runs ${form.days_of_week.map(d => DAY_FULL[d]).join(', ')}` : 'Select at least one day'}</div></div>
               <div><Label>Capacity</Label><Input type="number" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} /></div>
+              {parentProgram && parentProgram.billing_model === 'date' && <div><Label>Fee for this batch</Label><Input type="number" min="0" value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} placeholder="0" /></div>}
               <div><Label>Start date</Label><Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} /></div>
               <div><Label>End date</Label><Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} /></div>
             </>}
