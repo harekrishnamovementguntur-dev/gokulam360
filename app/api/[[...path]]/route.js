@@ -500,7 +500,7 @@ async function router(req, method) {
         const passHash = await bcrypt.hash(body.admin_password, 10);
         await db.collection('users').insertOne({
           id: uuidv4(), email: body.admin_email, password_hash: passHash, name: body.admin_name || 'Admin',
-          role: 'org_admin', organization_id: doc.id, created_at: new Date().toISOString()
+          role: 'org_admin', organization_id: doc.id, mobile: body.admin_mobile || '', created_at: new Date().toISOString()
         });
       }
       // Create first program
