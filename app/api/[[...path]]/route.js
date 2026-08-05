@@ -60,6 +60,10 @@ function json(data, status = 200) {
   return NextResponse.json(data, { status });
 }
 
+function attendanceConsumesCredit(status) {
+  return ['present', 'absent', 'late'].includes(status);
+}
+
 function signToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
 }
@@ -390,7 +394,7 @@ async function router(req, method) {
       .limit(3)
       .toArray();
     const enrichedEnr = enrollments.map(e => {
-      const attended = att.filter(a => a.program_id === e.program_id && ['present', 'absent', 'late'].includes(a.status) && a.date >= (e.enrolled_at || '').slice(0, 10)).length;
+      const attended = att.filter(a => a.program_id === e.program_id && attendanceConsumesCredit(a.status) && a.date >= (e.enrolled_at || '').slice(0, 10)).length;
       const credited = e.sessions_credited || 0;
       return { ...stripId(e), program_name: pMap[e.program_id]?.name || '-', sessions_attended: attended, sessions_remaining: Math.max(0, credited - attended) };
     });
@@ -706,6 +710,29 @@ async function router(req, method) {
       created_at: new Date().toISOString(),
     }));
     if (docs.length) await db.collection('attendance').insertMany(docs);
+
+    // Keep the enrollment projection immediately consistent with the immutable
+    // attendance records that were just saved. Reads still recalculate from history.
+    for (const studentId of studentIds) {
+      const enrollment = await db.collection('enrollments').findOne({
+        organization_id: user.organization_id,
+        student_id: studentId,
+        program_id,
+        left_at: null,
+      });
+      if (!enrollment) continue;
+      const attendanceHistory = await db.collection('attendance').find({
+        organization_id: user.organization_id,
+        student_id: studentId,
+        program_id,
+      }).toArray();
+      const used = attendanceHistory.filter(a => attendanceConsumesCredit(a.status)).length;
+      const credited = Number(enrollment.sessions_credited || 0);
+      await db.collection('enrollments').updateOne(
+        { id: enrollment.id, organization_id: user.organization_id },
+        { $set: { sessions_attended: used, sessions_remaining: Math.max(0, credited - used), updated_at: new Date().toISOString() } },
+      );
+    }
     return json({ ok: true, count: docs.length });
   }
 
