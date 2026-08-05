@@ -504,33 +504,46 @@ async function router(req, method) {
   // ---- public ----
   if (resource === 'health') return json({ ok: true, service: 'gokulam360' });
 
-  // PUBLIC parent link â€” no auth required
+  // PUBLIC parent link — no auth required
   if (resource === 'public' && id === 'student' && sub && method === 'GET') {
     const student = await db.collection('students').findOne({ public_token: sub });
     if (!student) return json({ error: 'Not found' }, 404);
     const org = await db.collection('organizations').findOne({ id: student.organization_id });
-    const enrollments = await db.collection('enrollments').find({ student_id: student.id }).sort({ enrolled_at: -1 }).toArray();
-    const programs = await db.collection('programs').find({ id: { $in: enrollments.map(e => e.program_id) } }).toArray();
+    const enrollments = await db.collection('enrollments').find({ student_id: student.id, organization_id: student.organization_id }).sort({ enrolled_at: -1 }).toArray();
+    const enrollmentProgramIds = enrollments.map(e => e.program_id).filter(Boolean);
+    const assignedProgramIds = [...new Set([...(Array.isArray(student.program_ids) ? student.program_ids : []), student.program_id, ...enrollmentProgramIds].filter(Boolean))];
+    const programs = await db.collection('programs').find({ organization_id: student.organization_id, id: { $in: assignedProgramIds } }).toArray();
     const pMap = Object.fromEntries(programs.map(p => [p.id, p]));
-    const att = await db.collection('attendance').find({ student_id: student.id }).sort({ date: -1 }).toArray();
-    const fees = await db.collection('fees').find({ student_id: student.id }).toArray();
+    const targetProgramIds = [...new Set(programs.flatMap(p => p.parent_program_id ? [p.parent_program_id] : [p.id]))];
+    const att = await db.collection('attendance').find({ student_id: student.id, organization_id: student.organization_id }).sort({ date: -1 }).toArray();
+    const fees = await db.collection('fees').find({ student_id: student.id, organization_id: student.organization_id }).toArray();
     const events = await db.collection('events')
-      .find({ organization_id: student.organization_id, is_announcement: true, is_deleted: { $ne: true } })
-      .sort({ date: -1 })
-      .limit(3)
+      .find({
+        organization_id: student.organization_id,
+        is_announcement: true,
+        is_deleted: { $ne: true },
+        $or: [
+          { program_ids: { $in: targetProgramIds } },
+          { program_ids: { $exists: false } },
+          { program_ids: { $size: 0 } },
+        ],
+      })
+      .sort({ priority: -1, date: 1, created_at: -1 })
+      .limit(50)
       .toArray();
     const enrichedEnr = enrollments.map(e => {
       const attended = att.filter(a => a.program_id === e.program_id && attendanceConsumesCredit(a.status) && a.date >= (e.enrolled_at || '').slice(0, 10)).length;
       const credited = e.sessions_credited || 0;
       return { ...stripId(e), program_name: pMap[e.program_id]?.name || '-', sessions_attended: attended, sessions_remaining: Math.max(0, credited - attended) };
     });
+    const uniqueEvents = [...new Map(events.map(event => [event.id, event])).values()];
     return json({
       student: { id: student.id, student_id: student.student_id, first_name: student.first_name, last_name: student.last_name, photo_url: student.photo_url, dob: student.dob, program_id: student.program_id },
       organization: { name: org?.name, logo_url: org?.logo_url, contact_email: org?.contact_email, contact_phone: org?.contact_phone },
       enrollments: enrichedEnr,
       attendance: att.slice(0, 20).map(stripId),
       fees: fees.map(stripId),
-      events: events.map(stripId),
+      events: uniqueEvents.map(stripId),
     });
   }
   if (resource === 'config' && method === 'GET') {
@@ -687,9 +700,20 @@ async function router(req, method) {
       if (resource === 'students' && doc.status === 'active') doc.active_from = doc.created_at;
       // Auto-generate public token for students
       if (resource === 'students' && !doc.public_token) doc.public_token = uuidv4();
-      if (resource === 'events' && doc.is_announcement) {
-        const selectedCount = await db.collection('events').countDocuments({ organization_id: organizationId, is_announcement: true, is_deleted: { $ne: true } });
-        if (selectedCount >= 3) return json({ error: 'Only 3 announcements can be shown to parents at a time' }, 400);
+      if (resource === 'events') {
+        const targetProgramIds = Array.isArray(doc.program_ids) ? [...new Set(doc.program_ids.filter(Boolean))] : [];
+        doc.program_ids = targetProgramIds;
+        if (doc.is_announcement && targetProgramIds.length) {
+          const validPrograms = await db.collection('programs').countDocuments({ organization_id: organizationId, id: { $in: targetProgramIds }, parent_program_id: { $exists: false } });
+          if (validPrograms !== targetProgramIds.length) return json({ error: 'One or more selected programs were not found' }, 422);
+          for (const programId of targetProgramIds) {
+            const selectedCount = await db.collection('events').countDocuments({ organization_id: organizationId, is_announcement: true, is_deleted: { $ne: true }, program_ids: programId });
+            if (selectedCount >= 3) return json({ error: 'Each program can have at most 3 featured events' }, 400);
+          }
+        } else if (doc.is_announcement) {
+          const selectedCount = await db.collection('events').countDocuments({ organization_id: organizationId, is_announcement: true, is_deleted: { $ne: true }, $or: [{ program_ids: { $exists: false } }, { program_ids: { $size: 0 } }] });
+          if (selectedCount >= 3) return json({ error: 'Only 3 organization-wide featured events are allowed' }, 400);
+        }
       }
       // Generate sessions for programs
       if (resource === 'programs') doc.sessions = generateSessions(doc);
@@ -724,9 +748,21 @@ async function router(req, method) {
         updated.status_changed_at = updated.updated_at;
         if (changes.status === 'active') updated.active_from = updated.updated_at;
       }
-      if (resource === 'events' && changes.is_announcement === true && !before.is_announcement) {
-        const selectedCount = await db.collection('events').countDocuments({ organization_id: before.organization_id, is_announcement: true, is_deleted: { $ne: true }, id: { $ne: id } });
-        if (selectedCount >= 3) return json({ error: 'Only 3 announcements can be shown to parents at a time' }, 400);
+      if (resource === 'events') {
+        const featured = changes.is_announcement ?? before.is_announcement;
+        const targetProgramIds = Array.isArray(changes.program_ids) ? [...new Set(changes.program_ids.filter(Boolean))] : (Array.isArray(before.program_ids) ? before.program_ids : []);
+        updated.program_ids = targetProgramIds;
+        if (featured && targetProgramIds.length) {
+          const validPrograms = await db.collection('programs').countDocuments({ organization_id: before.organization_id, id: { $in: targetProgramIds }, parent_program_id: { $exists: false } });
+          if (validPrograms !== targetProgramIds.length) return json({ error: 'One or more selected programs were not found' }, 422);
+          for (const programId of targetProgramIds) {
+            const selectedCount = await db.collection('events').countDocuments({ organization_id: before.organization_id, is_announcement: true, is_deleted: { $ne: true }, id: { $ne: id }, program_ids: programId });
+            if (selectedCount >= 3) return json({ error: 'Each program can have at most 3 featured events' }, 400);
+          }
+        } else if (featured) {
+          const selectedCount = await db.collection('events').countDocuments({ organization_id: before.organization_id, is_announcement: true, is_deleted: { $ne: true }, id: { $ne: id }, $or: [{ program_ids: { $exists: false } }, { program_ids: { $size: 0 } }] });
+          if (selectedCount >= 3) return json({ error: 'Only 3 organization-wide featured events are allowed' }, 400);
+        }
       }
       if (resource === 'programs') {
         const nextModel = before.parent_program_id ? (before.billing_model || 'credit') : (body.billing_model || before.billing_model || 'credit');
