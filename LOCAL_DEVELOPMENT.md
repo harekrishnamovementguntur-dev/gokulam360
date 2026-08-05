@@ -179,3 +179,23 @@ The repository currently has build and domain-test commands but no complete CI g
 - A focused financial integrity suite covering idempotency, rollback, audit, outbox, authorization, and organization isolation.
 
 Vercel should remain the final deployment smoke check, not the primary place where financial correctness is discovered.
+
+## Mobile OTP password changes
+
+The authenticated **Account → Change password** flow requires the account's registered mobile number.
+
+For real SMS delivery, configure:
+
+```
+TWILIO_ACCOUNT_SID=AC...
+TWILIO_AUTH_TOKEN=...
+TWILIO_SMS_FROM_NUMBER=+1...
+```
+
+For development-only verification without sending SMS, set:
+
+```
+ALLOW_DEV_OTP=true
+```
+
+Development mode returns the generated OTP only in the authenticated API response. Never set `ALLOW_DEV_OTP=true` in production. Production must use a configured SMS provider; otherwise the password-change request is rejected with a configuration error. OTPs expire after 10 minutes, are single-use, and are rate-limited.
