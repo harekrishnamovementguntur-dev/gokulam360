@@ -1908,6 +1908,7 @@ function SessionScheduler({ batch, onClose }) {
   const [loading, setLoading] = useState(false);
   const [postponeTarget, setPostponeTarget] = useState(null);
   const [postponeDate, setPostponeDate] = useState('');
+  const [postponeReason, setPostponeReason] = useState('');
   const [cancelTarget, setCancelTarget] = useState(null);
   const [cancelReason, setCancelReason] = useState('');
 
@@ -1943,14 +1944,16 @@ function SessionScheduler({ batch, onClose }) {
   const postpone = async (session) => {
     if (!postponeDate) return toast.error('Choose the new session date');
     if (postponeDate === session.date) return toast.error('Choose a different date');
+    if (!postponeReason.trim()) return toast.error('Please enter a postponement reason');
     try {
       await api(`/programs/${batch.id}/cancel-session`, {
         method: 'POST',
-        body: JSON.stringify({ date: session.date, new_date: postponeDate, action: 'postpone' })
+        body: JSON.stringify({ date: session.date, new_date: postponeDate, reason: postponeReason.trim(), action: 'postpone' })
       });
       toast.success(`Session postponed to ${postponeDate}`);
       setPostponeTarget(null);
       setPostponeDate('');
+      setPostponeReason('');
       load();
     } catch (e) { toast.error(e.message); }
   };
@@ -1966,14 +1969,18 @@ function SessionScheduler({ batch, onClose }) {
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
           {sessions.map(s => <div key={s.date} className={`rounded-xl border p-3 ${s.cancelled ? 'bg-rose-500/10 border-rose-500/30' : s.marked ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-card'}`}>
             <div className="text-sm font-semibold">{new Date(`${s.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</div>
+            {s.postponed_from && <div className="text-[11px] text-primary mt-1">Postponed from {new Date(`${s.postponed_from}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}{s.postponement_reason ? ` · ${s.postponement_reason}` : ''}</div>}
             <div className="text-[11px] text-muted-foreground mt-1">{s.cancelled ? <><Badge className="bg-rose-500 text-white">Cancelled</Badge>{s.cancellation_reason && <div className="mt-1">Reason: {s.cancellation_reason}</div>}</> : s.marked ? `${s.present}/${s.total} present` : 'Not marked'}</div>
             {!s.marked && !s.cancelled && <div className="mt-2 space-y-1.5">
-              {postponeTarget === s.date && <Input type="date" value={postponeDate} onChange={e => setPostponeDate(e.target.value)} className="h-8 text-xs" />}
+              {postponeTarget === s.date && <div className="space-y-1.5">
+                <Input type="date" value={postponeDate} onChange={e => setPostponeDate(e.target.value)} className="h-8 text-xs" />
+                <Input value={postponeReason} onChange={e => setPostponeReason(e.target.value)} placeholder="Reason for postponement" className="h-8 text-xs" />
+              </div>}
               <div className="flex gap-1">
                 <Button size="sm" variant="ghost" className="h-7 text-xs text-rose-600" onClick={() => requestCancel(s)}><Trash2 size={12} className="mr-1" /> Cancel</Button>
                 {postponeTarget === s.date ?
                   <Button size="sm" className="h-7 text-xs bg-saffron-gradient" onClick={() => postpone(s)}>Save date</Button> :
-                  <Button size="sm" variant="ghost" className="h-7 text-xs text-primary" onClick={() => { setPostponeTarget(s.date); setPostponeDate(''); }}>Postpone</Button>}
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-primary" onClick={() => { setPostponeTarget(s.date); setPostponeDate(''); setPostponeReason(''); }}>Postpone</Button>}
               </div>
             </div>}
           </div>)}
