@@ -60,6 +60,10 @@ function json(data, status = 200) {
   return NextResponse.json(data, { status });
 }
 
+function attendanceConsumesCredit(status) {
+  return ['present', 'absent', 'late'].includes(status);
+}
+
 function signToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: '7d' });
 }
@@ -115,39 +119,99 @@ function generateSessions(program) {
   return [...sessions].sort();
 }
 
-async function syncEnrollments(db, student, oldProgramIds = []) {
+async function syncEnrollments(db, student, oldProgramIds = [], enrollmentDetails = {}, options = {}) {
   const orgId = student.organization_id;
   const newIds = student.program_ids || [];
   const now = new Date().toISOString();
   const today = now.slice(0, 10);
+  const reuseExistingCredits = options.reuseExistingCredits === true;
   const added = newIds.filter(id => !oldProgramIds.includes(id));
   const removed = oldProgramIds.filter(id => !newIds.includes(id));
+
+  // When an existing student joins another Credit model batch, move the
+  // student's unused credit balance to the new batch instead of creating
+  // another independent credit grant.
+  let transferable = [];
+  if (reuseExistingCredits) {
+    const active = await db.collection('enrollments').find({ organization_id: orgId, student_id: student.id, left_at: null, status: 'active' }).toArray();
+    const activeProgramIds = [...new Set(active.map(e => e.program_id))];
+    const activePrograms = await db.collection('programs').find({ id: { $in: activeProgramIds }, organization_id: orgId }).toArray();
+    const programMap = Object.fromEntries(activePrograms.map(p => [p.id, p]));
+    const history = await db.collection('attendance').find({ organization_id: orgId, student_id: student.id }).toArray();
+    transferable = active
+      .filter(e => (programMap[e.program_id]?.billing_model || 'credit') === 'credit')
+      .map(e => {
+        const enrolledDate = (e.enrolled_at || '').slice(0, 10);
+        const used = history.filter(a => a.program_id === e.program_id && attendanceConsumesCredit(a.status) && a.date >= enrolledDate).length;
+        const credited = Number(e.sessions_credited || 0);
+        return { enrollment: e, used, remaining: Math.max(0, credited - used) };
+      })
+      .filter(item => item.remaining > 0);
+  }
+
   for (const pid of added) {
-    const existing = await db.collection('enrollments').findOne({ student_id: student.id, program_id: pid, left_at: null });
+    const existing = await db.collection('enrollments').findOne({ organization_id: orgId, student_id: student.id, program_id: pid, left_at: null });
     if (existing) continue;
-    const prog = await db.collection('programs').findOne({ id: pid });
-    const allSessions = prog?.sessions || [];
-    // sessions_credited = remaining sessions of this class from today forward
-    const remainingFromToday = allSessions.filter(d => d >= today);
-    const credited = remainingFromToday.length || allSessions.length;
+    const prog = await db.collection('programs').findOne({ id: pid, organization_id: orgId });
+    if (!prog) continue;
+    const model = prog.billing_model || 'credit';
+    const allSessions = prog.sessions || [];
+    const detail = enrollmentDetails[pid] || {};
+    const hasCreditDetail = detail.credit_quantity !== undefined && detail.credit_quantity !== '';
+    const hasFeeDetail = detail.fee_amount !== undefined && detail.fee_amount !== '';
+    let credited = 0;
+    let transferred = 0;
+
+    if (model === 'credit') {
+      if (hasCreditDetail) {
+        credited = Math.max(0, Number(detail.credit_quantity) || 0);
+      } else if (reuseExistingCredits) {
+        const source = transferable.find(item => item.remaining > 0);
+        if (source) {
+          transferred = source.remaining;
+          credited = transferred;
+          source.remaining = 0;
+          await db.collection('enrollments').updateOne(
+            { id: source.enrollment.id, organization_id: orgId },
+            { $set: { sessions_credited: source.used + transferred, sessions_attended: source.used, sessions_remaining: 0, updated_at: now } },
+          );
+        }
+      } else {
+        const remainingFromToday = allSessions.filter(d => d >= today);
+        credited = remainingFromToday.length || allSessions.length;
+      }
+    }
+
+    const feeAmount = hasFeeDetail
+      ? Math.max(0, Number(detail.fee_amount) || 0)
+      : (model === 'date' ? Number(prog.fee_amount || 0) : (reuseExistingCredits && transferred ? 0 : Number(prog.fee_amount || 0)));
+    const paidAmount = Math.min(feeAmount, Math.max(0, Number(detail.amount_paid) || 0));
     await db.collection('enrollments').insertOne({
       id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
       enrolled_at: now, left_at: null, status: 'active',
       sessions_credited: credited,
       created_at: now,
     });
-    if (prog?.fee_amount) {
+    if (feeAmount > 0 || paidAmount > 0) {
       await db.collection('fees').insertOne({
         id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
-        fee_type: 'Term Fee', amount: prog.fee_amount, paid_amount: 0, status: 'pending',
+        fee_type: model === 'date' ? 'Batch Fee' : 'Term Fee', amount: feeAmount, paid_amount: paidAmount,
+        payment_mode: detail.payment_mode || null,
+        collection_date: detail.collection_date || null,
+        collected_by: detail.collected_by || null,
+        notes: detail.notes || '',
+        payment_history: paidAmount > 0 ? [{ id: uuidv4(), amount: paidAmount, mode: detail.payment_mode || null, collection_date: detail.collection_date || null, collected_by: detail.collected_by || null, notes: detail.notes || '', recorded_at: now }] : [],
+        credit_quantity: credited,
+        status: paidAmount >= feeAmount && feeAmount > 0 ? 'paid' : 'pending',
         due_date: prog.start_date || today, created_at: now,
       });
     }
   }
+
   for (const pid of removed) {
     await db.collection('enrollments').updateMany(
-      { student_id: student.id, program_id: pid, left_at: null },
-      { $set: { left_at: now, status: 'left' } }
+      { organization_id: orgId, student_id: student.id, program_id: pid, left_at: null },
+      { $set: { left_at: now, status: 'left' } },
     );
   }
 }
@@ -380,7 +444,7 @@ async function router(req, method) {
       .limit(3)
       .toArray();
     const enrichedEnr = enrollments.map(e => {
-      const attended = att.filter(a => a.program_id === e.program_id && (a.status === 'present' || a.status === 'late') && a.date >= (e.enrolled_at || '').slice(0, 10)).length;
+      const attended = att.filter(a => a.program_id === e.program_id && attendanceConsumesCredit(a.status) && a.date >= (e.enrolled_at || '').slice(0, 10)).length;
       const credited = e.sessions_credited || 0;
       return { ...stripId(e), program_name: pMap[e.program_id]?.name || '-', sessions_attended: attended, sessions_remaining: Math.max(0, credited - attended) };
     });
@@ -520,11 +584,24 @@ async function router(req, method) {
     }
     if (method === 'POST' && !id) {
        const body = await req.json();
+       const enrollmentDetails = resource === 'students' ? (body.enrollment_details || {}) : {};
+       const { enrollment_details: ignoredEnrollmentDetails, ...persistedBody } = body;
        const organizationId = user.role === 'super_admin' ? body.organization_id : user.organization_id;
        if (!organizationId) return json({ error: 'organization_id is required' }, 400);
+       if (resource === 'programs') {
+         const requestedModel = persistedBody.billing_model || 'credit';
+         if (!['credit', 'date'].includes(requestedModel)) return json({ error: 'billing_model must be credit or date' }, 422);
+         if (persistedBody.parent_program_id) {
+           const parent = await db.collection('programs').findOne({ id: persistedBody.parent_program_id, ...orgScope(user) });
+           if (!parent) return json({ error: 'Parent program not found' }, 404);
+           persistedBody.billing_model = parent.billing_model || 'credit';
+         } else {
+           persistedBody.billing_model = requestedModel;
+         }
+       }
        const doc = {
          id: uuidv4(),
-         ...body,
+         ...persistedBody,
          // Tenant ownership is always decided by the server.
          organization_id: organizationId,
          created_at: new Date().toISOString(),
@@ -542,7 +619,7 @@ async function router(req, method) {
       await col.insertOne(doc);
       // Handle student enrollments
       if (resource === 'students' && doc.program_ids?.length) {
-        await syncEnrollments(db, doc, []);
+        await syncEnrollments(db, doc, [], enrollmentDetails, { reuseExistingCredits: false });
       }
       // Log activity for known resources
       if (['students', 'teachers', 'events', 'programs'].includes(resource)) {
@@ -564,18 +641,23 @@ async function router(req, method) {
        const before = await col.findOne({ id, ...orgScope(user) });
        if (!before) return json({ error: 'Not found' }, 404);
        // Do not let callers move records between tenants or alter server-owned fields.
-       const { id: ignoredId, organization_id: ignoredOrganizationId, created_at: ignoredCreatedAt, updated_at: ignoredUpdatedAt, is_deleted: ignoredDeleted, ...changes } = body;
+       const { id: ignoredId, organization_id: ignoredOrganizationId, created_at: ignoredCreatedAt, updated_at: ignoredUpdatedAt, is_deleted: ignoredDeleted, enrollment_details: ignoredEnrollmentDetails, ...changes } = body;
        const updated = { ...changes, updated_at: new Date().toISOString() };
       if (resource === 'events' && changes.is_announcement === true && !before.is_announcement) {
         const selectedCount = await db.collection('events').countDocuments({ organization_id: before.organization_id, is_announcement: true, is_deleted: { $ne: true }, id: { $ne: id } });
         if (selectedCount >= 3) return json({ error: 'Only 3 announcements can be shown to parents at a time' }, 400);
       }
-      if (resource === 'programs') updated.sessions = generateSessions({ ...before, ...body });
+      if (resource === 'programs') {
+        const nextModel = before.parent_program_id ? (before.billing_model || 'credit') : (body.billing_model || before.billing_model || 'credit');
+        if (!['credit', 'date'].includes(nextModel)) return json({ error: 'billing_model must be credit or date' }, 422);
+        updated.billing_model = nextModel;
+        updated.sessions = generateSessions({ ...before, ...body });
+      }
       await col.updateOne({ id, ...orgScope(user) }, { $set: updated });
        const doc = await col.findOne({ id, ...orgScope(user) });
       // Sync student enrollments diff
       if (resource === 'students' && body.program_ids) {
-        await syncEnrollments(db, doc, before?.program_ids || []);
+        await syncEnrollments(db, doc, before?.program_ids || [], body.enrollment_details || {}, { reuseExistingCredits: true });
       }
       return json(stripId(doc));
     }
@@ -600,6 +682,39 @@ async function router(req, method) {
 
   // Enrollments endpoints
   if (resource === 'enrollments') {
+    if (method === 'POST' && id === 'credits') {
+      if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
+      const body = await req.json();
+      const quantity = Number(body.credit_quantity);
+      const totalAmount = Number(body.total_amount ?? body.fee_amount);
+      const amountPaid = Number(body.amount_paid ?? totalAmount);
+      if (!body.enrollment_id || !Number.isInteger(quantity) || quantity <= 0) return json({ error: 'A positive whole-number credit quantity is required' }, 422);
+      if (!Number.isFinite(totalAmount) || totalAmount < 0 || !Number.isFinite(amountPaid) || amountPaid < 0 || amountPaid > totalAmount) return json({ error: 'Valid total and paid amounts are required; paid cannot exceed total' }, 422);
+      const enrollment = await db.collection('enrollments').findOne({ id: body.enrollment_id, ...orgScope(user), left_at: null, status: 'active' });
+      if (!enrollment) return json({ error: 'Active enrollment not found' }, 404);
+      const program = await db.collection('programs').findOne({ id: enrollment.program_id, ...orgScope(user) });
+      if ((program?.billing_model || 'credit') !== 'credit') return json({ error: 'Additional credits are available only for Credit model batches' }, 422);
+      const now = new Date().toISOString();
+      await db.collection('enrollments').updateOne(
+        { id: enrollment.id, ...orgScope(user) },
+        { $inc: { sessions_credited: quantity }, $set: { updated_at: now } },
+      );
+      if (totalAmount > 0 || amountPaid > 0) {
+        await db.collection('fees').insertOne({
+          id: uuidv4(), organization_id: enrollment.organization_id, student_id: enrollment.student_id,
+          program_id: enrollment.program_id, fee_type: 'Credit Purchase', amount: totalAmount, paid_amount: amountPaid,
+          payment_mode: body.payment_mode || 'cash',
+          collection_date: body.collection_date || null,
+          collected_by: body.collected_by || null,
+          notes: body.notes || '',
+          payment_history: amountPaid > 0 ? [{ id: uuidv4(), amount: amountPaid, mode: body.payment_mode || 'cash', collection_date: body.collection_date || null, collected_by: body.collected_by || null, notes: body.notes || '', recorded_at: now }] : [],
+          credit_quantity: quantity,
+          status: amountPaid >= totalAmount && totalAmount > 0 ? 'paid' : 'pending',
+          created_at: now, updated_at: now,
+        });
+      }
+      return json({ ok: true, enrollment_id: enrollment.id, credits_added: quantity, total_amount: totalAmount, amount_paid: amountPaid, outstanding_amount: Math.max(0, totalAmount - amountPaid) });
+    }
     if (method === 'GET') {
       const q = orgScope(user);
       const url2 = new URL(req.url);
@@ -613,7 +728,7 @@ async function router(req, method) {
       const attRecs = await db.collection('attendance').find({ organization_id: user.organization_id }).toArray();
       const enriched = items.map(e => {
         const enrolledDate = (e.enrolled_at || '').slice(0, 10);
-        const attended = attRecs.filter(a => a.student_id === e.student_id && a.program_id === e.program_id && (a.status === 'present' || a.status === 'late') && a.date >= enrolledDate).length;
+        const attended = attRecs.filter(a => a.student_id === e.student_id && a.program_id === e.program_id && ['present', 'absent', 'late'].includes(a.status) && a.date >= enrolledDate).length;
         const credited = e.sessions_credited || (pMap[e.program_id]?.sessions?.length || 0);
         const remaining = Math.max(0, credited - attended);
         return { ...stripId(e), program_name: pMap[e.program_id]?.name || '-', program: pMap[e.program_id] ? stripId(pMap[e.program_id]) : null, sessions_credited: credited, sessions_attended: attended, sessions_remaining: remaining };
@@ -694,6 +809,29 @@ async function router(req, method) {
       created_at: new Date().toISOString(),
     }));
     if (docs.length) await db.collection('attendance').insertMany(docs);
+
+    // Keep the enrollment projection immediately consistent with the immutable
+    // attendance records that were just saved. Reads still recalculate from history.
+    for (const studentId of studentIds) {
+      const enrollment = await db.collection('enrollments').findOne({
+        organization_id: user.organization_id,
+        student_id: studentId,
+        program_id,
+        left_at: null,
+      });
+      if (!enrollment) continue;
+      const attendanceHistory = await db.collection('attendance').find({
+        organization_id: user.organization_id,
+        student_id: studentId,
+        program_id,
+      }).toArray();
+      const used = attendanceHistory.filter(a => attendanceConsumesCredit(a.status)).length;
+      const credited = Number(enrollment.sessions_credited || 0);
+      await db.collection('enrollments').updateOne(
+        { id: enrollment.id, organization_id: user.organization_id },
+        { $set: { sessions_attended: used, sessions_remaining: Math.max(0, credited - used), updated_at: new Date().toISOString() } },
+      );
+    }
     return json({ ok: true, count: docs.length });
   }
 

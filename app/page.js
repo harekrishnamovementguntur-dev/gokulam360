@@ -343,7 +343,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               {view === 'teachers' && <Teachers teachers={teachers} setTeachers={setTeachers} />}
               {view === 'classes' && <Classes />}
               {view === 'attendance' && <Attendance />}
-              {view === 'fees' && <Fees />}
+              {view === 'fees' && <Fees currentUser={user} />}
               {view === 'notifications' && <Notifications students={students} />}
               {view === 'reports' && <Reports />}
               {view === 'events' && <Events />}
@@ -1122,11 +1122,16 @@ function PageHeader({ title, subtitle, icon: Icon, action }) {
    STUDENTS
 ============================================================ */
 function Students({ students, setStudents }) {
+  const [currentUser, setCurrentUser] = useState(null);
   const [programs, setPrograms] = useState([]);
+  const [enrollments, setEnrollments] = useState([]);
+  const [batchDetails, setBatchDetails] = useState({});
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [cardOf, setCardOf] = useState(null);
   const [historyOf, setHistoryOf] = useState(null);
+  const [creditPurchaseFor, setCreditPurchaseFor] = useState(null);
+  const [purchaseForm, setPurchaseForm] = useState({ credit_quantity: '', total_amount: '', amount_paid: '', payment_mode: 'cash', collection_date: '', collected_by: '', notes: '' });
   const [org, setOrg] = useState(null);
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -1135,7 +1140,14 @@ function Students({ students, setStudents }) {
   const fileRef = useRef(null);
 
   const load = () => api('/students').then(r => setStudents(r.items));
-  useEffect(() => { api('/programs').then(r => setPrograms(r.items)); api('/auth/me').then(r => setOrg(r.organization)); }, []);
+  const loadEnrollments = () => api('/enrollments').then(r => setEnrollments(r.items || []));
+  useEffect(() => {
+    api('/programs').then(r => setPrograms(r.items || []));
+    api('/auth/me').then(r => { setOrg(r.organization); setCurrentUser(r.user || null); });
+    loadEnrollments();
+  }, []);
+
+  const batches = useMemo(() => programs.filter(p => p.parent_program_id), [programs]);
 
   const filtered = useMemo(() => {
     let list = students;
@@ -1144,19 +1156,45 @@ function Students({ students, setStudents }) {
     return list;
   }, [students, q, statusFilter]);
 
-  const openEdit = (s) => { setEditing(s); setForm({ ...empty, ...s, program_ids: s.program_ids && s.program_ids.length ? s.program_ids : (s.program_id ? [s.program_id] : []) }); setOpen(true); };
-  const openNew = () => { setEditing(null); setForm({ ...empty, student_id: 'GK-2025-' + String(Math.floor(1000 + Math.random() * 9000)) }); setOpen(true); };
+  const openEdit = (s) => {
+    const selectedIds = s.program_ids && s.program_ids.length ? s.program_ids : (s.program_id ? [s.program_id] : []);
+    const details = Object.fromEntries(enrollments.filter(e => e.student_id === s.id).map(e => [e.program_id, {
+      fee_amount: e.amount || e.program?.fee_amount || '', amount_paid: e.paid_amount || '', credit_quantity: e.sessions_credited || '', payment_mode: e.payment_mode || 'cash', collection_date: e.collection_date || '', collected_by: e.collected_by || '', notes: e.notes || '',
+    }]));
+    setEditing(s); setBatchDetails(details); setForm({ ...empty, ...s, program_ids: selectedIds }); setOpen(true);
+  };
+  const openNew = () => { setEditing(null); setBatchDetails({}); setForm({ ...empty, student_id: 'GK-2025-' + String(Math.floor(1000 + Math.random() * 9000)) }); setOpen(true); };
+  const toggleBatch = (id, selected) => {
+    const ids = form.program_ids || [];
+    setForm({ ...form, program_ids: selected ? ids.filter(x => x !== id) : [...ids, id] });
+    if (selected) {
+      const next = { ...batchDetails }; delete next[id]; setBatchDetails(next);
+    } else setBatchDetails({ ...batchDetails, [id]: { fee_amount: '', amount_paid: '', credit_quantity: '', payment_mode: 'cash', collection_date: new Date().toISOString().slice(0, 10), collected_by: currentUser?.name || '', notes: '' } });
+  };
+  const updateBatchDetail = (id, patch) => setBatchDetails(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }));
   const save = async () => {
     try {
       const isNew = !editing;
-      const payload = { ...form, program_id: form.program_ids?.[0] || form.program_id }; // keep legacy
+      const selectedIds = form.program_ids || [];
+      if (isNew) {
+        const missing = selectedIds.find(id => {
+          const batch = batches.find(item => item.id === id);
+          const detail = batchDetails[id] || {};
+          const isCredit = (batch?.billing_model || 'credit') === 'credit';
+          return detail.fee_amount === '' || (isCredit && !detail.credit_quantity);
+        });
+        if (missing) return toast.error('Enter the fee for every batch and credits for each Credit model batch');
+        const invalidPayment = selectedIds.find(id => Number(batchDetails[id]?.amount_paid || 0) > 0 && (!batchDetails[id]?.payment_mode || !batchDetails[id]?.collection_date || !batchDetails[id]?.collected_by?.trim()));
+        if (invalidPayment) return toast.error('Complete payment mode, collection date, and collector for each payment');
+      }
+      const payload = { ...form, program_id: selectedIds[0] || form.program_id, enrollment_details: isNew ? batchDetails : undefined }; // keep legacy compatibility
       if (editing) await api(`/students/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       else await api('/students', { method: 'POST', body: JSON.stringify(payload) });
       if (isNew) {
         confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#22c55e', '#0ea5e9'] });
         toast.success(`🎉 ${form.first_name} welcomed to ${org?.name || 'the school'}!`);
       } else toast.success('Student updated');
-      setOpen(false); load();
+      setOpen(false); load(); loadEnrollments();
     } catch (e) { toast.error(e.message); }
   };
   const del = async (s) => { if (!confirm(`Remove ${s.first_name}?`)) return; await api(`/students/${s.id}`, { method: 'DELETE' }); toast.success('Removed'); load(); };
@@ -1205,7 +1243,34 @@ function Students({ students, setStudents }) {
     doc.save(`idcard-${cardOf.student_id}.pdf`);
   };
 
-  const counts = useMemo(() => {
+  const creditEnrollments = (studentId) => enrollments.filter(e => e.student_id === studentId && (e.program?.billing_model || 'credit') === 'credit');
+  const creditsFor = (studentId) => creditEnrollments(studentId).reduce((total, e) => {
+      const given = Number(e.sessions_credited || 0);
+      const used = Number(e.sessions_attended || 0);
+      return { given: total.given + given, used: total.used + used, remaining: total.remaining + Math.max(0, Number(e.sessions_remaining ?? (given - used))) };
+    }, { given: 0, used: 0, remaining: 0 });
+  const openCreditPurchase = (student) => {
+    const enrollment = creditEnrollments(student.id)[0];
+    if (!enrollment) return toast.error('This student is not enrolled in a Credit model batch');
+    setCreditPurchaseFor({ student, enrollment });
+    setPurchaseForm({ credit_quantity: '', total_amount: '', amount_paid: '', payment_mode: 'cash', collection_date: new Date().toISOString().slice(0, 10), collected_by: currentUser?.name || '', notes: '' });
+  };
+  const purchaseCredits = async () => {
+    if (!creditPurchaseFor) return;
+    const quantity = Number(purchaseForm.credit_quantity);
+    const totalAmount = Number(purchaseForm.total_amount);
+    const amountPaid = Number(purchaseForm.amount_paid);
+    if (!Number.isInteger(quantity) || quantity <= 0) return toast.error('Enter a whole number of credits');
+    if (!Number.isFinite(totalAmount) || totalAmount < 0 || !Number.isFinite(amountPaid) || amountPaid < 0 || amountPaid > totalAmount) return toast.error('Enter valid total and paid amounts; paid cannot exceed total');
+    if (amountPaid > 0 && (!purchaseForm.collection_date || !purchaseForm.collected_by?.trim())) return toast.error('Complete collection date and collector for a payment');
+    try {
+      await api('/enrollments/credits', { method: 'POST', body: JSON.stringify({ enrollment_id: creditPurchaseFor.enrollment.id, credit_quantity: quantity, total_amount: totalAmount, amount_paid: amountPaid, payment_mode: purchaseForm.payment_mode, collection_date: purchaseForm.collection_date, collected_by: purchaseForm.collected_by.trim(), notes: purchaseForm.notes.trim() }) });
+      toast.success(`${quantity} credits added for ${creditPurchaseFor.student.first_name}`);
+      setCreditPurchaseFor(null); loadEnrollments();
+    } catch (e) { toast.error(e.message); }
+  };
+
+    const counts = useMemo(() => {
     return {
       all: students.length,
       active: students.filter(s => s.status === 'active').length,
@@ -1270,11 +1335,13 @@ function Students({ students, setStudents }) {
               </div>
               <div className="text-[11px] text-muted-foreground mt-3 space-y-0.5">
                 {s.mobile && <div className="flex items-center gap-1.5"><Phone size={11} /> {s.mobile}</div>}
+                {(() => { const credits = creditsFor(s.id); const hasCredits = creditEnrollments(s.id).length > 0; return hasCredits ? <div className="text-[10px] text-primary truncate" title={`${credits.given} granted · ${credits.used} used · ${credits.remaining} left`}>{credits.given} granted · {credits.used} used · {credits.remaining} left</div> : <div className="text-[10px] text-muted-foreground">Date-based attendance</div>; })()}
               </div>
-              <div className="flex gap-1 mt-3 pt-3 border-t">
-                <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setHistoryOf(s)}><Activity size={13} className="mr-1" /> History</Button>
+              <div className="flex flex-wrap gap-1 mt-3 pt-3 border-t">
+                <Button size="sm" variant="ghost" className="min-w-0 flex-1 text-xs h-8" onClick={() => setHistoryOf(s)}><Activity size={13} className="mr-1" /> History</Button>
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setCardOf(s)}><IdCard size={13} className="mr-1" /> ID Card</Button>
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(s)}><Edit3 size={13} className="mr-1" /> Edit</Button>
+                {creditEnrollments(s.id).length > 0 && <Button size="sm" variant="ghost" className="flex-1 text-xs h-8 text-primary" onClick={() => openCreditPurchase(s)}><Plus size={13} className="mr-1" /> Credits</Button>}
                 <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(s)}><Trash2 size={13} /></Button>
               </div>
             </motion.div>
@@ -1333,25 +1400,39 @@ function Students({ students, setStudents }) {
               <div><Label>Mobile</Label><Input value={form.mobile} onChange={e => setForm({ ...form, mobile: e.target.value })} /></div>
               <div><Label>Email</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
               <div className="col-span-2"><Label>Address</Label><Textarea rows={2} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
-              <div className="col-span-2"><Label>Enroll in Classes (select multiple)</Label>
+              <div className="col-span-2"><Label>Enroll in Active Batches (select multiple)</Label>
                 <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 rounded-lg border bg-white/30 dark:bg-white/5">
-                  {programs.map(p => {
+                  {batches.length === 0 ? <div className="col-span-2 p-3 text-xs text-muted-foreground">Create an active batch under Programs first.</div> : batches.filter(isBatchActive).map(p => {
                     const selected = form.program_ids?.includes(p.id);
+                    const parent = programs.find(program => program.id === p.parent_program_id);
                     return (
                       <label key={p.id} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-xs transition ${selected ? 'bg-primary/15 border border-primary/40' : 'bg-white/50 dark:bg-white/5 border border-transparent hover:border-primary/30'}`}>
-                        <input type="checkbox" className="accent-primary" checked={!!selected} onChange={() => {
-                          const ids = form.program_ids || [];
-                          setForm({ ...form, program_ids: selected ? ids.filter(x => x !== p.id) : [...ids, p.id] });
-                        }} />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{p.name}</div>
-                          <div className="text-[9px] text-muted-foreground">{(p.days_of_week || []).map(d => DAY_LABELS[d]).join(', ')} · {fmtINR(p.fee_amount || 0)}</div>
-                        </div>
+                        <input type="checkbox" className="accent-primary" checked={!!selected} onChange={() => toggleBatch(p.id, selected)} />
+                        <div className="flex-1 min-w-0"><div className="font-medium truncate">{parent ? `${parent.name} · ` : ''}{p.name}</div><div className="text-[9px] text-muted-foreground">{(p.days_of_week || []).map(d => DAY_LABELS[d]).join(', ')}</div></div>
                       </label>
                     );
                   })}
                 </div>
-                <div className="text-[10px] text-muted-foreground mt-1">{(form.program_ids || []).length} class(es) selected</div>
+                {!editing && form.program_ids?.length > 0 && <div className="mt-3 space-y-2">
+                  <div className="text-xs font-semibold">Admission details</div>
+                  {form.program_ids.map(id => {
+                    const batch = batches.find(p => p.id === id); const detail = batchDetails[id] || {};
+                    if (!batch) return null;
+                    return <div key={id} className="rounded-xl border bg-white/40 dark:bg-white/5 p-3 space-y-2">
+                      <div className="text-xs font-semibold">{programs.find(p => p.id === batch.parent_program_id)?.name} · {batch.name} <span className="text-[10px] text-muted-foreground">({batch.billing_model === 'date' ? 'Date model' : 'Credit model'})</span></div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div><Label className="text-[10px]">Fee amount</Label><Input type="number" min="0" value={detail.fee_amount ?? batch.fee_amount ?? ''} onChange={e => updateBatchDetail(id, { fee_amount: e.target.value })} placeholder="0" /></div>
+                        {batch.billing_model !== 'date' && <div><Label className="text-[10px]">Credits granted</Label><Input type="number" min="0" value={detail.credit_quantity || ''} onChange={e => updateBatchDetail(id, { credit_quantity: e.target.value })} placeholder="e.g. 16" /></div>}
+                        <div><Label className="text-[10px]">Amount paid now</Label><Input type="number" min="0" value={detail.amount_paid || ''} onChange={e => updateBatchDetail(id, { amount_paid: e.target.value })} placeholder="0" /></div>
+                        <div><Label className="text-[10px]">Payment mode</Label><Select value={detail.payment_mode || 'cash'} onValueChange={v => updateBatchDetail(id, { payment_mode: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="bank_transfer">Bank transfer</SelectItem><SelectItem value="card">Card</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div>
+                        <div><Label className="text-[10px]">Collected on</Label><Input type="date" value={detail.collection_date || new Date().toISOString().slice(0, 10)} onChange={e => updateBatchDetail(id, { collection_date: e.target.value })} /></div>
+                        <div><Label className="text-[10px]">Collected by</Label><Input value={detail.collected_by ?? currentUser?.name ?? ''} onChange={e => updateBatchDetail(id, { collected_by: e.target.value })} placeholder="Logged-in administrator" readOnly={Boolean(currentUser?.name)} /></div>
+                        <div className="col-span-2"><Label className="text-[10px]">Notes</Label><Textarea rows={2} value={detail.notes || ''} onChange={e => updateBatchDetail(id, { notes: e.target.value })} placeholder="Receipt or collection notes" /></div>
+                      </div>
+                    </div>;
+                  })}
+                </div>}
+                <div className="text-[10px] text-muted-foreground mt-1">{(form.program_ids || []).length} active batch{(form.program_ids || []).length === 1 ? '' : 'es'} selected</div>
               </div>
             </TabsContent>
             <TabsContent value="family" className="grid grid-cols-2 gap-3 mt-2">
@@ -1362,6 +1443,22 @@ function Students({ students, setStudents }) {
             </TabsContent>
           </Tabs>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient">{editing ? 'Update' : 'Create'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!creditPurchaseFor} onOpenChange={v => !v && setCreditPurchaseFor(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Purchase more credits</DialogTitle><DialogDescription>Add credits and record the payment for {creditPurchaseFor?.student.first_name} {creditPurchaseFor?.student.last_name}.</DialogDescription></DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-xl bg-primary/5 border p-3 text-sm">Current balance: <b>{creditPurchaseFor ? creditsFor(creditPurchaseFor.student.id).remaining : 0} credits left</b></div>
+            <div><Label>Credits to add</Label><Input type="number" min="1" step="1" value={purchaseForm.credit_quantity} onChange={e => setPurchaseForm({ ...purchaseForm, credit_quantity: e.target.value })} placeholder="e.g. 8" /></div>
+            <div><Label>Total amount</Label><Input type="number" min="0" value={purchaseForm.total_amount} onChange={e => setPurchaseForm({ ...purchaseForm, total_amount: e.target.value })} placeholder="e.g. 800" /></div>
+            <div><Label>Amount paid now</Label><Input type="number" min="0" value={purchaseForm.amount_paid} onChange={e => setPurchaseForm({ ...purchaseForm, amount_paid: e.target.value })} placeholder="0 for unpaid / partial" /></div>
+            <div><Label>Payment mode</Label><Select value={purchaseForm.payment_mode} onValueChange={v => setPurchaseForm({ ...purchaseForm, payment_mode: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="bank_transfer">Bank transfer</SelectItem><SelectItem value="card">Card</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div>
+            <div className="grid grid-cols-2 gap-3"><div><Label>Collected on</Label><Input type="date" value={purchaseForm.collection_date} onChange={e => setPurchaseForm({ ...purchaseForm, collection_date: e.target.value })} /></div><div><Label>Collected by</Label><Input value={purchaseForm.collected_by} onChange={e => setPurchaseForm({ ...purchaseForm, collected_by: e.target.value })} placeholder="Logged-in administrator" readOnly={Boolean(currentUser?.name)} /></div></div>
+            <div><Label>Notes</Label><Textarea rows={3} value={purchaseForm.notes} onChange={e => setPurchaseForm({ ...purchaseForm, notes: e.target.value })} placeholder="Receipt or collection notes" /></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setCreditPurchaseFor(null)}>Cancel</Button><Button onClick={purchaseCredits} className="bg-saffron-gradient">Add credits</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1624,6 +1721,18 @@ function localDateKey(date = new Date()) {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
 }
 
+function countScheduledSessions(startDate, endDate, daysOfWeek = []) {
+  if (!startDate || !endDate || !daysOfWeek.length || endDate < startDate) return 0;
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+  let count = 0;
+  for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+    if (daysOfWeek.includes(cursor.getDay())) count += 1;
+  }
+  return count;
+}
+
 function getScheduledSessionDates(batch) {
   if (Array.isArray(batch.sessions) && batch.sessions.length) {
     return [...new Set(batch.sessions)].sort();
@@ -1644,6 +1753,29 @@ function getScheduledSessionDates(batch) {
   return [...dates].sort();
 }
 
+function getBatchSessionDates(batch) {
+  if (Array.isArray(batch.sessions) && batch.sessions.length) return [...new Set(batch.sessions)].sort();
+  if (!batch.start_date || !batch.end_date || !(batch.days_of_week || []).length) return [];
+  const cancelled = new Set(batch.cancelled_dates || []);
+  const postponed = batch.postponed_dates || {};
+  const dates = new Set();
+  const cur = new Date(batch.start_date + 'T00:00:00');
+  const end = new Date(batch.end_date + 'T00:00:00');
+  while (cur <= end) {
+    if ((batch.days_of_week || []).includes(cur.getDay())) {
+      const date = cur.toISOString().slice(0, 10);
+      if (!cancelled.has(date)) dates.add(postponed[date] || date);
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return [...dates].sort();
+}
+
+function isBatchActive(batch) {
+  const dates = getBatchSessionDates(batch);
+  return batch.status !== 'inactive' && batch.status !== 'completed' && (!dates.length || dates.some(date => date >= localDateKey()));
+}
+
 function Classes() {
   const [items, setItems] = useState([]);
   const [students, setStudents] = useState([]);
@@ -1651,7 +1783,8 @@ function Classes() {
   const [editing, setEditing] = useState(null);
   const [parentProgram, setParentProgram] = useState(null);
   const [schedulerBatch, setSchedulerBatch] = useState(null);
-  const empty = { name: '', description: '', age_group: '', duration_months: 4, capacity: 30, start_date: '', end_date: '', days_of_week: [0], fee_amount: 1500 };
+  const [showCompleted, setShowCompleted] = useState(false);
+  const empty = { name: '', description: '', age_group: '', billing_model: 'credit', duration_months: 4, capacity: 30, start_date: '', end_date: '', days_of_week: [0], fee_amount: 0 };
   const [form, setForm] = useState(empty);
   const load = () => api('/programs').then(r => setItems(r.items || []));
   useEffect(() => { load(); api('/students').then(r => setStudents(r.items || [])); }, []);
@@ -1666,10 +1799,10 @@ function Classes() {
     try {
       const payload = {
         ...form,
-        ...(parentProgram ? { parent_program_id: parentProgram.id } : { parent_program_id: null }),
-        duration_months: Number(form.duration_months) || 0,
+        billing_model: parentProgram?.billing_model || form.billing_model || 'credit',
+        ...(parentProgram ? { parent_program_id: parentProgram.id } : { parent_program_id: null, age_group: undefined, fee_amount: undefined, duration_months: undefined }),
         capacity: Number(form.capacity) || 0,
-        fee_amount: Number(form.fee_amount) || 0,
+        fee_amount: parentProgram && form.billing_model === 'date' ? Number(form.fee_amount) || 0 : undefined,
       };
       if (editing) await api(`/programs/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       else await api('/programs', { method: 'POST', body: JSON.stringify(payload) });
@@ -1680,7 +1813,7 @@ function Classes() {
   };
   const del = async (p) => { if (!confirm(`Delete ${p.name}?`)) return; await api(`/programs/${p.id}`, { method: 'DELETE' }); toast.success('Deleted'); load(); };
   const openNewProgram = () => { setEditing(null); setParentProgram(null); setForm(empty); setOpen(true); };
-  const openNewBatch = (program) => { setEditing(null); setParentProgram(program); setForm({ ...empty, name: `${program.name} Batch`, age_group: program.age_group || '' }); setOpen(true); };
+  const openNewBatch = (program) => { setEditing(null); setParentProgram(program); setForm({ ...empty, name: `${program.name} Batch`, age_group: '', billing_model: program.billing_model || 'credit', fee_amount: program.billing_model === 'date' ? 0 : 0 }); setOpen(true); };
   const openEdit = (p) => { setEditing(p); setParentProgram(p.parent_program_id ? programs.find(x => x.id === p.parent_program_id) : null); setForm({ ...empty, ...p, days_of_week: p.days_of_week || [0] }); setOpen(true); };
 
   return (
@@ -1689,9 +1822,16 @@ function Classes() {
         action={<Button className="bg-saffron-gradient shadow" onClick={openNewProgram}><Plus size={15} className="mr-1" /> New Program</Button>} />
 
       {programs.length === 0 ? <EmptyState text="No programs yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openNewProgram}><Plus size={14} className="mr-1" />Create first program</Button>} /> : (
-        <div className="space-y-5">
+        <>
+          <div className="flex gap-2 rounded-xl glass p-1 w-fit">
+            <Button size="sm" variant={!showCompleted ? 'default' : 'ghost'} onClick={() => setShowCompleted(false)}>Active Programs</Button>
+            <Button size="sm" variant={showCompleted ? 'default' : 'ghost'} onClick={() => setShowCompleted(true)}>Completed Programs</Button>
+          </div>
+          <div className="space-y-5">
           {programs.map((p, i) => {
-            const batches = batchesFor(p.id);
+            const allBatches = batchesFor(p.id);
+            const batches = allBatches.filter(batch => showCompleted ? !isBatchActive(batch) : isBatchActive(batch));
+            if (!batches.length) return null;
             return (
               <motion.section key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="rounded-3xl glass p-5 md:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1700,7 +1840,7 @@ function Classes() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2"><h2 className="text-lg font-bold truncate">{p.name}</h2><Badge variant="secondary">Program</Badge></div>
                       <p className="text-sm text-muted-foreground mt-1 max-w-2xl">{p.description || 'Academic program'}</p>
-                      <div className="text-xs text-muted-foreground mt-2">{batches.length} batch{batches.length !== 1 ? 'es' : ''} · {p.age_group || 'All age groups'}</div>
+                      <div className="text-xs text-muted-foreground mt-2">{batches.length} batch{batches.length !== 1 ? 'es' : ''} · {p.billing_model === 'date' ? 'Date model' : 'Credit model'}</div>
                     </div>
                   </div>
                   <div className="flex gap-1 shrink-0">
@@ -1735,7 +1875,8 @@ function Classes() {
               </motion.section>
             );
           })}
-        </div>
+          </div>
+        </>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
@@ -1744,12 +1885,14 @@ function Classes() {
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2"><Label>{parentProgram ? 'Batch name' : 'Program name'}</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder={parentProgram ? 'e.g. Sunday School — 2026 Batch A' : 'e.g. Sunday School'} /></div>
             <div className="col-span-2"><Label>Description</Label><Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder={parentProgram ? 'Describe this batch' : 'Describe the program'} /></div>
-            {!parentProgram && <div className="col-span-2"><Label>Age group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="6-14" /></div>}
+            {!parentProgram && <div className="col-span-2 rounded-xl border bg-primary/5 p-3"><Label>Program model</Label><div className="grid grid-cols-2 gap-2 mt-2"><label className={`flex items-center gap-2 rounded-lg border p-3 text-sm cursor-pointer ${form.billing_model === 'credit' ? 'border-primary bg-primary/10' : ''}`}><input type="checkbox" checked={form.billing_model === 'credit'} onChange={() => setForm({ ...form, billing_model: 'credit' })} /> Credit model</label><label className={`flex items-center gap-2 rounded-lg border p-3 text-sm cursor-pointer ${form.billing_model === 'date' ? 'border-primary bg-primary/10' : ''}`}><input type="checkbox" checked={form.billing_model === 'date'} onChange={() => setForm({ ...form, billing_model: 'date' })} /> Date model</label></div><div className="text-[10px] text-muted-foreground mt-2">Credit model uses purchased credits. Date model uses the batch fee and duration.</div></div>}
             {parentProgram && <>
-              <div className="col-span-2"><Label>Session days *</Label><DaysPicker value={form.days_of_week} onChange={v => setForm({ ...form, days_of_week: v })} /><div className="text-[10px] text-muted-foreground mt-1.5">{form.days_of_week.length ? `Runs ${form.days_of_week.map(d => DAY_FULL[d]).join(', ')}` : 'Select at least one day'}</div></div>
+              <div><Label>Age group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="e.g. 6-14" /></div>
               <div><Label>Capacity</Label><Input type="number" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} /></div>
+              {parentProgram && parentProgram.billing_model === 'date' && <div className="col-span-2"><Label>Fee for this batch</Label><Input type="number" min="0" value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} placeholder="0" /></div>}
               <div><Label>Start date</Label><Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} /></div>
               <div><Label>End date</Label><Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} /></div>
+              <div className="col-span-2"><Label>Session days *</Label><DaysPicker value={form.days_of_week} onChange={v => setForm({ ...form, days_of_week: v })} /><div className="text-[10px] text-muted-foreground mt-1.5">{form.days_of_week.length ? `Runs ${form.days_of_week.map(d => DAY_FULL[d]).join(', ')}` : 'Select at least one day'}</div><div className="mt-2 rounded-lg bg-primary/5 border border-primary/15 px-3 py-2 text-xs font-medium text-primary">{(() => { const count = countScheduledSessions(form.start_date, form.end_date, form.days_of_week); return count ? `${count} session${count === 1 ? '' : 's'} will be scheduled` : 'Choose a valid date range and at least one session day to see the session count'; })()}</div></div>
             </>}
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient" disabled={!!parentProgram && form.days_of_week.length === 0}>{editing ? 'Update' : `Create ${parentProgram ? 'Batch' : 'Program'}`}</Button></DialogFooter>
@@ -1853,7 +1996,7 @@ function Attendance() {
       const nearest = r.sessions?.filter(s => s.is_past || s.is_today).slice(-1)[0];
       setDate((todayS || nearest || r.sessions?.[0])?.date || '');
     });
-    api(`/enrollments?program_id=${program}`).then(r => setEnrollments(r.items));
+    api(`/enrollments?program_id=${program}`).then(r => setEnrollments(r.items || []));
   }, [program]);
   useEffect(() => {
     if (!program || !date) { setExisting({}); return; }
@@ -1882,13 +2025,13 @@ function Attendance() {
       await api('/attendance-bulk', { method: 'POST', body: JSON.stringify({ date, program_id: program, records }) });
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#22c55e', '#7c3aed'] });
       toast.success(`Attendance saved for ${records.length} students`);
-      api(`/programs/${program}/sessions`).then(r => setSessions(r.sessions || []));
+      Promise.all([api(`/programs/${program}/sessions`), api(`/enrollments?program_id=${program}`)]).then(([sessionResult, enrollmentResult]) => { setSessions(sessionResult.sessions || []); setEnrollments(enrollmentResult.items || []); });
     } catch (e) { toast.error(e.message); }
   };
 
   const counts = useMemo(() => {
-    const c = { present: 0, absent: 0, late: 0, excused: 0 };
-    list.forEach(s => { const v = marks[s.id]; if (v) c[v]++; });
+    const c = { present: 0, absent: 0 };
+    list.forEach(s => { const v = marks[s.id]; if (v === 'present' || v === 'absent') c[v]++; });
     return c;
   }, [marks, list]);
 
@@ -1908,7 +2051,7 @@ function Attendance() {
         <div className="min-w-[260px]"><Label className="text-[11px]">Batch</Label>
           <Select value={program} onValueChange={setProgram}>
             <SelectTrigger><SelectValue placeholder="Select a batch" /></SelectTrigger>
-            <SelectContent>{programs.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+            <SelectContent>{programs.filter(p => p.parent_program_id).map(batch => <SelectItem key={batch.id} value={batch.id}>{batch.name}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         {selectedProgram && (
@@ -1945,12 +2088,12 @@ function Attendance() {
                 if (!confirm(`Cancel session on ${d.toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long' })}? Students won't be charged for this session.`)) return;
                 await api(`/programs/${program}/cancel-session`, { method: 'POST', body: JSON.stringify({ date: s.date, action: 'cancel' }) });
                 toast.success('Session cancelled');
-                api(`/programs/${program}/sessions`).then(r => setSessions(r.sessions || []));
+                Promise.all([api(`/programs/${program}/sessions`), api(`/enrollments?program_id=${program}`)]).then(([sessionResult, enrollmentResult]) => { setSessions(sessionResult.sessions || []); setEnrollments(enrollmentResult.items || []); });
               };
               return (
                 <div key={s.date} className="relative shrink-0 group">
                   <button onClick={() => setDate(s.date)}
-                    className={`rounded-xl px-3 py-2 min-w-[76px] transition ${cls}`}>
+                    className={`relative rounded-xl px-3 pr-9 py-2 min-w-[76px] transition ${cls}`}>
                     <div className="text-[9px] uppercase font-semibold opacity-80">{d.toLocaleString('en', { month: 'short' })}</div>
                     <div className="text-lg font-bold leading-none">{d.getDate()}</div>
                     <div className="text-[9px] opacity-80 mt-0.5">{d.toLocaleString('en', { weekday: 'short' })}</div>
@@ -1959,7 +2102,7 @@ function Attendance() {
                   </button>
                   {!s.marked && !s.is_past && (
                     <button onClick={cancelSession}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[9px] opacity-0 group-hover:opacity-100 transition hover:bg-rose-600" title="Cancel this session">✕</button>
+                      className="absolute top-1 right-1 z-10 w-6 h-6 rounded-full bg-rose-500 text-white text-[10px] opacity-100 transition hover:bg-rose-600" title="Cancel this session">✕</button>
                   )}
                 </div>
               );
@@ -1982,12 +2125,10 @@ function Attendance() {
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {[
           { k: 'present', l: 'Present', c: counts.present, grad: 'bg-emerald-gradient' },
           { k: 'absent', l: 'Absent', c: counts.absent, grad: 'bg-rose-gradient' },
-          { k: 'late', l: 'Late', c: counts.late, grad: 'bg-saffron-gradient' },
-          { k: 'excused', l: 'Excused', c: counts.excused, grad: 'bg-teal-gradient' },
         ].map(s => (
           <div key={s.k} className="rounded-2xl glass p-4 flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl ${s.grad} grid place-items-center text-white`}><ClipboardCheck size={18} /></div>
@@ -2025,8 +2166,8 @@ function Attendance() {
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {['present', 'absent', 'late', 'excused'].map(v => (
+                  <div className="flex flex-wrap justify-end gap-1.5 shrink-0 max-w-[min(100%,18rem)]">
+                    {['present', 'absent'].map(v => (
                       <button key={v} onClick={() => setMark(s.id, v)}
                         className={`text-[11px] px-2.5 py-1 rounded-full capitalize font-medium transition ${chip(v, marks[s.id] === v)}`}>{v}</button>
                     ))}
@@ -2043,24 +2184,75 @@ function Attendance() {
 /* ============================================================
    FEES
 ============================================================ */
-function Fees() {
+function Fees({ currentUser }) {
   const [items, setItems] = useState([]);
   const [students, setStudents] = useState([]);
-  useEffect(() => { api('/fees').then(r => setItems(r.items)); api('/students').then(r => setStudents(r.items)); }, []);
+  const [programs, setPrograms] = useState([]);
+  const [programFilter, setProgramFilter] = useState('');
+  const [paymentFor, setPaymentFor] = useState(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMode, setPaymentMode] = useState('cash');
+  const [collectionDate, setCollectionDate] = useState('');
+  const [collectedBy, setCollectedBy] = useState('');
+  const [paymentNotes, setPaymentNotes] = useState('');
+  const refresh = () => api('/fees').then(r => setItems(r.items || []));
+  useEffect(() => {
+    refresh();
+    api('/students').then(r => setStudents(r.items || []));
+    api('/programs').then(r => setPrograms(r.items || []));
+  }, []);
   const sMap = Object.fromEntries(students.map(s => [s.id, s]));
-  const pending = items.filter(f => f.status === 'pending');
-  const paid = items.filter(f => f.status === 'paid');
-  const totalPending = pending.reduce((a, f) => a + (f.amount - (f.paid_amount || 0)), 0);
-  const totalPaid = paid.reduce((a, f) => a + (f.paid_amount || 0), 0);
-  const markPaid = async (f) => {
-    await api(`/fees/${f.id}`, { method: 'PUT', body: JSON.stringify({ status: 'paid', paid_amount: f.amount, paid_at: new Date().toISOString() }) });
-    api('/fees').then(r => setItems(r.items));
+  const batches = programs.filter(p => p.parent_program_id);
+  const visibleItems = programFilter ? items.filter(f => f.program_id === programFilter) : items;
+  const pending = visibleItems.filter(f => Number(f.amount || 0) > Number(f.paid_amount || 0));
+  const paid = visibleItems.filter(f => Number(f.paid_amount || 0) > 0);
+  const totalPending = pending.reduce((a, f) => a + Math.max(0, Number(f.amount || 0) - Number(f.paid_amount || 0)), 0);
+  const totalPaid = paid.reduce((a, f) => a + Number(f.paid_amount || 0), 0);
+  const openPayment = (fee) => {
+    setPaymentFor(fee);
+    setPaymentAmount(String(Math.max(0, Number(fee.amount || 0) - Number(fee.paid_amount || 0))));
+    setPaymentMode(fee.payment_mode || 'cash');
+    setCollectionDate(new Date().toISOString().slice(0, 10));
+    setCollectedBy(currentUser?.name || '');
+    setPaymentNotes('');
+  };
+  const addPayment = async () => {
+    if (!paymentFor) return;
+    const amount = Number(paymentAmount);
+    const outstanding = Math.max(0, Number(paymentFor.amount || 0) - Number(paymentFor.paid_amount || 0));
+    if (!Number.isFinite(amount) || amount <= 0 || amount > outstanding) { toast.error(`Enter an amount between ₹1 and ₹${outstanding.toLocaleString('en-IN')}`); return; }
+    if (!collectionDate) { toast.error('Select the collection date'); return; }
+    if (!collectedBy.trim()) { toast.error('Enter who collected this payment'); return; }
+    const now = new Date().toISOString();
+    const nextPaid = Number(paymentFor.paid_amount || 0) + amount;
+    const history = Array.isArray(paymentFor.payment_history) ? paymentFor.payment_history : [];
+    await api(`/fees/${paymentFor.id}`, { method: 'PUT', body: JSON.stringify({
+      paid_amount: nextPaid, status: nextPaid >= Number(paymentFor.amount || 0) ? 'paid' : 'pending', paid_at: now,
+      payment_mode: paymentMode, collection_date: collectionDate, collected_by: collectedBy.trim(), notes: paymentNotes.trim(),
+      payment_history: [...history, { id: crypto.randomUUID(), amount, mode: paymentMode, collected_by: collectedBy.trim(), collected_at: collectionDate, notes: paymentNotes.trim(), recorded_at: now }],
+    })});
+    setPaymentFor(null); await refresh();
     confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 }, colors: ['#7c3aed', '#0ea5e9'] });
-    toast.success('Payment received 💰');
+    toast.success(nextPaid >= Number(paymentFor.amount || 0) ? 'Payment completed 💰' : 'Partial payment recorded 💰');
   };
   return (
     <div className="space-y-5">
       <PageHeader title="Fees" subtitle="Track collections & pending dues" icon={IndianRupee} />
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-muted-foreground">Classify by</span>
+        <Select value={programFilter || 'all'} onValueChange={v => setProgramFilter(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-72"><SelectValue placeholder="All programs & batches" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All programs & batches</SelectItem>
+            {batches.map(batch => {
+              const parent = programs.find(p => p.id === batch.parent_program_id);
+              return <SelectItem key={batch.id} value={batch.id}>
+                <span className="flex items-center gap-2 min-w-0"><span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary truncate max-w-28">{parent?.name || 'Program'}</span><ChevronRight size={12} className="shrink-0 text-muted-foreground" /><span className="truncate">{batch.name}</span></span>
+              </SelectItem>;
+            })}
+          </SelectContent>
+        </Select>
+      </div>
       <div className="grid md:grid-cols-3 gap-4">
         <div className="rounded-2xl relative overflow-hidden p-5 text-white shadow-xl" style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}>
           <div className="absolute -right-4 -bottom-4 opacity-20"><IndianRupee size={80} /></div>
@@ -2082,9 +2274,9 @@ function Fees() {
       </div>
       <div className="rounded-2xl glass overflow-hidden">
         <Table>
-          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead><TableHead></TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Program / Batch</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Pending</TableHead><TableHead>Collection</TableHead><TableHead>Notes</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead><TableHead></TableHead></TableRow></TableHeader>
           <TableBody>
-            {items.map(f => {
+            {visibleItems.map(f => {
               const s = sMap[f.student_id];
               return (
                 <TableRow key={f.id}>
@@ -2096,18 +2288,64 @@ function Fees() {
                       <div className="text-sm font-medium">{s ? `${s.first_name} ${s.last_name}` : '-'}</div>
                     </div>
                   </TableCell>
-                  <TableCell>{f.fee_type}</TableCell>
+                  <TableCell className="text-xs">{(() => { const batch = programs.find(p => p.id === f.program_id); const parent = batch && programs.find(p => p.id === batch.parent_program_id); return batch ? <div><div className="font-medium">{parent?.name || 'Program'}</div><div className="text-muted-foreground">{batch.name}</div></div> : '—'; })()}</TableCell><TableCell>{f.fee_type}</TableCell>
                   <TableCell>{fmtINR(f.amount)}</TableCell>
                   <TableCell>{fmtINR(f.paid_amount)}</TableCell>
+                  <TableCell className={Number(f.amount || 0) > Number(f.paid_amount || 0) ? 'font-semibold text-rose-600' : 'text-muted-foreground'}>{fmtINR(Math.max(0, Number(f.amount || 0) - Number(f.paid_amount || 0)))}</TableCell>
+                  <TableCell className="text-xs"><div>{f.collected_by || f.payment_history?.[f.payment_history.length - 1]?.collected_by || '—'}</div><div className="text-muted-foreground">{f.collection_date || f.payment_history?.[f.payment_history.length - 1]?.collected_at || '—'}</div></TableCell>
+                  <TableCell className="max-w-40 truncate text-xs text-muted-foreground" title={f.notes || f.payment_history?.[f.payment_history.length - 1]?.notes || ''}>{f.notes || f.payment_history?.[f.payment_history.length - 1]?.notes || '—'}</TableCell>
                   <TableCell><Badge className={f.status === 'paid' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-rose-500 hover:bg-rose-600'}>{f.status}</Badge></TableCell>
                   <TableCell className="text-xs text-muted-foreground">{f.due_date}</TableCell>
-                  <TableCell className="text-right">{f.status !== 'paid' && <Button size="sm" className="bg-saffron-gradient" onClick={() => markPaid(f)}>Mark Paid</Button>}</TableCell>
+                  <TableCell className="text-right">{Number(f.amount || 0) > Number(f.paid_amount || 0) && <Button size="sm" className="bg-saffron-gradient" onClick={() => openPayment(f)}>Add Payment</Button>}</TableCell>
                 </TableRow>
               );
             })}
           </TableBody>
         </Table>
       </div>
+      <Dialog open={Boolean(paymentFor)} onOpenChange={() => setPaymentFor(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add Payment</DialogTitle>
+            <DialogDescription>Record a full or partial payment. The remaining amount stays due.</DialogDescription>
+          </DialogHeader>
+          {paymentFor ? (
+            <div className="space-y-4">
+              <div className="rounded-xl bg-muted/50 p-3 text-sm">
+                <div className="font-medium">
+                  {sMap[paymentFor.student_id] ? sMap[paymentFor.student_id].first_name + ' ' + sMap[paymentFor.student_id].last_name : 'Student'}
+                </div>
+                <div className="text-muted-foreground">
+                  Outstanding: {fmtINR(Math.max(0, Number(paymentFor.amount || 0) - Number(paymentFor.paid_amount || 0)))}
+                </div>
+              </div>
+              <div>
+                <Label>Amount</Label>
+                <Input type="number" min="1" max={Math.max(0, Number(paymentFor.amount || 0) - Number(paymentFor.paid_amount || 0))} value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="Enter amount" />
+              </div>
+              <div>
+                <Label>Payment mode</Label>
+                <select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={paymentMode} onChange={e => setPaymentMode(e.target.value)}>
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="bank_transfer">Bank transfer</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Collected on</Label><Input type="date" value={collectionDate} onChange={e => setCollectionDate(e.target.value)} /></div>
+                <div><Label>Collected by</Label><Input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Logged-in administrator" readOnly={Boolean(currentUser?.name)} /></div>
+              </div>
+              <div><Label>Notes</Label><Textarea rows={3} value={paymentNotes} onChange={e => setPaymentNotes(e.target.value)} placeholder="Who collected it, receipt details, or follow-up notes" /></div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setPaymentFor(null)}>Cancel</Button>
+                <Button className="bg-saffron-gradient" onClick={addPayment}>Save Payment</Button>
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
