@@ -2185,6 +2185,9 @@ function Fees() {
   const [paymentFor, setPaymentFor] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMode, setPaymentMode] = useState('cash');
+  const [collectionDate, setCollectionDate] = useState('');
+  const [collectedBy, setCollectedBy] = useState('');
+  const [paymentNotes, setPaymentNotes] = useState('');
   const refresh = () => api('/fees').then(r => setItems(r.items || []));
   useEffect(() => {
     refresh();
@@ -2198,18 +2201,28 @@ function Fees() {
   const paid = visibleItems.filter(f => Number(f.paid_amount || 0) > 0);
   const totalPending = pending.reduce((a, f) => a + Math.max(0, Number(f.amount || 0) - Number(f.paid_amount || 0)), 0);
   const totalPaid = paid.reduce((a, f) => a + Number(f.paid_amount || 0), 0);
-  const openPayment = (fee) => { setPaymentFor(fee); setPaymentAmount(''); setPaymentMode(fee.payment_mode || 'cash'); };
+  const openPayment = (fee) => {
+    setPaymentFor(fee);
+    setPaymentAmount('');
+    setPaymentMode(fee.payment_mode || 'cash');
+    setCollectionDate(new Date().toISOString().slice(0, 10));
+    setCollectedBy('');
+    setPaymentNotes('');
+  };
   const addPayment = async () => {
     if (!paymentFor) return;
     const amount = Number(paymentAmount);
     const outstanding = Math.max(0, Number(paymentFor.amount || 0) - Number(paymentFor.paid_amount || 0));
     if (!Number.isFinite(amount) || amount <= 0 || amount > outstanding) { toast.error(`Enter an amount between ₹1 and ₹${outstanding.toLocaleString('en-IN')}`); return; }
+    if (!collectionDate) { toast.error('Select the collection date'); return; }
+    if (!collectedBy.trim()) { toast.error('Enter who collected this payment'); return; }
     const now = new Date().toISOString();
     const nextPaid = Number(paymentFor.paid_amount || 0) + amount;
     const history = Array.isArray(paymentFor.payment_history) ? paymentFor.payment_history : [];
     await api(`/fees/${paymentFor.id}`, { method: 'PUT', body: JSON.stringify({
       paid_amount: nextPaid, status: nextPaid >= Number(paymentFor.amount || 0) ? 'paid' : 'pending', paid_at: now,
-      payment_mode: paymentMode, payment_history: [...history, { id: crypto.randomUUID(), amount, mode: paymentMode, paid_at: now }],
+      payment_mode: paymentMode, collection_date: collectionDate, collected_by: collectedBy.trim(), notes: paymentNotes.trim(),
+      payment_history: [...history, { id: crypto.randomUUID(), amount, mode: paymentMode, collected_by: collectedBy.trim(), collected_at: collectionDate, notes: paymentNotes.trim(), recorded_at: now }],
     })});
     setPaymentFor(null); await refresh();
     confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 }, colors: ['#7c3aed', '#0ea5e9'] });
@@ -2221,9 +2234,15 @@ function Fees() {
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-sm font-medium text-muted-foreground">Classify by</span>
         <Select value={programFilter || 'all'} onValueChange={v => setProgramFilter(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-64"><SelectValue placeholder="All programs & batches" /></SelectTrigger>
-          <SelectContent><SelectItem value="all">All programs & batches</SelectItem>
-            {batches.map(batch => { const parent = programs.find(p => p.id === batch.parent_program_id); return <SelectItem key={batch.id} value={batch.id}>{parent?.name || 'Program'} · {batch.name}</SelectItem>; })}
+          <SelectTrigger className="w-72"><SelectValue placeholder="All programs & batches" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All programs & batches</SelectItem>
+            {batches.map(batch => {
+              const parent = programs.find(p => p.id === batch.parent_program_id);
+              return <SelectItem key={batch.id} value={batch.id}>
+                <span className="flex items-center gap-2 min-w-0"><span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary truncate max-w-28">{parent?.name || 'Program'}</span><ChevronRight size={12} className="shrink-0 text-muted-foreground" /><span className="truncate">{batch.name}</span></span>
+              </SelectItem>;
+            })}
           </SelectContent>
         </Select>
       </div>
@@ -2248,7 +2267,7 @@ function Fees() {
       </div>
       <div className="rounded-2xl glass overflow-hidden">
         <Table>
-          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Program / Batch</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead><TableHead></TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Program / Batch</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Pending</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead><TableHead></TableHead></TableRow></TableHeader>
           <TableBody>
             {visibleItems.map(f => {
               const s = sMap[f.student_id];
@@ -2265,6 +2284,7 @@ function Fees() {
                   <TableCell className="text-xs">{(() => { const batch = programs.find(p => p.id === f.program_id); const parent = batch && programs.find(p => p.id === batch.parent_program_id); return batch ? <div><div className="font-medium">{parent?.name || 'Program'}</div><div className="text-muted-foreground">{batch.name}</div></div> : '—'; })()}</TableCell><TableCell>{f.fee_type}</TableCell>
                   <TableCell>{fmtINR(f.amount)}</TableCell>
                   <TableCell>{fmtINR(f.paid_amount)}</TableCell>
+                  <TableCell className={Number(f.amount || 0) > Number(f.paid_amount || 0) ? 'font-semibold text-rose-600' : 'text-muted-foreground'}>{fmtINR(Math.max(0, Number(f.amount || 0) - Number(f.paid_amount || 0)))}</TableCell>
                   <TableCell><Badge className={f.status === 'paid' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-rose-500 hover:bg-rose-600'}>{f.status}</Badge></TableCell>
                   <TableCell className="text-xs text-muted-foreground">{f.due_date}</TableCell>
                   <TableCell className="text-right">{Number(f.amount || 0) > Number(f.paid_amount || 0) && <Button size="sm" className="bg-saffron-gradient" onClick={() => openPayment(f)}>Add Payment</Button>}</TableCell>
@@ -2304,6 +2324,11 @@ function Fees() {
                   <option value="other">Other</option>
                 </select>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><Label>Collected on</Label><Input type="date" value={collectionDate} onChange={e => setCollectionDate(e.target.value)} /></div>
+                <div><Label>Collected by</Label><Input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Name" /></div>
+              </div>
+              <div><Label>Notes</Label><Textarea rows={3} value={paymentNotes} onChange={e => setPaymentNotes(e.target.value)} placeholder="Who collected it, receipt details, or follow-up notes" /></div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => setPaymentFor(null)}>Cancel</Button>
                 <Button className="bg-saffron-gradient" onClick={addPayment}>Save Payment</Button>
