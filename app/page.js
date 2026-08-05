@@ -1620,6 +1620,30 @@ function DaysPicker({ value = [], onChange }) {
 /* ============================================================
    PROGRAMS → BATCHES → SESSION SCHEDULER
 ============================================================ */
+function localDateKey(date = new Date()) {
+  return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
+}
+
+function getScheduledSessionDates(batch) {
+  if (Array.isArray(batch.sessions) && batch.sessions.length) {
+    return [...new Set(batch.sessions)].sort();
+  }
+  if (!batch.start_date || !batch.end_date || !(batch.days_of_week || []).length) return [];
+  const cancelled = new Set(batch.cancelled_dates || []);
+  const postponed = batch.postponed_dates || {};
+  const dates = new Set();
+  const cur = new Date(batch.start_date + 'T00:00:00');
+  const end = new Date(batch.end_date + 'T00:00:00');
+  while (cur <= end) {
+    if ((batch.days_of_week || []).includes(cur.getDay())) {
+      const date = cur.toISOString().slice(0, 10);
+      if (!cancelled.has(date)) dates.add(postponed[date] || date);
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return [...dates].sort();
+}
+
 function Classes() {
   const [items, setItems] = useState([]);
   const [students, setStudents] = useState([]);
@@ -1693,11 +1717,14 @@ function Classes() {
                     {batches.map(batch => {
                       const enrolled = enrolledCount(batch);
                       const days = batch.days_of_week || [];
+                      const scheduledDates = getScheduledSessionDates(batch);
+                      const scheduledCount = scheduledDates.length;
+                      const remainingCount = scheduledDates.filter(date => date >= localDateKey()).length;
                       const pct = Math.min(100, Math.round((enrolled / (batch.capacity || 1)) * 100));
                       return <div key={batch.id} className="rounded-2xl bg-white/50 dark:bg-black/10 border p-4">
                         <div className="flex items-start justify-between gap-2"><div className="font-semibold truncate">{batch.name}</div><Badge variant="outline">Batch</Badge></div>
                         <div className="mt-2 flex flex-wrap gap-1">{days.length ? days.map(d => <span key={d} className="rounded-md bg-primary/10 px-2 py-1 text-[10px] font-medium">{DAY_LABELS[d]}</span>) : <span className="text-xs text-muted-foreground">Schedule not set</span>}</div>
-                        <div className="mt-3 grid grid-cols-2 text-center gap-2"><div><div className="font-bold">{enrolled}</div><div className="text-[10px] text-muted-foreground">Enrolled</div></div><div><div className="font-bold">{batch.capacity || 0}</div><div className="text-[10px] text-muted-foreground">Capacity</div></div></div>
+                        <div className="mt-3 grid grid-cols-4 text-center gap-2"><div><div className="font-bold">{enrolled}</div><div className="text-[10px] text-muted-foreground">Enrolled</div></div><div><div className="font-bold">{batch.capacity || 0}</div><div className="text-[10px] text-muted-foreground">Capacity</div></div><div><div className="font-bold">{scheduledCount}</div><div className="text-[10px] text-muted-foreground">Scheduled</div></div><div><div className="font-bold text-primary">{remainingCount}</div><div className="text-[10px] text-muted-foreground">Remaining</div></div></div>
                         <div className="mt-3"><div className="flex justify-between text-[10px] text-muted-foreground mb-1"><span>Fill rate</span><span>{pct}%</span></div><Progress value={pct} className="h-1.5" /></div>
                         <div className="mt-3 text-[10px] text-muted-foreground">{batch.start_date || 'No start date'} → {batch.end_date || 'No end date'}</div>
                         <div className="flex gap-1 mt-3 pt-3 border-t"><Button size="sm" variant="secondary" className="flex-1 text-xs h-8" onClick={() => setSchedulerBatch(batch)}><CalendarIcon size={13} className="mr-1" /> Sessions</Button><Button size="sm" variant="ghost" className="text-xs h-8" onClick={() => openEdit(batch)}><Edit3 size={13} /></Button><Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(batch)}><Trash2 size={13} /></Button></div>
