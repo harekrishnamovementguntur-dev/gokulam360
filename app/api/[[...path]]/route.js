@@ -115,7 +115,7 @@ function generateSessions(program) {
   return [...sessions].sort();
 }
 
-async function syncEnrollments(db, student, oldProgramIds = []) {
+async function syncEnrollments(db, student, oldProgramIds = [], enrollmentDetails = {}) {
   const orgId = student.organization_id;
   const newIds = student.program_ids || [];
   const now = new Date().toISOString();
@@ -127,20 +127,30 @@ async function syncEnrollments(db, student, oldProgramIds = []) {
     if (existing) continue;
     const prog = await db.collection('programs').findOne({ id: pid });
     const allSessions = prog?.sessions || [];
-    // sessions_credited = remaining sessions of this class from today forward
+    // Admission can override the default remaining-session credit allocation and payment details.
+    const detail = enrollmentDetails[pid] || {};
     const remainingFromToday = allSessions.filter(d => d >= today);
-    const credited = remainingFromToday.length || allSessions.length;
+    const credited = detail.credit_quantity !== undefined && detail.credit_quantity !== ''
+      ? Math.max(0, Number(detail.credit_quantity) || 0)
+      : (remainingFromToday.length || allSessions.length);
+    const feeAmount = detail.fee_amount !== undefined && detail.fee_amount !== ''
+      ? Math.max(0, Number(detail.fee_amount) || 0)
+      : Number(prog?.fee_amount || 0);
+    const paidAmount = Math.min(feeAmount, Math.max(0, Number(detail.amount_paid) || 0));
     await db.collection('enrollments').insertOne({
       id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
       enrolled_at: now, left_at: null, status: 'active',
       sessions_credited: credited,
       created_at: now,
     });
-    if (prog?.fee_amount) {
+    if (feeAmount > 0 || paidAmount > 0) {
       await db.collection('fees').insertOne({
         id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
-        fee_type: 'Term Fee', amount: prog.fee_amount, paid_amount: 0, status: 'pending',
-        due_date: prog.start_date || today, created_at: now,
+        fee_type: 'Term Fee', amount: feeAmount, paid_amount: paidAmount,
+        payment_mode: detail.payment_mode || null,
+        credit_quantity: credited,
+        status: paidAmount >= feeAmount && feeAmount > 0 ? 'paid' : 'pending',
+        due_date: prog?.start_date || today, created_at: now,
       });
     }
   }
@@ -520,11 +530,13 @@ async function router(req, method) {
     }
     if (method === 'POST' && !id) {
        const body = await req.json();
+       const enrollmentDetails = resource === 'students' ? (body.enrollment_details || {}) : {};
+       const { enrollment_details: ignoredEnrollmentDetails, ...persistedBody } = body;
        const organizationId = user.role === 'super_admin' ? body.organization_id : user.organization_id;
        if (!organizationId) return json({ error: 'organization_id is required' }, 400);
        const doc = {
          id: uuidv4(),
-         ...body,
+         ...persistedBody,
          // Tenant ownership is always decided by the server.
          organization_id: organizationId,
          created_at: new Date().toISOString(),
@@ -542,7 +554,7 @@ async function router(req, method) {
       await col.insertOne(doc);
       // Handle student enrollments
       if (resource === 'students' && doc.program_ids?.length) {
-        await syncEnrollments(db, doc, []);
+        await syncEnrollments(db, doc, [], enrollmentDetails);
       }
       // Log activity for known resources
       if (['students', 'teachers', 'events', 'programs'].includes(resource)) {
@@ -564,7 +576,7 @@ async function router(req, method) {
        const before = await col.findOne({ id, ...orgScope(user) });
        if (!before) return json({ error: 'Not found' }, 404);
        // Do not let callers move records between tenants or alter server-owned fields.
-       const { id: ignoredId, organization_id: ignoredOrganizationId, created_at: ignoredCreatedAt, updated_at: ignoredUpdatedAt, is_deleted: ignoredDeleted, ...changes } = body;
+       const { id: ignoredId, organization_id: ignoredOrganizationId, created_at: ignoredCreatedAt, updated_at: ignoredUpdatedAt, is_deleted: ignoredDeleted, enrollment_details: ignoredEnrollmentDetails, ...changes } = body;
        const updated = { ...changes, updated_at: new Date().toISOString() };
       if (resource === 'events' && changes.is_announcement === true && !before.is_announcement) {
         const selectedCount = await db.collection('events').countDocuments({ organization_id: before.organization_id, is_announcement: true, is_deleted: { $ne: true }, id: { $ne: id } });
@@ -575,7 +587,7 @@ async function router(req, method) {
        const doc = await col.findOne({ id, ...orgScope(user) });
       // Sync student enrollments diff
       if (resource === 'students' && body.program_ids) {
-        await syncEnrollments(db, doc, before?.program_ids || []);
+        await syncEnrollments(db, doc, before?.program_ids || [], body.enrollment_details || {});
       }
       return json(stripId(doc));
     }
