@@ -1122,6 +1122,7 @@ function PageHeader({ title, subtitle, icon: Icon, action }) {
    STUDENTS
 ============================================================ */
 function Students({ students, setStudents }) {
+  const [currentUser, setCurrentUser] = useState(null);
   const [programs, setPrograms] = useState([]);
   const [enrollments, setEnrollments] = useState([]);
   const [batchDetails, setBatchDetails] = useState({});
@@ -1130,7 +1131,7 @@ function Students({ students, setStudents }) {
   const [cardOf, setCardOf] = useState(null);
   const [historyOf, setHistoryOf] = useState(null);
   const [creditPurchaseFor, setCreditPurchaseFor] = useState(null);
-  const [purchaseForm, setPurchaseForm] = useState({ credit_quantity: '', total_amount: '', amount_paid: '', payment_mode: 'cash' });
+  const [purchaseForm, setPurchaseForm] = useState({ credit_quantity: '', total_amount: '', amount_paid: '', payment_mode: 'cash', collection_date: '', collected_by: '', notes: '' });
   const [org, setOrg] = useState(null);
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -1142,7 +1143,7 @@ function Students({ students, setStudents }) {
   const loadEnrollments = () => api('/enrollments').then(r => setEnrollments(r.items || []));
   useEffect(() => {
     api('/programs').then(r => setPrograms(r.items || []));
-    api('/auth/me').then(r => setOrg(r.organization));
+    api('/auth/me').then(r => { setOrg(r.organization); setCurrentUser(r.user || null); });
     loadEnrollments();
   }, []);
 
@@ -1158,7 +1159,7 @@ function Students({ students, setStudents }) {
   const openEdit = (s) => {
     const selectedIds = s.program_ids && s.program_ids.length ? s.program_ids : (s.program_id ? [s.program_id] : []);
     const details = Object.fromEntries(enrollments.filter(e => e.student_id === s.id).map(e => [e.program_id, {
-      fee_amount: e.amount || e.program?.fee_amount || '', amount_paid: e.paid_amount || '', credit_quantity: e.sessions_credited || '', payment_mode: e.payment_mode || 'cash',
+      fee_amount: e.amount || e.program?.fee_amount || '', amount_paid: e.paid_amount || '', credit_quantity: e.sessions_credited || '', payment_mode: e.payment_mode || 'cash', collection_date: e.collection_date || '', collected_by: e.collected_by || '', notes: e.notes || '',
     }]));
     setEditing(s); setBatchDetails(details); setForm({ ...empty, ...s, program_ids: selectedIds }); setOpen(true);
   };
@@ -1168,7 +1169,7 @@ function Students({ students, setStudents }) {
     setForm({ ...form, program_ids: selected ? ids.filter(x => x !== id) : [...ids, id] });
     if (selected) {
       const next = { ...batchDetails }; delete next[id]; setBatchDetails(next);
-    } else setBatchDetails({ ...batchDetails, [id]: { fee_amount: '', amount_paid: '', credit_quantity: '', payment_mode: 'cash' } });
+    } else setBatchDetails({ ...batchDetails, [id]: { fee_amount: '', amount_paid: '', credit_quantity: '', payment_mode: 'cash', collection_date: new Date().toISOString().slice(0, 10), collected_by: currentUser?.name || '', notes: '' } });
   };
   const updateBatchDetail = (id, patch) => setBatchDetails(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }));
   const save = async () => {
@@ -1183,8 +1184,8 @@ function Students({ students, setStudents }) {
           return detail.fee_amount === '' || (isCredit && !detail.credit_quantity);
         });
         if (missing) return toast.error('Enter the fee for every batch and credits for each Credit model batch');
-        const invalidPayment = selectedIds.find(id => Number(batchDetails[id]?.amount_paid || 0) > 0 && !batchDetails[id]?.payment_mode);
-        if (invalidPayment) return toast.error('Choose a payment mode for each payment');
+        const invalidPayment = selectedIds.find(id => Number(batchDetails[id]?.amount_paid || 0) > 0 && (!batchDetails[id]?.payment_mode || !batchDetails[id]?.collection_date || !batchDetails[id]?.collected_by?.trim()));
+        if (invalidPayment) return toast.error('Complete payment mode, collection date, and collector for each payment');
       }
       const payload = { ...form, program_id: selectedIds[0] || form.program_id, enrollment_details: isNew ? batchDetails : undefined }; // keep legacy compatibility
       if (editing) await api(`/students/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -1252,7 +1253,7 @@ function Students({ students, setStudents }) {
     const enrollment = creditEnrollments(student.id)[0];
     if (!enrollment) return toast.error('This student is not enrolled in a Credit model batch');
     setCreditPurchaseFor({ student, enrollment });
-    setPurchaseForm({ credit_quantity: '', total_amount: '', amount_paid: '', payment_mode: 'cash' });
+    setPurchaseForm({ credit_quantity: '', total_amount: '', amount_paid: '', payment_mode: 'cash', collection_date: new Date().toISOString().slice(0, 10), collected_by: currentUser?.name || '', notes: '' });
   };
   const purchaseCredits = async () => {
     if (!creditPurchaseFor) return;
@@ -1261,8 +1262,9 @@ function Students({ students, setStudents }) {
     const amountPaid = Number(purchaseForm.amount_paid);
     if (!Number.isInteger(quantity) || quantity <= 0) return toast.error('Enter a whole number of credits');
     if (!Number.isFinite(totalAmount) || totalAmount < 0 || !Number.isFinite(amountPaid) || amountPaid < 0 || amountPaid > totalAmount) return toast.error('Enter valid total and paid amounts; paid cannot exceed total');
+    if (amountPaid > 0 && (!purchaseForm.collection_date || !purchaseForm.collected_by?.trim())) return toast.error('Complete collection date and collector for a payment');
     try {
-      await api('/enrollments/credits', { method: 'POST', body: JSON.stringify({ enrollment_id: creditPurchaseFor.enrollment.id, credit_quantity: quantity, total_amount: totalAmount, amount_paid: amountPaid, payment_mode: purchaseForm.payment_mode }) });
+      await api('/enrollments/credits', { method: 'POST', body: JSON.stringify({ enrollment_id: creditPurchaseFor.enrollment.id, credit_quantity: quantity, total_amount: totalAmount, amount_paid: amountPaid, payment_mode: purchaseForm.payment_mode, collection_date: purchaseForm.collection_date, collected_by: purchaseForm.collected_by.trim(), notes: purchaseForm.notes.trim() }) });
       toast.success(`${quantity} credits added for ${creditPurchaseFor.student.first_name}`);
       setCreditPurchaseFor(null); loadEnrollments();
     } catch (e) { toast.error(e.message); }
@@ -1423,6 +1425,9 @@ function Students({ students, setStudents }) {
                         {batch.billing_model !== 'date' && <div><Label className="text-[10px]">Credits granted</Label><Input type="number" min="0" value={detail.credit_quantity || ''} onChange={e => updateBatchDetail(id, { credit_quantity: e.target.value })} placeholder="e.g. 16" /></div>}
                         <div><Label className="text-[10px]">Amount paid now</Label><Input type="number" min="0" value={detail.amount_paid || ''} onChange={e => updateBatchDetail(id, { amount_paid: e.target.value })} placeholder="0" /></div>
                         <div><Label className="text-[10px]">Payment mode</Label><Select value={detail.payment_mode || 'cash'} onValueChange={v => updateBatchDetail(id, { payment_mode: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="bank_transfer">Bank transfer</SelectItem><SelectItem value="card">Card</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div>
+                        <div><Label className="text-[10px]">Collected on</Label><Input type="date" value={detail.collection_date || new Date().toISOString().slice(0, 10)} onChange={e => updateBatchDetail(id, { collection_date: e.target.value })} /></div>
+                        <div><Label className="text-[10px]">Collected by</Label><Input value={detail.collected_by ?? currentUser?.name ?? ''} onChange={e => updateBatchDetail(id, { collected_by: e.target.value })} placeholder="Logged-in administrator" readOnly={Boolean(currentUser?.name)} /></div>
+                        <div className="col-span-2"><Label className="text-[10px]">Notes</Label><Textarea rows={2} value={detail.notes || ''} onChange={e => updateBatchDetail(id, { notes: e.target.value })} placeholder="Receipt or collection notes" /></div>
                       </div>
                     </div>;
                   })}
@@ -1450,6 +1455,8 @@ function Students({ students, setStudents }) {
             <div><Label>Total amount</Label><Input type="number" min="0" value={purchaseForm.total_amount} onChange={e => setPurchaseForm({ ...purchaseForm, total_amount: e.target.value })} placeholder="e.g. 800" /></div>
             <div><Label>Amount paid now</Label><Input type="number" min="0" value={purchaseForm.amount_paid} onChange={e => setPurchaseForm({ ...purchaseForm, amount_paid: e.target.value })} placeholder="0 for unpaid / partial" /></div>
             <div><Label>Payment mode</Label><Select value={purchaseForm.payment_mode} onValueChange={v => setPurchaseForm({ ...purchaseForm, payment_mode: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="bank_transfer">Bank transfer</SelectItem><SelectItem value="card">Card</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div>
+            <div className="grid grid-cols-2 gap-3"><div><Label>Collected on</Label><Input type="date" value={purchaseForm.collection_date} onChange={e => setPurchaseForm({ ...purchaseForm, collection_date: e.target.value })} /></div><div><Label>Collected by</Label><Input value={purchaseForm.collected_by} onChange={e => setPurchaseForm({ ...purchaseForm, collected_by: e.target.value })} placeholder="Logged-in administrator" readOnly={Boolean(currentUser?.name)} /></div></div>
+            <div><Label>Notes</Label><Textarea rows={3} value={purchaseForm.notes} onChange={e => setPurchaseForm({ ...purchaseForm, notes: e.target.value })} placeholder="Receipt or collection notes" /></div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setCreditPurchaseFor(null)}>Cancel</Button><Button onClick={purchaseCredits} className="bg-saffron-gradient">Add credits</Button></DialogFooter>
         </DialogContent>
@@ -2267,7 +2274,7 @@ function Fees({ currentUser }) {
       </div>
       <div className="rounded-2xl glass overflow-hidden">
         <Table>
-          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Program / Batch</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Pending</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead><TableHead></TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Program / Batch</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Pending</TableHead><TableHead>Collection</TableHead><TableHead>Notes</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead><TableHead></TableHead></TableRow></TableHeader>
           <TableBody>
             {visibleItems.map(f => {
               const s = sMap[f.student_id];
@@ -2285,6 +2292,8 @@ function Fees({ currentUser }) {
                   <TableCell>{fmtINR(f.amount)}</TableCell>
                   <TableCell>{fmtINR(f.paid_amount)}</TableCell>
                   <TableCell className={Number(f.amount || 0) > Number(f.paid_amount || 0) ? 'font-semibold text-rose-600' : 'text-muted-foreground'}>{fmtINR(Math.max(0, Number(f.amount || 0) - Number(f.paid_amount || 0)))}</TableCell>
+                  <TableCell className="text-xs"><div>{f.collected_by || f.payment_history?.[f.payment_history.length - 1]?.collected_by || '—'}</div><div className="text-muted-foreground">{f.collection_date || f.payment_history?.[f.payment_history.length - 1]?.collected_at || '—'}</div></TableCell>
+                  <TableCell className="max-w-40 truncate text-xs text-muted-foreground" title={f.notes || f.payment_history?.[f.payment_history.length - 1]?.notes || ''}>{f.notes || f.payment_history?.[f.payment_history.length - 1]?.notes || '—'}</TableCell>
                   <TableCell><Badge className={f.status === 'paid' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-rose-500 hover:bg-rose-600'}>{f.status}</Badge></TableCell>
                   <TableCell className="text-xs text-muted-foreground">{f.due_date}</TableCell>
                   <TableCell className="text-right">{Number(f.amount || 0) > Number(f.paid_amount || 0) && <Button size="sm" className="bg-saffron-gradient" onClick={() => openPayment(f)}>Add Payment</Button>}</TableCell>
