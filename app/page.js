@@ -9,7 +9,7 @@ import {
   Building2, LogOut, Menu, Moon, Sun, Search, Plus, Edit3, Trash2, Archive, IdCard, Printer,
   UserCircle2, TrendingUp, ChevronRight, Sparkles, Flame, BookOpen, ClipboardCheck,
   Bell, Send, MessageSquare, Camera, FileText, Download, FileSpreadsheet, Command as CmdIcon,
-  Rocket, Award, Heart, Activity, ArrowUpRight, Phone, PartyPopper, Zap,
+  Rocket, Award, Heart, Activity, ArrowUpRight, Phone, PartyPopper, Zap, RefreshCw,
   ChevronLeft, Upload, Check, CheckCircle2, Circle, Palette, Wallet, UserPlus
 } from 'lucide-react';
 import {
@@ -2814,6 +2814,208 @@ function ParentPortal({ user, onLogout, dark, setDark }) {
   );
 }
 
+
+/* ============================================================
+   TASK-ORIENTED ADMINISTRATOR EXPERIENCE
+============================================================ */
+function TaskHome({ user, org, onNav }) {
+  const [summary, setSummary] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    api('/dashboard').then(setSummary).catch((loadError) => setError(loadError.message || 'Summary is unavailable'));
+  }, []);
+
+  const cards = [
+    { label: 'Students', value: summary?.activeStudents ?? '—', detail: 'active students', action: 'students', icon: GraduationCap },
+    { label: 'Attendance', value: summary?.attendancePct == null ? '—' : summary.attendancePct + '%', detail: 'recent attendance', action: 'attendance', icon: ClipboardCheck },
+    { label: 'Payments collected', value: summary?.collectedPayments == null ? '—' : fmtINR(summary.collectedPayments), detail: 'recorded payments', action: 'payments', icon: Wallet },
+    { label: 'Pending payments', value: summary?.pendingPayments == null ? '—' : fmtINR(summary.pendingPayments), detail: 'needs follow-up', action: 'payments', icon: IndianRupee },
+  ];
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-6">
+      <div className="rounded-3xl bg-mesh-warm border p-6 md:p-8">
+        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-900/60">Today at {org?.name || 'your organization'}</div>
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-indigo-950 dark:text-indigo-100">Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'}, {user.name.split(' ')[0]}.</h1>
+        <p className="mt-2 max-w-2xl text-indigo-900/70 dark:text-indigo-100/70">Complete the work in front of you. Gokulam360 takes care of the underlying records.</p>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <Button className="bg-saffron-gradient shadow" onClick={() => onNav('students')}><UserPlus size={15} className="mr-2" />Enroll a student</Button>
+          {user.role !== 'teacher' && <Button variant="secondary" className="glass" onClick={() => onNav('payments')}><Wallet size={15} className="mr-2" />Collect a payment</Button>}
+          <Button variant="secondary" className="glass" onClick={() => onNav('attendance')}><ClipboardCheck size={15} className="mr-2" />Take attendance</Button>
+          <Button variant="secondary" className="glass" onClick={() => onNav('assistant')}><Sparkles size={15} className="mr-2" />Ask a question</Button>
+        </div>
+      </div>
+
+      {error && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">{error}</div>}
+
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {cards.map(({ label, value, detail, action, icon: Icon }) => (
+          <button key={label} type="button" onClick={() => onNav(action)} className="rounded-2xl glass p-5 text-left transition hover:-translate-y-0.5 hover:shadow-lg">
+            <div className="flex items-start justify-between"><span className="text-sm text-muted-foreground">{label}</span><span className="grid h-9 w-9 place-items-center rounded-xl bg-primary/10 text-primary"><Icon size={17} /></span></div>
+            <div className="mt-4 text-2xl font-bold">{value}</div>
+            <div className="mt-1 text-xs text-muted-foreground">{detail}</div>
+          </button>
+        ))}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        <button type="button" onClick={() => onNav('students')} className="rounded-2xl glass p-5 text-left hover:shadow-lg">
+          <div className="text-sm font-semibold">New here?</div>
+          <p className="mt-1 text-sm text-muted-foreground">Add a student once. Their class records are created from the information you enter.</p>
+          <span className="mt-4 inline-flex text-sm font-semibold text-primary">Start admission →</span>
+        </button>
+        <button type="button" onClick={() => onNav('attendance')} className="rounded-2xl glass p-5 text-left hover:shadow-lg">
+          <div className="text-sm font-semibold">Class time</div>
+          <p className="mt-1 text-sm text-muted-foreground">Choose today’s class and mark the whole roster in one place.</p>
+          <span className="mt-4 inline-flex text-sm font-semibold text-primary">Open attendance →</span>
+        </button>
+        <button type="button" onClick={() => onNav('reports')} className="rounded-2xl glass p-5 text-left hover:shadow-lg">
+          <div className="text-sm font-semibold">Need an answer?</div>
+          <p className="mt-1 text-sm text-muted-foreground">Use reports for summaries or ask the assistant a plain-language question.</p>
+          <span className="mt-4 inline-flex text-sm font-semibold text-primary">View answers →</span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SimpleAttendanceReport() {
+  const [state, setState] = useState({ loading: true, error: '', data: null });
+  const [exporting, setExporting] = useState(false);
+
+  const load = async () => {
+    setState({ loading: true, error: '', data: null });
+    try {
+      const data = await api('/reports/attendance?page_size=100');
+      setState({ loading: false, error: '', data });
+    } catch (error) {
+      setState({ loading: false, error: error.message || 'Attendance summary is unavailable', data: null });
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const data = state.data || {};
+  const items = data.items || [];
+  const summary = data.summary || {};
+  const download = () => {
+    if (!items.length) return;
+    setExporting(true);
+    const headers = ['Session date', 'Session', 'Present', 'Late', 'Absent', 'Excused', 'Total'];
+    const csv = [headers, ...items.map((item) => [
+      item.session_date || '', item.session_label || 'Session', item.present || 0,
+      item.late || 0, item.absent || 0, item.excused || 0, item.total || 0,
+    ])].map((row) => row.map((value) => '"' + String(value).replaceAll('"', '""') + '"').join(',')).join('\n');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    link.download = 'attendance-summary.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setExporting(false);
+  };
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div><div className="text-sm text-muted-foreground">Reports</div><h1 className="mt-1 text-3xl font-bold">Attendance summary</h1><p className="mt-1 text-sm text-muted-foreground">See who was present without needing to understand sessions or ledger records.</p></div>
+        <div className="flex gap-2"><Button variant="outline" onClick={load} disabled={state.loading}><RefreshCw size={15} className="mr-1" />Refresh</Button><Button variant="outline" onClick={download} disabled={!items.length || exporting}><Download size={15} className="mr-1" />CSV</Button></div>
+      </div>
+      {state.error && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{state.error}</div>}
+      {state.loading ? <div className="rounded-2xl glass p-8 text-center text-muted-foreground">Loading attendance summary…</div> : <><div className="grid grid-cols-2 gap-3 md:grid-cols-5">{[['Present', summary.present], ['Late', summary.late], ['Absent', summary.absent], ['Excused', summary.excused], ['Total', summary.total]].map(([label, value]) => <div key={label} className="rounded-2xl glass p-4"><div className="text-2xl font-bold">{value ?? 0}</div><div className="mt-1 text-xs text-muted-foreground">{label}</div></div>)}</div>{!items.length ? <div className="rounded-2xl glass p-8 text-center text-muted-foreground">No attendance has been recorded yet.</div> : <div className="overflow-hidden rounded-2xl glass"><Table><TableHeader><TableRow><TableHead>Session date</TableHead><TableHead>Session</TableHead><TableHead>Present</TableHead><TableHead>Late</TableHead><TableHead>Absent</TableHead><TableHead>Excused</TableHead><TableHead>Total</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <TableRow key={item.session_id}><TableCell>{item.session_date || '—'}</TableCell><TableCell>{item.session_label || 'Session'}</TableCell><TableCell>{item.present || 0}</TableCell><TableCell>{item.late || 0}</TableCell><TableCell>{item.absent || 0}</TableCell><TableCell>{item.excused || 0}</TableCell><TableCell>{item.total || 0}</TableCell></TableRow>)}</TableBody></Table></div>}</>}
+    </div>
+  );
+}
+
+function TaskShell({ user, org, onLogout, dark, setDark, refreshMe }) {
+  const [view, setView] = useState('home');
+  const [reportView, setReportView] = useState('members');
+  const [students, setStudents] = useState([]);
+  const [teachers, setTeachers] = useState([]);
+
+  useEffect(() => {
+    if (user.role === 'parent') return;
+    api('/students').then((response) => setStudents(response.items || [])).catch(() => {});
+    api('/teachers').then((response) => setTeachers(response.items || [])).catch(() => {});
+  }, [user.role]);
+
+  const primary = [
+    { key: 'home', label: 'Home', icon: BarChart3, roles: ['super_admin', 'org_admin', 'teacher'] },
+    { key: 'students', label: 'Students', icon: GraduationCap, roles: ['super_admin', 'org_admin', 'teacher'] },
+    { key: 'attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['super_admin', 'org_admin', 'teacher'] },
+    { key: 'payments', label: 'Payments', icon: Wallet, roles: ['super_admin', 'org_admin'] },
+    { key: 'reports', label: 'Reports', icon: FileText, roles: ['super_admin', 'org_admin'] },
+    { key: 'assistant', label: 'Ask Assistant', icon: Sparkles, roles: ['super_admin', 'org_admin', 'teacher'] },
+  ].filter((item) => item.roles.includes(user.role));
+
+  const more = [
+    { key: 'academic-programs', label: 'Classes and terms', icon: BookOpen, roles: ['super_admin', 'org_admin'] },
+    { key: 'academic-calendar', label: 'Calendar setup', icon: CalendarIcon, roles: ['super_admin', 'org_admin'] },
+    { key: 'teachers', label: 'Teachers', icon: Users, roles: ['super_admin', 'org_admin'] },
+    { key: 'events', label: 'Announcements', icon: CalendarIcon, roles: ['super_admin', 'org_admin', 'teacher'] },
+    { key: 'backup', label: 'Backup', icon: Download, roles: ['super_admin', 'org_admin'] },
+    { key: 'memberships', label: 'Technical membership records', icon: Users, roles: ['super_admin', 'org_admin'] },
+    { key: 'participation', label: 'Technical class records', icon: Users, roles: ['super_admin', 'org_admin'] },
+  ].filter((item) => item.roles.includes(user.role));
+
+  const go = (key) => setView(key);
+  const title = [...primary, ...more].find((item) => item.key === view)?.label || 'Home';
+
+  if (user.role === 'parent') return <ParentPortal user={user} onLogout={onLogout} dark={dark} setDark={setDark} />;
+
+  return (
+    <div className="min-h-screen bg-aurora relative">
+      <AuroraBlobs />
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-[1500px] gap-4 p-4">
+        <aside className="hidden w-60 shrink-0 flex-col rounded-3xl glass p-4 md:flex">
+          <div className="flex items-center gap-3 px-2 py-3">
+            <div className="grid h-10 w-10 place-items-center rounded-2xl bg-saffron-gradient text-white shadow ring-glow"><Flame size={20} /></div>
+            <div><div className="font-bold tracking-tight">Gokulam<span className="text-gradient">360</span></div><div className="text-[10px] uppercase tracking-widest text-muted-foreground">Office</div></div>
+          </div>
+          <div className="mt-6 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Daily work</div>
+          <nav className="mt-2 space-y-1">
+            {primary.map((item) => { const Icon = item.icon; return <button key={item.key} type="button" onClick={() => go(item.key)} className={'flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition ' + (view === item.key ? 'bg-primary/15 text-foreground' : 'text-foreground/70 hover:bg-white/50')}><span className="grid h-8 w-8 place-items-center rounded-lg bg-muted"><Icon size={15} /></span><span>{item.label}</span></button>; })}
+          </nav>
+          <div className="mt-6 border-t pt-4 text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">Setup and records</div>
+          <nav className="mt-2 flex-1 space-y-1 overflow-y-auto">
+            {more.slice(0, 5).map((item) => { const Icon = item.icon; return <button key={item.key} type="button" onClick={() => go(item.key)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-xs text-foreground/65 hover:bg-white/50"><Icon size={14} /><span>{item.label}</span></button>; })}
+          </nav>
+          <div className="mt-4 flex items-center gap-2 border-t pt-4"><Avatar className="h-9 w-9"><AvatarFallback className="bg-saffron-gradient text-white text-xs">{initials(user.name)}</AvatarFallback></Avatar><div className="min-w-0 flex-1"><div className="truncate text-sm font-semibold">{user.name}</div><div className="truncate text-[10px] capitalize text-muted-foreground">{user.role.replace('_', ' ')}</div></div><button type="button" onClick={onLogout} className="text-muted-foreground hover:text-foreground" title="Sign out"><LogOut size={15} /></button></div>
+        </aside>
+
+        <main className="min-w-0 flex-1">
+          <header className="sticky top-4 z-20 mb-5 flex min-h-14 items-center gap-3 rounded-2xl glass px-4">
+            <select className="rounded-lg border bg-transparent px-2 py-1.5 text-sm md:hidden" value={view} onChange={(event) => go(event.target.value)}>{[...primary, ...more].map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select>
+            <div className="hidden text-sm text-muted-foreground md:block">{org?.name || 'Organization'} <span className="mx-2">/</span><span className="font-semibold text-foreground">{title}</span></div>
+            <div className="ml-auto flex items-center gap-2"><Button variant="ghost" size="icon" onClick={() => setDark(!dark)}>{dark ? <Sun size={16} /> : <Moon size={16} />}</Button></div>
+          </header>
+
+          {view === 'home' && <TaskHome user={user} org={org} onNav={go} />}
+          {view === 'students' && <Students user={user} students={students} setStudents={setStudents} />}
+          {view === 'attendance' && <AttendanceAdministrator request={api} />}
+          {view === 'payments' && <Payments organizationId={org?.id} />}
+          {view === 'assistant' && <AdministratorAssistant user={user} organization={org} />}
+          {view === 'classes' && <ProgramsOfferings request={api} />}
+          {view === 'academic-programs' && <ProgramsOfferings request={api} />}
+          {view === 'academic-calendar' && <AcademicCalendar request={api} />}
+          {view === 'teachers' && <Teachers teachers={teachers} setTeachers={setTeachers} />}
+          {view === 'events' && <Events />}
+          {view === 'memberships' && <Memberships request={api} />}
+          {view === 'participation' && <MembershipTermParticipation request={api} />}
+          {view === 'backup' && <Backup />}
+          {view === 'reports' && (
+            <div className="space-y-4">
+              <div className="flex flex-wrap gap-2"><Button variant={reportView === 'members' ? 'default' : 'outline'} onClick={() => setReportView('members')}>People</Button><Button variant={reportView === 'finance' ? 'default' : 'outline'} onClick={() => setReportView('finance')}>Money</Button><Button variant={reportView === 'attendance' ? 'default' : 'outline'} onClick={() => setReportView('attendance')}>Attendance</Button></div>
+              {reportView === 'members' && <MemberMembershipReports />}
+              {reportView === 'finance' && <PaymentCreditReports />}
+              {reportView === 'attendance' && <SimpleAttendanceReport />}
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
 /* ============================================================
    BACKUP / RESTORE
 ============================================================ */
@@ -3061,7 +3263,7 @@ function App() {
   if (!ready) return <div className="min-h-screen bg-aurora grid place-items-center text-muted-foreground">Loading Gokulam360…</div>;
   if (publicToken) return <PublicParentView token={publicToken} />;
   if (!user) return <Login onLoggedIn={onLoggedIn} />;
-  return <Shell user={user} org={org} onLogout={logout} dark={dark} setDark={setDark} refreshMe={refreshMe} />;
+  return <TaskShell user={user} org={org} onLogout={logout} dark={dark} setDark={setDark} refreshMe={refreshMe} />;
 }
 
 export default App;
