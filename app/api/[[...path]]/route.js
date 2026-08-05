@@ -390,7 +390,7 @@ async function router(req, method) {
       .limit(3)
       .toArray();
     const enrichedEnr = enrollments.map(e => {
-      const attended = att.filter(a => a.program_id === e.program_id && (a.status === 'present' || a.status === 'late') && a.date >= (e.enrolled_at || '').slice(0, 10)).length;
+      const attended = att.filter(a => a.program_id === e.program_id && ['present', 'absent', 'late'].includes(a.status) && a.date >= (e.enrolled_at || '').slice(0, 10)).length;
       const credited = e.sessions_credited || 0;
       return { ...stripId(e), program_name: pMap[e.program_id]?.name || '-', sessions_attended: attended, sessions_remaining: Math.max(0, credited - attended) };
     });
@@ -625,7 +625,7 @@ async function router(req, method) {
       const attRecs = await db.collection('attendance').find({ organization_id: user.organization_id }).toArray();
       const enriched = items.map(e => {
         const enrolledDate = (e.enrolled_at || '').slice(0, 10);
-        const attended = attRecs.filter(a => a.student_id === e.student_id && a.program_id === e.program_id && (a.status === 'present' || a.status === 'late') && a.date >= enrolledDate).length;
+        const attended = attRecs.filter(a => a.student_id === e.student_id && a.program_id === e.program_id && ['present', 'absent', 'late'].includes(a.status) && a.date >= enrolledDate).length;
         const credited = e.sessions_credited || (pMap[e.program_id]?.sessions?.length || 0);
         const remaining = Math.max(0, credited - attended);
         return { ...stripId(e), program_name: pMap[e.program_id]?.name || '-', program: pMap[e.program_id] ? stripId(pMap[e.program_id]) : null, sessions_credited: credited, sessions_attended: attended, sessions_remaining: remaining };
