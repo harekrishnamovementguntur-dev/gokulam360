@@ -91,10 +91,14 @@ async function createPasswordOtpChallenge({ db, user, mobile }) {
   let delivery = 'sms';
   if (twilioClient && TWILIO_SMS_FROM) {
     const sent = await sendTwilioMessage('sms', normalized, message);
-    if (sent.status === 'failed') return { error: json({ error: 'Unable to send the OTP. Please try again.' }, 502) };
+    if (sent.status === 'failed') {
+      await db.collection('auth_otp_challenges').updateOne({ id: challenge.id }, { $set: { used_at: new Date().toISOString() } });
+      return { error: json({ error: 'Unable to send the OTP. Please try again.' }, 502) };
+    }
   } else if (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_OTP === 'true') {
     delivery = 'development';
   } else {
+    await db.collection('auth_otp_challenges').updateOne({ id: challenge.id }, { $set: { used_at: new Date().toISOString() } });
     return { error: json({ error: 'Mobile OTP is not configured. Add the SMS provider before using password changes.' }, 503) };
   }
 
