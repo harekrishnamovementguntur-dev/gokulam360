@@ -798,7 +798,7 @@ async function router(req, method) {
     const body = await req.json();
     const { date, records } = body;
     const validStatuses = new Set(['present', 'absent']);
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date || '') || !Array.isArray(records) || !records.length) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !Array.isArray(records) || !records.length) {
       return json({ error: 'date and non-empty records are required' }, 400);
     }
     if (records.some(r => !r?.faculty_id || !validStatuses.has(r.status))) return json({ error: 'Invalid faculty attendance record' }, 400);
