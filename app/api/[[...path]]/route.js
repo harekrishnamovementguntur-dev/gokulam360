@@ -782,6 +782,52 @@ async function router(req, method) {
   }
 
   // Bulk attendance
+  // Faculty attendance is kept separate from student attendance because it must
+  // never participate in student credit consumption.
+  if (resource === 'faculty-attendance' && method === 'GET') {
+    if (!['org_admin', 'teacher', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
+    const date = url.searchParams.get('date');
+    const query = { ...orgScope(user), faculty_id: { $exists: true } };
+    if (date) query.date = date;
+    const items = await db.collection('attendance').find(query).sort({ date: -1, created_at: -1 }).limit(500).toArray();
+    return json({ items: items.map(stripId) });
+  }
+
+  if (resource === 'faculty-attendance' && method === 'POST') {
+    if (!['org_admin', 'teacher', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
+    const body = await req.json();
+    const { date, records } = body;
+    const validStatuses = new Set(['present', 'absent']);
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(date || '') || !Array.isArray(records) || !records.length) {
+      return json({ error: 'date and non-empty records are required' }, 400);
+    }
+    if (records.some(r => !r?.faculty_id || !validStatuses.has(r.status))) return json({ error: 'Invalid faculty attendance record' }, 400);
+    const facultyIds = [...new Set(records.map(r => r.faculty_id))];
+    const matchingFaculty = await db.collection('teachers').countDocuments({
+      id: { $in: facultyIds },
+      ...orgScope(user),
+      is_deleted: { $ne: true },
+    });
+    if (matchingFaculty !== facultyIds.length) return json({ error: 'One or more faculty members do not belong to this organization' }, 400);
+    await db.collection('attendance').deleteMany({
+      organization_id: user.organization_id,
+      date,
+      faculty_id: { $in: facultyIds },
+    });
+    const docs = records.map(r => ({
+      id: uuidv4(),
+      organization_id: user.organization_id,
+      faculty_id: r.faculty_id,
+      attendance_type: 'faculty',
+      date,
+      status: r.status,
+      marked_by: user.id,
+      created_at: new Date().toISOString(),
+    }));
+    await db.collection('attendance').insertMany(docs);
+    return json({ ok: true, count: docs.length });
+  }
+
   if (resource === 'attendance-bulk' && method === 'POST') {
     if (!['org_admin', 'teacher', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
     const body = await req.json();
