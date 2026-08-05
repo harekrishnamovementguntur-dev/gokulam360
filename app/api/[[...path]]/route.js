@@ -704,8 +704,8 @@ async function router(req, method) {
         const targetProgramIds = Array.isArray(doc.program_ids) ? [...new Set(doc.program_ids.filter(Boolean))] : [];
         doc.program_ids = targetProgramIds;
         if (doc.is_announcement && targetProgramIds.length) {
-          const validPrograms = await db.collection('programs').countDocuments({ organization_id: organizationId, id: { $in: targetProgramIds }, parent_program_id: { $exists: false } });
-          if (validPrograms !== targetProgramIds.length) return json({ error: 'One or more selected programs were not found' }, 422);
+          const validPrograms = await db.collection('programs').find({ organization_id: organizationId, id: { $in: targetProgramIds } }).toArray();
+          if (validPrograms.length !== targetProgramIds.length || validPrograms.some(program => program.parent_program_id)) return json({ error: 'One or more selected programs were not found' }, 422);
           for (const programId of targetProgramIds) {
             const selectedCount = await db.collection('events').countDocuments({ organization_id: organizationId, is_announcement: true, is_deleted: { $ne: true }, program_ids: programId });
             if (selectedCount >= 3) return json({ error: 'Each program can have at most 3 featured events' }, 400);
@@ -753,8 +753,8 @@ async function router(req, method) {
         const targetProgramIds = Array.isArray(changes.program_ids) ? [...new Set(changes.program_ids.filter(Boolean))] : (Array.isArray(before.program_ids) ? before.program_ids : []);
         updated.program_ids = targetProgramIds;
         if (featured && targetProgramIds.length) {
-          const validPrograms = await db.collection('programs').countDocuments({ organization_id: before.organization_id, id: { $in: targetProgramIds }, parent_program_id: { $exists: false } });
-          if (validPrograms !== targetProgramIds.length) return json({ error: 'One or more selected programs were not found' }, 422);
+          const validPrograms = await db.collection('programs').find({ organization_id: before.organization_id, id: { $in: targetProgramIds } }).toArray();
+          if (validPrograms.length !== targetProgramIds.length || validPrograms.some(program => program.parent_program_id)) return json({ error: 'One or more selected programs were not found' }, 422);
           for (const programId of targetProgramIds) {
             const selectedCount = await db.collection('events').countDocuments({ organization_id: before.organization_id, is_announcement: true, is_deleted: { $ne: true }, id: { $ne: id }, program_ids: programId });
             if (selectedCount >= 3) return json({ error: 'Each program can have at most 3 featured events' }, 400);
