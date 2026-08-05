@@ -16,6 +16,14 @@ const STATUS_OPTIONS = [
   { value: 'excused', label: 'Excused' },
 ];
 
+const freshRead = (path) => `${path}${path.includes('?') ? '&' : '?'}attendance_refresh=${Date.now()}`;
+const responseItems = (response) => {
+  if (Array.isArray(response)) return response;
+  if (Array.isArray(response?.items)) return response.items;
+  if (Array.isArray(response?.data?.items)) return response.data.items;
+  return [];
+};
+
 const labelFor = (value) => STATUS_OPTIONS.find((item) => item.value === value)?.label || 'Not marked';
 const newIdempotencyKey = () => globalThis.crypto?.randomUUID?.() || String(Date.now()) + '-' + Math.random().toString(16).slice(2);
 const studentName = (student) => [student?.first_name, student?.last_name].filter(Boolean).join(' ') || student?.name || student?.student_id || student?.id || 'Student';
@@ -68,18 +76,28 @@ export default function AttendanceAdministrator({ request }) {
     setLoading(true);
     setError('');
     try {
-      const [offeringResponse, termResponse, membershipResponse, studentResponse] = await Promise.all([
+      // Calendar data is required to open Attendance. Roster metadata is
+      // supplementary and must not prevent the Offering/Term selectors from loading.
+      const [offeringResult, termResult, membershipResult, studentResult] = await Promise.allSettled([
         request('/program-offerings'),
         request('/academic-terms'),
         request('/memberships'),
         request('/students'),
       ]);
-      setOfferings((offeringResponse.items || []).filter((item) => item.status !== 'archived'));
-      setTerms((termResponse.items || []).filter((item) => item.status !== 'archived'));
-      setMemberships(membershipResponse.items || []);
-      setStudents(studentResponse.items || []);
+      if (offeringResult.status === 'rejected') throw offeringResult.reason;
+      if (termResult.status === 'rejected') throw termResult.reason;
+
+      const offeringItems = responseItems(offeringResult.value);
+      const termItems = responseItems(termResult.value);
+      setOfferings(offeringItems.filter((item) => item.status !== 'archived'));
+      setTerms(termItems.filter((item) => item.status !== 'archived'));
+      setMemberships(membershipResult.status === 'fulfilled' ? responseItems(membershipResult.value) : []);
+      setStudents(studentResult.status === 'fulfilled' ? responseItems(studentResult.value) : []);
+
+      const optionalFailure = [membershipResult, studentResult].find((result) => result.status === 'rejected');
+      if (optionalFailure) setError(optionalFailure.reason?.message || 'Roster details could not be loaded.');
     } catch (loadError) {
-      setError(loadError.message);
+      setError(loadError.message || 'Attendance setup could not be loaded.');
     } finally {
       setLoading(false);
     }
@@ -101,11 +119,11 @@ export default function AttendanceAdministrator({ request }) {
     setLoadingRoster(true);
     setError('');
     Promise.all([
-      request('/academic-sessions?term_id=' + encodeURIComponent(termId)),
-      request('/membership-term-participations?term_id=' + encodeURIComponent(termId) + '&status=active'),
+      request(freshRead('/academic-sessions?term_id=' + encodeURIComponent(termId))),
+      request(freshRead('/membership-term-participations?term_id=' + encodeURIComponent(termId) + '&status=active')),
     ]).then(([sessionResponse, participationResponse]) => {
-      setSessions((sessionResponse.items || []).filter((item) => item.program_offering_id === offeringId || !item.program_offering_id));
-      setParticipations(participationResponse.items || []);
+      setSessions(responseItems(sessionResponse).filter((item) => item.program_offering_id === offeringId || !item.program_offering_id));
+      setParticipations(responseItems(participationResponse));
       setSessionId('');
       setRecords([]);
     }).catch((loadError) => setError(loadError.message))
@@ -122,9 +140,9 @@ export default function AttendanceAdministrator({ request }) {
     }
     setLoadingRoster(true);
     setError('');
-    request('/attendance-records?session_id=' + encodeURIComponent(sessionId))
+    request(freshRead('/attendance-records?session_id=' + encodeURIComponent(sessionId)))
       .then((response) => {
-        const nextRecords = response.items || [];
+        const nextRecords = responseItems(response);
         setRecords(nextRecords);
         const latest = new Map();
         const nextNotes = {};
@@ -172,7 +190,7 @@ export default function AttendanceAdministrator({ request }) {
         });
       }
       const response = await request('/attendance-records?session_id=' + encodeURIComponent(sessionId));
-      setRecords(response.items || []);
+      setRecords(responseItems(response));
       setCorrectionMode({});
       toast.success(String(changes.length) + ' attendance ' + (changes.length === 1 ? 'record' : 'records') + ' saved');
     } catch (saveError) {
