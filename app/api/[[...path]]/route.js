@@ -51,7 +51,7 @@ function normalizeOtpChallenge(doc) {
   return doc ? { id: doc.id, expires_at: doc.expires_at, created_at: doc.created_at } : null;
 }
 
-async function createPasswordOtpChallenge({ db, user, mobile }) {
+async function createPasswordOtpChallenge({ db, user, mobile, purpose = 'change_password', messageLabel = 'password change' }) {
   const normalized = normalizePhone(mobile);
   if (!normalized) return { error: json({ error: 'Enter a valid mobile number.' }, 400) };
   const account = await db.collection('users').findOne({ id: user.id });
@@ -73,7 +73,7 @@ async function createPasswordOtpChallenge({ db, user, mobile }) {
     id: uuidv4(),
     user_id: user.id,
     organization_id: user.organization_id || null,
-    purpose: 'change_password',
+    purpose,
     phone: normalized,
     code_hash: await bcrypt.hash(code, 10),
     expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
@@ -82,12 +82,12 @@ async function createPasswordOtpChallenge({ db, user, mobile }) {
     created_at: new Date().toISOString(),
   };
   await db.collection('auth_otp_challenges').updateMany(
-    { user_id: user.id, purpose: 'change_password', used_at: null },
+    { user_id: user.id, purpose, used_at: null },
     { $set: { used_at: new Date().toISOString() } },
   );
   await db.collection('auth_otp_challenges').insertOne(challenge);
 
-  const message = `Your Gokulam360 password change code is ${code}. It expires in 10 minutes.`;
+  const message = `Your Gokulam360 ${messageLabel} code is ${code}. It expires in 10 minutes.`;
   let delivery = 'sms';
   if (twilioClient && TWILIO_SMS_FROM) {
     const sent = await sendTwilioMessage('sms', normalized, message);
@@ -427,6 +427,61 @@ async function router(req, method) {
       return json({ user: u, organization: org ? stripId(org) : null });
     }
 
+    if (id === 'forgot-password' && sub === 'request-otp' && method === 'POST') {
+      const body = await req.json();
+      const email = String(body.email || '').trim().toLowerCase();
+      const normalizedMobile = normalizePhone(body.mobile);
+      const clientIp = (req.headers.get('x-forwarded-for') || 'unknown').split(',')[0].trim();
+      const limit = allowRequest('auth.password.forgot', clientIp + ':' + email);
+      if (!limit.allowed) {
+        const response = json({ error: 'Too many OTP requests. Please try again later.' }, 429);
+        response.headers.set('Retry-After', String(limit.retryAfterSeconds));
+        return response;
+      }
+      const account = email ? await db.collection('users').findOne({ email }) : null;
+      const storedMobile = account ? normalizePhone(account.mobile || account.phone) : null;
+      if (!account || !normalizedMobile || storedMobile !== normalizedMobile) {
+        return json({ ok: true, message: 'If the account details match, an OTP will be sent.' });
+      }
+      const result = await createPasswordOtpChallenge({ db, user: account, mobile: body.mobile, purpose: 'reset_password', messageLabel: 'password reset' });
+      return result.error || result.response;
+    }
+    if (id === 'forgot-password' && sub === 'reset' && method === 'POST') {
+      const body = await req.json();
+      const email = String(body.email || '').trim().toLowerCase();
+      const account = email ? await db.collection('users').findOne({ email }) : null;
+      if (!account || normalizePhone(account.mobile || account.phone) !== normalizePhone(body.mobile)) return json({ error: 'The reset details could not be verified.' }, 400);
+      const otp = String(body.otp || '').trim();
+      const newPassword = String(body.new_password || '');
+      if (newPassword.length < 8) return json({ error: 'New password must be at least 8 characters.' }, 400);
+      if (!/^\d{6}$/.test(otp)) return json({ error: 'Enter the 6-digit OTP.' }, 400);
+      const challenge = await db.collection('auth_otp_challenges').findOne({
+        user_id: account.id,
+        purpose: 'reset_password',
+        used_at: null,
+        expires_at: { $gt: new Date().toISOString() },
+      }, { sort: { created_at: -1 } });
+      if (!challenge) return json({ error: 'OTP expired or not requested. Request a new code.' }, 400);
+      if ((challenge.attempts || 0) >= 5) return json({ error: 'Too many incorrect attempts. Request a new code.' }, 429);
+      const valid = await bcrypt.compare(otp, challenge.code_hash);
+      if (!valid) {
+        await db.collection('auth_otp_challenges').updateOne({ id: challenge.id }, { $inc: { attempts: 1 } });
+        return json({ error: 'Incorrect OTP.' }, 400);
+      }
+      const changedAt = new Date().toISOString();
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await db.collection('users').updateOne({ id: account.id }, { $set: { password_hash: passwordHash, updated_at: changedAt } });
+      await db.collection('auth_otp_challenges').updateOne({ id: challenge.id, used_at: null }, { $set: { used_at: changedAt } });
+      await db.collection('activity').insertOne({
+        id: uuidv4(),
+        organization_id: account.organization_id || null,
+        kind: 'password_reset',
+        title: 'Account password reset',
+        actor: account.name || account.email,
+        created_at: changedAt,
+      });
+      return json({ ok: true, message: 'Password reset successfully.' });
+    }
     if (id === 'password' && sub === 'request-otp' && method === 'POST') {
       const authRes = await requireAuth(req);
       if (authRes.error) return authRes.error;
