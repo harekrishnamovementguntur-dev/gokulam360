@@ -105,6 +105,33 @@ function AuroraBlobs() {
   );
 }
 
+function AccountDialog({ user, open, onOpenChange, onUpdated }) {
+  const [name, setName] = useState(user.name || '');
+  const [phone, setPhone] = useState(user.phone || '');
+  const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [step, setStep] = useState('details');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => { if (open) { setName(user.name || ''); setPhone(user.phone || ''); setStep('details'); setOtp(''); setNewPassword(''); } }, [open, user]);
+  const saveDetails = async () => { setBusy(true); try { const r=await api('/auth/me',{method:'PUT',body:JSON.stringify({name,phone})}); onUpdated(r.user); toast.success('Account details updated'); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
+  const requestOtp = async () => { setBusy(true); try { await api('/auth/password/change/request',{method:'POST'}); setStep('password'); toast.success('Verification code sent to your email'); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
+  const changePassword = async () => { if (newPassword.length < 8) return toast.error('Password must be at least 8 characters'); setBusy(true); try { await api('/auth/password/change/confirm',{method:'POST',body:JSON.stringify({otp,new_password:newPassword})}); toast.success('Password changed'); setStep('details'); setOtp(''); setNewPassword(''); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>Manage account</DialogTitle><DialogDescription>Update your profile and secure your account.</DialogDescription></DialogHeader>
+    {step === 'details' ? <div className="space-y-4"><div><Label>Name</Label><Input value={name} onChange={e=>setName(e.target.value)} /></div><div><Label>Email</Label><Input value={user.email} disabled /></div><div><Label>Phone</Label><Input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Optional phone number" /></div><div className="text-sm text-muted-foreground">Role: {user.role.replaceAll('_',' ')}</div><div className="flex justify-between gap-2"><Button variant="outline" onClick={requestOtp} disabled={busy}>Change password</Button><Button onClick={saveDetails} disabled={busy}>Save details</Button></div></div>
+    : <div className="space-y-4"><p className="text-sm text-muted-foreground">Enter the code sent to {user.email}, then choose a new password.</p><div><Label>Email OTP</Label><Input value={otp} onChange={e=>setOtp(e.target.value)} inputMode="numeric" maxLength={6} /></div><div><Label>New password</Label><Input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} minLength={8} /></div><div className="flex justify-between gap-2"><Button variant="outline" onClick={()=>setStep('details')}>Back</Button><Button onClick={changePassword} disabled={busy}>Set new password</Button></div></div>}
+  </DialogContent></Dialog>;
+}
+
+function ForgotPasswordDialog({ open, onOpenChange }) {
+  const [email, setEmail] = useState(''); const [otp, setOtp] = useState(''); const [newPassword, setNewPassword] = useState(''); const [step, setStep] = useState('request'); const [busy, setBusy] = useState(false);
+  const request = async () => { setBusy(true); try { await api('/auth/password/forgot/request',{method:'POST',body:JSON.stringify({email})}); setStep('confirm'); toast.success('If the account exists, a verification code has been sent'); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
+  const confirm = async () => { if(newPassword.length<8) return toast.error('Password must be at least 8 characters'); setBusy(true); try { await api('/auth/password/forgot/confirm',{method:'POST',body:JSON.stringify({email,otp,new_password:newPassword})}); toast.success('Password reset. You can sign in now.'); onOpenChange(false); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
+  return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>Forgot password?</DialogTitle><DialogDescription>We will send a one-time code to your account email.</DialogDescription></DialogHeader>
+    {step==='request' ? <div className="space-y-4"><div><Label>Email</Label><Input type="email" value={email} onChange={e=>setEmail(e.target.value)} /></div><Button className="w-full" onClick={request} disabled={busy}>Send verification code</Button></div>
+    : <div className="space-y-4"><p className="text-sm text-muted-foreground">Enter the code sent to {email}.</p><div><Label>Email OTP</Label><Input value={otp} onChange={e=>setOtp(e.target.value)} inputMode="numeric" maxLength={6} /></div><div><Label>New password</Label><Input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} minLength={8} /></div><Button className="w-full" onClick={confirm} disabled={busy}>Reset password</Button></div>}
+  </DialogContent></Dialog>;
+}
+
 /* ============================================================
    LOGIN
 ============================================================ */
@@ -113,6 +140,7 @@ function Login({ onLoggedIn }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   const submit = async (e) => {
     e.preventDefault(); setLoading(true);
@@ -169,7 +197,9 @@ function Login({ onLoggedIn }) {
               <Button type="submit" className="w-full h-11 bg-saffron-gradient hover:opacity-95 shadow-lg" disabled={loading}>
                 {loading ? 'Signing in…' : <>Sign in <ArrowUpRight size={16} className="ml-1" /></>}
               </Button>
-            </form>
+            <button type="button" className="text-sm text-primary hover:underline" onClick={() => setForgotOpen(true)}>Forgot password?</button>
+      </form>
+      <ForgotPasswordDialog open={forgotOpen} onOpenChange={setForgotOpen} />
 
             
           </motion.div>
@@ -222,6 +252,8 @@ function Login({ onLoggedIn }) {
 function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
   const [view, setView] = useState('dashboard');
   const [cmdOpen, setCmdOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
 
@@ -304,7 +336,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
                 <div className="text-sm font-semibold truncate">{user.name}</div>
                 <div className="text-[10px] text-muted-foreground truncate capitalize">{user.role.replace('_', ' ')}</div>
               </div>
-              <button onClick={onLogout} className="p-1.5 rounded-lg hover:bg-white/40 text-muted-foreground hover:text-foreground transition" title="Logout"><LogOut size={14} /></button>
+
             </div>
           </div>
         </div>
@@ -329,6 +361,16 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               <Search size={14} /> <span>Search…</span>
               <kbd className="ml-6 text-[10px] px-1.5 py-0.5 rounded bg-muted border font-mono">⌘K</kbd>
             </button>
+            <div className="relative">
+              <button aria-label="Open profile menu" onClick={() => setProfileMenuOpen(v => !v)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/60 border transition">
+                <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground grid place-items-center text-sm font-semibold">{initials(user.name)}</div>
+                <span className="hidden lg:block text-sm font-medium max-w-28 truncate">{user.name}</span>
+              </button>
+              {profileMenuOpen && <div className="absolute right-0 top-11 z-30 w-48 rounded-xl border bg-background p-1.5 shadow-xl">
+                <button className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { setProfileMenuOpen(false); setAccountOpen(true); }}>Manage account</button>
+                <button className="w-full rounded-lg px-3 py-2 text-left text-sm text-destructive hover:bg-muted" onClick={() => { setProfileMenuOpen(false); onLogout(); }}><LogOut size={14} className="mr-2 inline" />Log out</button>
+              </div>}
+            </div>
             <Button size="icon" variant="ghost" className="rounded-lg" onClick={() => setDark(!dark)}>
               {dark ? <Sun size={16} /> : <Moon size={16} />}
             </Button>
@@ -353,6 +395,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
             </motion.div>
           </AnimatePresence>
         </main>
+        <AccountDialog user={user} open={accountOpen} onOpenChange={setAccountOpen} onUpdated={updated => { refreshMe(); }} />
       </div>
 
       {/* Command palette */}

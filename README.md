@@ -110,6 +110,17 @@ curl -X POST http://localhost:3000/api/seed
 
 ---
 
+## Account email OTP configuration
+
+Password change and password recovery use email OTP. Configure these server-side variables:
+
+- `RESEND_API_KEY`: Resend API key.
+- `AUTH_EMAIL_FROM` or `RESEND_FROM_EMAIL`: verified sender address.
+
+Keep these values out of source control. If they are missing, OTP delivery is rejected safely rather than exposing verification codes.
+
+---
+
 ## Technology Stack
 
 **Frontend**: Next.js 15 Â· React 19 Â· Tailwind 4 Â· shadcn/ui Â· framer-motion Â· recharts Â· lucide-react

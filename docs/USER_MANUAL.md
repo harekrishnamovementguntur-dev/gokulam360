@@ -313,7 +313,25 @@ Ask AI currently answers operational questions about attendance, sessions, credi
 
 ---
 
-## 16. Data Backup & Restore
+## 16. Account Security
+
+Click your profile in the top bar to open **Manage account**. You can update your name and phone number; your email and role remain controlled account values.
+
+### Change password
+
+1. Choose **Change password**.
+2. A one-time code is sent to the account email.
+3. Enter the code and a new password of at least 8 characters.
+
+### Forgot password
+
+From the sign-in screen, choose **Forgot password?**, enter the account email, verify the email code, and set a new password.
+
+Codes expire after 10 minutes and have limited attempts. Email OTP requires `RESEND_API_KEY` and `AUTH_EMAIL_FROM` (or `RESEND_FROM_EMAIL`) to be configured.
+
+---
+
+## 17. Data Backup & Restore
 
 ### 16.1 Export
 
@@ -337,7 +355,7 @@ Ask AI currently answers operational questions about attendance, sessions, credi
 
 ---
 
-## 17. Command Palette (⌘K)
+## 18. Command Palette (⌘K)
 
 Press **⌘K** (Mac) or **Ctrl+K** (Windows/Linux) anywhere. A search dialog appears with:
 
@@ -349,7 +367,7 @@ Type to filter. Enter to select.
 
 ---
 
-## 18. Parent Portal (Public + Login)
+## 19. Parent Portal (Public + Login)
 
 ### 17.1 Public QR link (no login)
 
@@ -370,7 +388,7 @@ Parents with a login account (created by admin) see a richer view via `parent@..
 
 ---
 
-## 19. Frequently Asked Questions
+## 20. Frequently Asked Questions
 
 **Q: A student joined mid-term. Do they still pay full fee?**
 A: Yes. They're credited with only the *remaining* sessions from their join date, but any unused sessions **carry over to the next term automatically** — they get their full 16 lessons wherever they happen.
