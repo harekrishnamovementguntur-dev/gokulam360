@@ -1014,7 +1014,7 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
     name: '', address: '',
     contact_email: '', contact_phone: '',
     currency: 'INR', academic_year: '2025-26', logo_url: '',
-    admin_name: '', admin_email: '', admin_password: '',
+    admin_name: '', admin_email: '', admin_mobile: '', admin_password: '',
     first_program: { name: 'Sunday School', description: 'Weekly spiritual education for children', age_group: '6-14', duration_months: 4, capacity: 40, start_date: '', end_date: '' },
     fees: { admission: 500, term: 1500 },
   });
@@ -1036,7 +1036,7 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
     const s = steps[step].key;
     if (s === 'details') return form.name.trim().length > 1;
     if (s === 'contact') return form.contact_email.includes('@');
-    if (s === 'admin') return form.admin_name && form.admin_email.includes('@') && form.admin_password.length >= 6;
+    if (s === 'admin') return form.admin_name && form.admin_email.includes('@') && form.admin_mobile && form.admin_password.length >= 6;
     if (s === 'program') return true;
     return true;
   };
@@ -1177,6 +1177,7 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
                     </div>
                     <div><Label>Full Name *</Label><Input value={form.admin_name} onChange={e => set({ admin_name: e.target.value })} placeholder="Radha Devi Dasi" /></div>
                     <div><Label>Email *</Label><Input type="email" value={form.admin_email} onChange={e => set({ admin_email: e.target.value })} placeholder="admin@yourorg.org" /></div>
+                    <div><Label>Mobile *</Label><Input type="tel" inputMode="tel" autoComplete="tel" value={form.admin_mobile} onChange={e => set({ admin_mobile: e.target.value })} placeholder="+91 98765 43210" /></div>
                     <div><Label>Password * (min 6 chars)</Label><Input type="password" value={form.admin_password} onChange={e => set({ admin_password: e.target.value })} placeholder="At least 6 characters" /></div>
                   </div>
                 )}
