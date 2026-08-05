@@ -2699,13 +2699,25 @@ function Reports() {
   const [loading, setLoading] = useState(false);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
+  const [reportPrograms, setReportPrograms] = useState([]);
+  const [reportStudents, setReportStudents] = useState([]);
+  const [paymentProgramFilter, setPaymentProgramFilter] = useState('');
+  const [paymentBatchFilter, setPaymentBatchFilter] = useState('');
+  const [paymentStudentFilter, setPaymentStudentFilter] = useState('');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('');
   useEffect(() => {
     setLoading(true);
     setRows([]);
     setAttSummary(null);
     const params = new URLSearchParams();
-    if ((tab === 'attendance' || tab === 'attendance-summary') && fromDate) params.set('from', fromDate);
-    if ((tab === 'attendance' || tab === 'attendance-summary') && toDate) params.set('to', toDate);
+    if (tab === 'fees') {
+      if (paymentProgramFilter) params.set('program_id', paymentProgramFilter);
+      if (paymentBatchFilter) params.set('batch_id', paymentBatchFilter);
+      if (paymentStudentFilter) params.set('student_id', paymentStudentFilter);
+      if (paymentStatusFilter) params.set('status', paymentStatusFilter);
+    }
+    if ((tab === 'attendance' || tab === 'attendance-summary' || tab === 'fees') && fromDate) params.set('from', fromDate);
+    if ((tab === 'attendance' || tab === 'attendance-summary' || tab === 'fees') && toDate) params.set('to', toDate);
     const query = params.toString() ? `?${params.toString()}` : '';
     if (tab === 'attendance-summary') {
       api(`/reports/attendance-summary${query}`).then(setAttSummary).finally(() => setLoading(false));
@@ -2715,12 +2727,19 @@ function Reports() {
         if (tab === 'attendance') setAttSummary({ items: r.items || [], summary: r.summary || {} });
       }).finally(() => setLoading(false));
     }
-  }, [tab, fromDate, toDate]);
+  }, [tab, fromDate, toDate, paymentProgramFilter, paymentBatchFilter, paymentStudentFilter, paymentStatusFilter]);
+  useEffect(() => {
+    if (tab !== 'fees') return;
+    Promise.all([api('/programs'), api('/students')]).then(([programs, students]) => {
+      setReportPrograms(programs.items || []);
+      setReportStudents(students.items || []);
+    });
+  }, [tab]);
 
   const columns = {
     students: ['student_id', 'first_name', 'last_name', 'gender', 'mobile', 'email', 'status'],
     attendance: ['session_date', 'student_name', 'status'],
-    fees: ['student_name', 'fee_type', 'amount', 'paid_amount', 'status', 'due_date'],
+    fees: ['student_name', 'program_name', 'batch_name', 'amount_minor', 'amount_paid_minor', 'pending_amount_minor', 'payment_date', 'payment_mode', 'collected_by', 'status'],
   }[tab];
 
   const exportCSV = () => {
@@ -2781,9 +2800,9 @@ function Reports() {
           <TabsTrigger value="students">Students</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
           <TabsTrigger value="attendance-summary">Monthly Summary</TabsTrigger>
-          <TabsTrigger value="fees">Fees</TabsTrigger>
+          <TabsTrigger value="fees">Payments</TabsTrigger>
         </TabsList>
-        {(tab === 'attendance' || tab === 'attendance-summary') && (
+        {(tab === 'attendance' || tab === 'attendance-summary' || tab === 'fees') && (
           <div className="mt-4 rounded-2xl glass p-4 flex flex-wrap items-end gap-3">
             <div>
               <Label className="text-xs">From date</Label>
@@ -2796,9 +2815,17 @@ function Reports() {
             {(fromDate || toDate) && <Button variant="ghost" onClick={() => { setFromDate(''); setToDate(''); }}>Clear dates</Button>}
           </div>
         )}
+        {tab === 'fees' && (
+          <div className="mt-4 rounded-2xl glass p-4 flex flex-wrap items-end gap-3">
+            <div><Label className="text-xs">Program</Label><Select value={paymentProgramFilter || 'all'} onValueChange={v => { setPaymentProgramFilter(v === 'all' ? '' : v); setPaymentBatchFilter(''); }}><SelectTrigger className="w-48"><SelectValue placeholder="All programs" /></SelectTrigger><SelectContent><SelectItem value="all">All programs</SelectItem>{reportPrograms.filter(p => !p.parent_program_id).map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label className="text-xs">Batch</Label><Select value={paymentBatchFilter || 'all'} onValueChange={v => setPaymentBatchFilter(v === 'all' ? '' : v)}><SelectTrigger className="w-48"><SelectValue placeholder="All batches" /></SelectTrigger><SelectContent><SelectItem value="all">All batches</SelectItem>{reportPrograms.filter(p => p.parent_program_id && (!paymentProgramFilter || p.parent_program_id === paymentProgramFilter)).map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label className="text-xs">Student</Label><Select value={paymentStudentFilter || 'all'} onValueChange={v => setPaymentStudentFilter(v === 'all' ? '' : v)}><SelectTrigger className="w-52"><SelectValue placeholder="All students" /></SelectTrigger><SelectContent><SelectItem value="all">All students</SelectItem>{reportStudents.map(s => <SelectItem key={s.id} value={s.id}>{[s.first_name, s.last_name].filter(Boolean).join(' ') || s.student_id}</SelectItem>)}</SelectContent></Select></div>
+            <div><Label className="text-xs">Status</Label><Select value={paymentStatusFilter || 'all'} onValueChange={v => setPaymentStatusFilter(v === 'all' ? '' : v)}><SelectTrigger className="w-36"><SelectValue placeholder="All statuses" /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="paid">Paid</SelectItem><SelectItem value="pending">Pending</SelectItem></SelectContent></Select></div>
+          </div>
+        )}
         <TabsContent value={tab} className="mt-4">
           {tab === 'attendance-summary' ? (
-            <CanonicalAttendanceSummaryTable data={attSummary} loading={loading} />
+            <AttendanceSummaryTable data={attSummary} loading={loading} />
           ) : (
             <div className="rounded-2xl glass overflow-hidden">
               {tab === 'attendance' && !loading && <AttendanceStatusSummary summary={attSummary?.summary} />}
