@@ -1933,7 +1933,7 @@ function Attendance() {
       const nearest = r.sessions?.filter(s => s.is_past || s.is_today).slice(-1)[0];
       setDate((todayS || nearest || r.sessions?.[0])?.date || '');
     });
-    api(`/enrollments?program_id=${program}`).then(r => setEnrollments(r.items));
+    api(`/enrollments?program_id=${program}`).then(r => setEnrollments(r.items || []));
   }, [program]);
   useEffect(() => {
     if (!program || !date) { setExisting({}); return; }
@@ -1962,7 +1962,7 @@ function Attendance() {
       await api('/attendance-bulk', { method: 'POST', body: JSON.stringify({ date, program_id: program, records }) });
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#22c55e', '#7c3aed'] });
       toast.success(`Attendance saved for ${records.length} students`);
-      api(`/programs/${program}/sessions`).then(r => setSessions(r.sessions || []));
+      Promise.all([api(`/programs/${program}/sessions`), api(`/enrollments?program_id=${program}`)]).then(([sessionResult, enrollmentResult]) => { setSessions(sessionResult.sessions || []); setEnrollments(enrollmentResult.items || []); });
     } catch (e) { toast.error(e.message); }
   };
 
@@ -1988,7 +1988,7 @@ function Attendance() {
         <div className="min-w-[260px]"><Label className="text-[11px]">Batch</Label>
           <Select value={program} onValueChange={setProgram}>
             <SelectTrigger><SelectValue placeholder="Select a batch" /></SelectTrigger>
-            <SelectContent>{programs.map(p => <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>)}</SelectContent>
+            <SelectContent>{programs.filter(p => p.parent_program_id).map(batch => <SelectItem key={batch.id} value={batch.id}>{batch.name}</SelectItem>)}</SelectContent>
           </Select>
         </div>
         {selectedProgram && (
@@ -2025,12 +2025,12 @@ function Attendance() {
                 if (!confirm(`Cancel session on ${d.toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long' })}? Students won't be charged for this session.`)) return;
                 await api(`/programs/${program}/cancel-session`, { method: 'POST', body: JSON.stringify({ date: s.date, action: 'cancel' }) });
                 toast.success('Session cancelled');
-                api(`/programs/${program}/sessions`).then(r => setSessions(r.sessions || []));
+                Promise.all([api(`/programs/${program}/sessions`), api(`/enrollments?program_id=${program}`)]).then(([sessionResult, enrollmentResult]) => { setSessions(sessionResult.sessions || []); setEnrollments(enrollmentResult.items || []); });
               };
               return (
                 <div key={s.date} className="relative shrink-0 group">
                   <button onClick={() => setDate(s.date)}
-                    className={`rounded-xl px-3 py-2 min-w-[76px] transition ${cls}`}>
+                    className={`relative rounded-xl px-3 pr-9 py-2 min-w-[76px] transition ${cls}`}>
                     <div className="text-[9px] uppercase font-semibold opacity-80">{d.toLocaleString('en', { month: 'short' })}</div>
                     <div className="text-lg font-bold leading-none">{d.getDate()}</div>
                     <div className="text-[9px] opacity-80 mt-0.5">{d.toLocaleString('en', { weekday: 'short' })}</div>
@@ -2039,7 +2039,7 @@ function Attendance() {
                   </button>
                   {!s.marked && !s.is_past && (
                     <button onClick={cancelSession}
-                      className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-rose-500 text-white text-[9px] opacity-0 group-hover:opacity-100 transition hover:bg-rose-600" title="Cancel this session">✕</button>
+                      className="absolute top-1 right-1 z-10 w-6 h-6 rounded-full bg-rose-500 text-white text-[10px] opacity-100 transition hover:bg-rose-600" title="Cancel this session">✕</button>
                   )}
                 </div>
               );
@@ -2105,7 +2105,7 @@ function Attendance() {
                       )}
                     </div>
                   </div>
-                  <div className="flex gap-1.5 flex-wrap">
+                  <div className="flex flex-wrap justify-end gap-1.5 shrink-0 max-w-[min(100%,18rem)]">
                     {['present', 'absent', 'late', 'excused'].map(v => (
                       <button key={v} onClick={() => setMark(s.id, v)}
                         className={`text-[11px] px-2.5 py-1 rounded-full capitalize font-medium transition ${chip(v, marks[s.id] === v)}`}>{v}</button>
