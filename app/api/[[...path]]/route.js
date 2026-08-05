@@ -89,18 +89,50 @@ function hashAccountOtp(code) {
 }
 async function sendAccountOtp(email, code, purpose) {
   const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.AUTH_EMAIL_FROM || process.env.RESEND_FROM_EMAIL;
-  if (!apiKey || !from) return false;
-  const response = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      from, to: [email],
-      subject: purpose === 'forgot_password' ? 'Reset your Gokulam360 password' : 'Verify your Gokulam360 password change',
-      text: `Your Gokulam360 verification code is ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`
-    })
-  });
-  return response.ok;
+  const from = process.env.AUTH_EMAIL_FROM
+    || process.env.RESEND_FROM_EMAIL
+    || 'Gokulam360 <onboarding@resend.dev>';
+
+  if (!apiKey) {
+    console.error('Account OTP email delivery is unavailable: RESEND_API_KEY is missing');
+    return { ok: false, error: 'Email delivery is not configured. Please contact an administrator.' };
+  }
+
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from,
+        to: [email],
+        subject: purpose === 'forgot_password'
+          ? 'Reset your Gokulam360 password'
+          : 'Verify your Gokulam360 password change',
+        text: `Your Gokulam360 verification code is ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`,
+      }),
+    });
+
+    if (!response.ok) {
+      const responseText = await response.text();
+      console.error('Account OTP email delivery failed', {
+        status: response.status,
+        response: responseText.slice(0, 500),
+        purpose,
+      });
+      return { ok: false, error: 'Unable to send the verification email. Please try again later.' };
+    }
+
+    return { ok: true };
+  } catch (error) {
+    console.error('Account OTP email delivery request failed', {
+      message: error instanceof Error ? error.message : String(error),
+      purpose,
+    });
+    return { ok: false, error: 'Unable to send the verification email. Please try again later.' };
+  }
 }
 async function issueAccountOtp(db, { email, userId, purpose, organizationId }) {
   const now = Date.now();

@@ -327,7 +327,7 @@ Click your profile in the top bar to open **Manage account**. You can update you
 
 From the sign-in screen, choose **Forgot password?**, enter the account email, verify the email code, and set a new password.
 
-Codes expire after 10 minutes and have limited attempts. Email OTP requires `RESEND_API_KEY` and `AUTH_EMAIL_FROM` (or `RESEND_FROM_EMAIL`) to be configured.
+Codes expire after 10 minutes and have limited attempts. Email OTP requires `RESEND_API_KEY`. `AUTH_EMAIL_FROM` or `RESEND_FROM_EMAIL` is optional; when omitted, development uses Resend's `onboarding@resend.dev` sender, which can deliver only to the email address associated with the Resend account. Add a verified domain later and change only the sender environment variable for general recipients.
 
 ---
 
