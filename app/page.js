@@ -2997,16 +2997,24 @@ function AttendanceSummaryTable({ data, loading, error }) {
 ============================================================ */
 function Events() {
   const [items, setItems] = useState([]);
+  const [programs, setPrograms] = useState([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const empty = { name: '', date: '', description: '', image_url: '' };
+  const empty = { name: '', date: '', description: '', image_url: '', is_announcement: false, program_ids: [] };
   const [form, setForm] = useState(empty);
-  const load = () => api('/events').then(r => setItems(r.items));
+  const load = () => Promise.all([api('/events'), api('/programs')]).then(([events, programData]) => {
+    setItems(events.items || []);
+    setPrograms((programData.items || []).filter(p => !p.parent_program_id));
+  });
   useEffect(() => { load(); }, []);
   const save = async () => {
     try {
-      if (editing) await api(`/events/${editing.id}`, { method: 'PUT', body: JSON.stringify(form) });
-      else await api('/events', { method: 'POST', body: JSON.stringify(form) });
+      const payload = { ...form, program_ids: form.is_announcement ? form.program_ids : [] };
+      if (payload.is_announcement && payload.program_ids.length === 0) {
+        return toast.error('Select at least one program for a featured event');
+      }
+      if (editing) await api(`/events/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
+      else await api('/events', { method: 'POST', body: JSON.stringify(payload) });
       confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#ec4899'] });
       toast.success(editing ? 'Event updated' : 'Event created 🎉');
       setOpen(false); load();
@@ -3014,7 +3022,13 @@ function Events() {
   };
   const del = async (e) => { if (!confirm(`Delete ${e.name}?`)) return; await api(`/events/${e.id}`, { method: 'DELETE' }); load(); };
   const openNew = () => { setEditing(null); setForm(empty); setOpen(true); };
-  const openEdit = (e) => { setEditing(e); setForm({ ...empty, ...e }); setOpen(true); };
+  const openEdit = (e) => { setEditing(e); setForm({ ...empty, ...e, program_ids: Array.isArray(e.program_ids) ? e.program_ids : [] }); setOpen(true); };
+  const toggleProgram = (id) => setForm(current => ({
+    ...current,
+    program_ids: current.program_ids.includes(id)
+      ? current.program_ids.filter(programId => programId !== id)
+      : [...current.program_ids, id],
+  }));
   const selectImage = (ev) => {
     const file = ev.target.files?.[0];
     if (!file) return;
@@ -3030,41 +3044,66 @@ function Events() {
     <div className="space-y-5">
       <PageHeader title="Events" subtitle="Celebrations, festivals & activities" icon={CalendarIcon}
         action={<Button className="bg-saffron-gradient shadow" onClick={openNew}><Plus size={15} className="mr-1" /> New Event</Button>} />
-      {items.length === 0 ? <EmptyState text="No events yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openNew}><Plus size={14} className="mr-1" />Create first event</Button>} /> : (
+      {items.length === 0 ? <EmptyState text="No events yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openNew}><Plus size={14} className="mr-1" />Create first event</Button>} : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {items.map((e, i) => (
-            <motion.div key={e.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-              className="rounded-2xl overflow-hidden glass card-lift group">
-              <div className="h-28 relative" style={{ background: `linear-gradient(135deg, ${covers[i % covers.length]})` }}>
-                {e.image_url ? <img src={e.image_url} alt="" className="absolute inset-0 h-full w-full object-cover" /> : (
-                  <div className="absolute inset-0 flex items-center justify-center"><CalendarIcon className="text-white/90" size={40} /></div>
-                )}
-                <div className="absolute bottom-3 left-3 bg-white/20 backdrop-blur rounded-lg text-white text-center px-2 py-1 min-w-[54px]">
-                  <div className="text-[9px] uppercase">{new Date(e.date).toLocaleString('en', { month: 'short' })}</div>
-                  <div className="text-xl font-bold leading-none">{new Date(e.date).getDate()}</div>
+          {items.map((e, i) => {
+            const targetNames = (Array.isArray(e.program_ids) ? e.program_ids : [])
+              .map(id => programs.find(p => p.id === id)?.name).filter(Boolean);
+            return (
+              <motion.div key={e.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+                className="rounded-2xl overflow-hidden glass card-lift group">
+                <div className="h-28 relative" style={{ background: `linear-gradient(135deg, ${covers[i % covers.length]})` }}>
+                  {e.image_url ? <img src={e.image_url} alt="" className="absolute inset-0 h-full w-full object-cover" /> : (
+                    <div className="absolute inset-0 flex items-center justify-center"><CalendarIcon className="text-white/90" size={40} /></div>
+                  )}
+                  <div className="absolute bottom-3 left-3 bg-white/20 backdrop-blur rounded-lg text-white text-center px-2 py-1 min-w-[54px]">
+                    <div className="text-[9px] uppercase">{new Date(e.date).toLocaleString('en', { month: 'short' })}</div>
+                    <div className="text-xl font-bold leading-none">{new Date(e.date).getDate()}</div>
+                  </div>
                 </div>
-              </div>
-              <div className="p-4">
-                <div className="font-bold">{e.name}</div>
-                <p className="text-xs text-muted-foreground mt-1 line-clamp-2 min-h-[32px]">{e.description}</p>
-                <div className="flex gap-1 mt-3 pt-3 border-t opacity-0 group-hover:opacity-100 transition">
-                  <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(e)}><Edit3 size={13} className="mr-1" /> Edit</Button>
-                  <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(e)}><Trash2 size={13} /></Button>
+                <div className="p-4">
+                  <div className="flex items-center justify-between gap-2"><div className="font-bold truncate">{e.name}</div>{e.is_announcement && <Badge className="bg-violet-600 text-white text-[10px]">Featured</Badge>}</div>
+                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2 min-h-[32px]">{e.description}</p>
+                  {targetNames.length > 0 && <div className="text-[11px] text-primary mt-2 truncate">For: {targetNames.join(', ')}</div>}
+                  {e.is_announcement && targetNames.length === 0 && <div className="text-[11px] text-muted-foreground mt-2">Visible to all programs</div>}
+                  <div className="flex gap-1 mt-3 pt-3 border-t opacity-0 group-hover:opacity-100 transition">
+                    <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(e)}><Edit3 size={13} className="mr-1" /> Edit</Button>
+                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(e)}><Trash2 size={13} /></Button>
+                  </div>
                 </div>
-              </div>
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </div>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>{editing ? 'Edit' : 'New'} Event</DialogTitle><DialogDescription>Add festivals, competitions, camps and more.</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{editing ? 'Edit' : 'New'} Event</DialogTitle><DialogDescription>Add an event and optionally feature it for selected programs.</DialogDescription></DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2"><Label>Event Name</Label><Input value={form.name} onChange={ev => setForm({ ...form, name: ev.target.value })} placeholder="e.g. Janmashtami Celebration" /></div>
             <div><Label>Date</Label><Input type="date" value={form.date} onChange={ev => setForm({ ...form, date: ev.target.value })} /></div>
             <div></div>
             <div className="col-span-2"><Label>Description</Label><Textarea rows={3} value={form.description} onChange={ev => setForm({ ...form, description: ev.target.value })} placeholder="Details about the event" /></div>
+            <div className="col-span-2 rounded-xl border bg-background/30 p-3 space-y-3">
+              <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                <input type="checkbox" checked={Boolean(form.is_announcement)} onChange={ev => setForm({ ...form, is_announcement: ev.target.checked })} />
+                Show as featured event in the Parent Portal
+              </label>
+              {form.is_announcement && (
+                <div className="space-y-2">
+                  <div className="text-xs text-muted-foreground">Select one or more programs. Each program can have up to 3 featured events.</div>
+                  {programs.length === 0 ? <div className="text-xs text-rose-600">Create a program before featuring an event.</div> : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-32 overflow-y-auto">
+                      {programs.map(program => <label key={program.id} className="flex items-center gap-2 rounded-lg border px-2 py-1.5 text-sm cursor-pointer hover:bg-primary/5">
+                        <input type="checkbox" checked={form.program_ids.includes(program.id)} onChange={() => toggleProgram(program.id)} />
+                        <span className="truncate">{program.name}</span>
+                      </label>)}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
             <div className="col-span-2 space-y-2"><Label>Advertisement image <span className="text-muted-foreground font-normal">(optional, max 2 MB)</span></Label><Input type="file" accept="image/*" onChange={selectImage} />{form.image_url && <div className="flex items-center gap-3"><img src={form.image_url} alt="Event preview" className="h-16 w-24 rounded-lg object-cover border" /><Button type="button" variant="ghost" size="sm" onClick={() => setForm({ ...form, image_url: '' })}>Remove image</Button></div>}</div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient">{editing ? 'Update' : 'Create'}</Button></DialogFooter>
