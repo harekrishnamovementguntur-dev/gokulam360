@@ -2697,19 +2697,25 @@ function Reports() {
   const [rows, setRows] = useState([]);
   const [attSummary, setAttSummary] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
   useEffect(() => {
     setLoading(true);
     setRows([]);
     setAttSummary(null);
+    const params = new URLSearchParams();
+    if ((tab === 'attendance' || tab === 'attendance-summary') && fromDate) params.set('from', fromDate);
+    if ((tab === 'attendance' || tab === 'attendance-summary') && toDate) params.set('to', toDate);
+    const query = params.toString() ? `?${params.toString()}` : '';
     if (tab === 'attendance-summary') {
-      api('/reports/attendance-summary').then(setAttSummary).finally(() => setLoading(false));
+      api(`/reports/attendance-summary${query}`).then(setAttSummary).finally(() => setLoading(false));
     } else {
-      api(`/reports/${tab}`).then(r => {
+      api(`/reports/${tab}${query}`).then(r => {
         setRows(Array.isArray(r.items) ? r.items : []);
         if (tab === 'attendance') setAttSummary({ items: r.items || [], summary: r.summary || {} });
       }).finally(() => setLoading(false));
     }
-  }, [tab]);
+  }, [tab, fromDate, toDate]);
 
   const columns = {
     students: ['student_id', 'first_name', 'last_name', 'gender', 'mobile', 'email', 'status'],
@@ -2777,6 +2783,19 @@ function Reports() {
           <TabsTrigger value="attendance-summary">Monthly Summary</TabsTrigger>
           <TabsTrigger value="fees">Fees</TabsTrigger>
         </TabsList>
+        {(tab === 'attendance' || tab === 'attendance-summary') && (
+          <div className="mt-4 rounded-2xl glass p-4 flex flex-wrap items-end gap-3">
+            <div>
+              <Label className="text-xs">From date</Label>
+              <Input type="date" value={fromDate} onChange={e => setFromDate(e.target.value)} />
+            </div>
+            <div>
+              <Label className="text-xs">To date</Label>
+              <Input type="date" value={toDate} onChange={e => setToDate(e.target.value)} />
+            </div>
+            {(fromDate || toDate) && <Button variant="ghost" onClick={() => { setFromDate(''); setToDate(''); }}>Clear dates</Button>}
+          </div>
+        )}
         <TabsContent value={tab} className="mt-4">
           {tab === 'attendance-summary' ? (
             <CanonicalAttendanceSummaryTable data={attSummary} loading={loading} />
