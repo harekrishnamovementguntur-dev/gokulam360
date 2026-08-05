@@ -1123,6 +1123,8 @@ function PageHeader({ title, subtitle, icon: Icon, action }) {
 ============================================================ */
 function Students({ students, setStudents }) {
   const [programs, setPrograms] = useState([]);
+  const [enrollments, setEnrollments] = useState([]);
+  const [batchDetails, setBatchDetails] = useState({});
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [cardOf, setCardOf] = useState(null);
@@ -1135,7 +1137,14 @@ function Students({ students, setStudents }) {
   const fileRef = useRef(null);
 
   const load = () => api('/students').then(r => setStudents(r.items));
-  useEffect(() => { api('/programs').then(r => setPrograms(r.items)); api('/auth/me').then(r => setOrg(r.organization)); }, []);
+  const loadEnrollments = () => api('/enrollments').then(r => setEnrollments(r.items || []));
+  useEffect(() => {
+    api('/programs').then(r => setPrograms(r.items || []));
+    api('/auth/me').then(r => setOrg(r.organization));
+    loadEnrollments();
+  }, []);
+
+  const batches = useMemo(() => programs.filter(p => p.parent_program_id), [programs]);
 
   const filtered = useMemo(() => {
     let list = students;
@@ -1144,19 +1153,40 @@ function Students({ students, setStudents }) {
     return list;
   }, [students, q, statusFilter]);
 
-  const openEdit = (s) => { setEditing(s); setForm({ ...empty, ...s, program_ids: s.program_ids && s.program_ids.length ? s.program_ids : (s.program_id ? [s.program_id] : []) }); setOpen(true); };
-  const openNew = () => { setEditing(null); setForm({ ...empty, student_id: 'GK-2025-' + String(Math.floor(1000 + Math.random() * 9000)) }); setOpen(true); };
+  const openEdit = (s) => {
+    const selectedIds = s.program_ids && s.program_ids.length ? s.program_ids : (s.program_id ? [s.program_id] : []);
+    const details = Object.fromEntries(enrollments.filter(e => e.student_id === s.id).map(e => [e.program_id, {
+      fee_amount: e.amount || '', amount_paid: e.paid_amount || '', credit_quantity: e.sessions_credited || '', payment_mode: e.payment_mode || 'cash',
+    }]));
+    setEditing(s); setBatchDetails(details); setForm({ ...empty, ...s, program_ids: selectedIds }); setOpen(true);
+  };
+  const openNew = () => { setEditing(null); setBatchDetails({}); setForm({ ...empty, student_id: 'GK-2025-' + String(Math.floor(1000 + Math.random() * 9000)) }); setOpen(true); };
+  const toggleBatch = (id, selected) => {
+    const ids = form.program_ids || [];
+    setForm({ ...form, program_ids: selected ? ids.filter(x => x !== id) : [...ids, id] });
+    if (selected) {
+      const next = { ...batchDetails }; delete next[id]; setBatchDetails(next);
+    } else setBatchDetails({ ...batchDetails, [id]: { fee_amount: '', amount_paid: '', credit_quantity: '', payment_mode: 'cash' } });
+  };
+  const updateBatchDetail = (id, patch) => setBatchDetails(prev => ({ ...prev, [id]: { ...(prev[id] || {}), ...patch } }));
   const save = async () => {
     try {
       const isNew = !editing;
-      const payload = { ...form, program_id: form.program_ids?.[0] || form.program_id }; // keep legacy
+      const selectedIds = form.program_ids || [];
+      if (isNew) {
+        const missing = selectedIds.find(id => !batchDetails[id]?.credit_quantity || batchDetails[id]?.fee_amount === '');
+        if (missing) return toast.error('Enter the fee and credits for every selected batch');
+        const invalidPayment = selectedIds.find(id => Number(batchDetails[id]?.amount_paid || 0) > 0 && !batchDetails[id]?.payment_mode);
+        if (invalidPayment) return toast.error('Choose a payment mode for each payment');
+      }
+      const payload = { ...form, program_id: selectedIds[0] || form.program_id, enrollment_details: isNew ? batchDetails : undefined }; // keep legacy compatibility
       if (editing) await api(`/students/${editing.id}`, { method: 'PUT', body: JSON.stringify(payload) });
       else await api('/students', { method: 'POST', body: JSON.stringify(payload) });
       if (isNew) {
         confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 }, colors: ['#7c3aed', '#4f46e5', '#a855f7', '#22c55e', '#0ea5e9'] });
         toast.success(`🎉 ${form.first_name} welcomed to ${org?.name || 'the school'}!`);
       } else toast.success('Student updated');
-      setOpen(false); load();
+      setOpen(false); load(); loadEnrollments();
     } catch (e) { toast.error(e.message); }
   };
   const del = async (s) => { if (!confirm(`Remove ${s.first_name}?`)) return; await api(`/students/${s.id}`, { method: 'DELETE' }); toast.success('Removed'); load(); };
@@ -1204,6 +1234,10 @@ function Students({ students, setStudents }) {
     doc.setTextColor(76, 29, 149); doc.setFontSize(6); doc.text('Hare Krishna \u2022 Serve with devotion', 27, 84, { align: 'center' });
     doc.save(`idcard-${cardOf.student_id}.pdf`);
   };
+
+  const creditsFor = (studentId) => enrollments.filter(e => e.student_id === studentId).reduce((total, e) => ({
+    given: total.given + Number(e.sessions_credited || 0), remaining: total.remaining + Number(e.sessions_remaining || 0),
+  }), { given: 0, remaining: 0 });
 
   const counts = useMemo(() => {
     return {
@@ -1333,25 +1367,36 @@ function Students({ students, setStudents }) {
               <div><Label>Mobile</Label><Input value={form.mobile} onChange={e => setForm({ ...form, mobile: e.target.value })} /></div>
               <div><Label>Email</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
               <div className="col-span-2"><Label>Address</Label><Textarea rows={2} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
-              <div className="col-span-2"><Label>Enroll in Classes (select multiple)</Label>
+              <div className="col-span-2"><Label>Enroll in Active Batches (select multiple)</Label>
                 <div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto p-2 rounded-lg border bg-white/30 dark:bg-white/5">
-                  {programs.map(p => {
+                  {batches.length === 0 ? <div className="col-span-2 p-3 text-xs text-muted-foreground">Create an active batch under Programs first.</div> : batches.filter(isBatchActive).map(p => {
                     const selected = form.program_ids?.includes(p.id);
+                    const parent = programs.find(program => program.id === p.parent_program_id);
                     return (
                       <label key={p.id} className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer text-xs transition ${selected ? 'bg-primary/15 border border-primary/40' : 'bg-white/50 dark:bg-white/5 border border-transparent hover:border-primary/30'}`}>
-                        <input type="checkbox" className="accent-primary" checked={!!selected} onChange={() => {
-                          const ids = form.program_ids || [];
-                          setForm({ ...form, program_ids: selected ? ids.filter(x => x !== p.id) : [...ids, p.id] });
-                        }} />
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{p.name}</div>
-                          <div className="text-[9px] text-muted-foreground">{(p.days_of_week || []).map(d => DAY_LABELS[d]).join(', ')} · {fmtINR(p.fee_amount || 0)}</div>
-                        </div>
+                        <input type="checkbox" className="accent-primary" checked={!!selected} onChange={() => toggleBatch(p.id, selected)} />
+                        <div className="flex-1 min-w-0"><div className="font-medium truncate">{parent ? `${parent.name} · ` : ''}{p.name}</div><div className="text-[9px] text-muted-foreground">{(p.days_of_week || []).map(d => DAY_LABELS[d]).join(', ')}</div></div>
                       </label>
                     );
                   })}
                 </div>
-                <div className="text-[10px] text-muted-foreground mt-1">{(form.program_ids || []).length} class(es) selected</div>
+                {form.program_ids?.length > 0 && <div className="mt-3 space-y-2">
+                  <div className="text-xs font-semibold">Admission details</div>
+                  {form.program_ids.map(id => {
+                    const batch = batches.find(p => p.id === id); const detail = batchDetails[id] || {};
+                    if (!batch) return null;
+                    return <div key={id} className="rounded-xl border bg-white/40 dark:bg-white/5 p-3 space-y-2">
+                      <div className="text-xs font-semibold">{programs.find(p => p.id === batch.parent_program_id)?.name} · {batch.name}</div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div><Label className="text-[10px]">Fee amount</Label><Input type="number" min="0" value={detail.fee_amount || ''} onChange={e => updateBatchDetail(id, { fee_amount: e.target.value })} placeholder="0" /></div>
+                        <div><Label className="text-[10px]">Credits granted</Label><Input type="number" min="0" value={detail.credit_quantity || ''} onChange={e => updateBatchDetail(id, { credit_quantity: e.target.value })} placeholder="e.g. 16" /></div>
+                        <div><Label className="text-[10px]">Amount paid now</Label><Input type="number" min="0" value={detail.amount_paid || ''} onChange={e => updateBatchDetail(id, { amount_paid: e.target.value })} placeholder="0" /></div>
+                        <div><Label className="text-[10px]">Payment mode</Label><Select value={detail.payment_mode || 'cash'} onValueChange={v => updateBatchDetail(id, { payment_mode: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="bank_transfer">Bank transfer</SelectItem><SelectItem value="card">Card</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div>
+                      </div>
+                    </div>;
+                  })}
+                </div>}
+                <div className="text-[10px] text-muted-foreground mt-1">{(form.program_ids || []).length} active batch{(form.program_ids || []).length === 1 ? '' : 'es'} selected</div>
               </div>
             </TabsContent>
             <TabsContent value="family" className="grid grid-cols-2 gap-3 mt-2">
@@ -1644,6 +1689,29 @@ function getScheduledSessionDates(batch) {
   return [...dates].sort();
 }
 
+function getBatchSessionDates(batch) {
+  if (Array.isArray(batch.sessions) && batch.sessions.length) return [...new Set(batch.sessions)].sort();
+  if (!batch.start_date || !batch.end_date || !(batch.days_of_week || []).length) return [];
+  const cancelled = new Set(batch.cancelled_dates || []);
+  const postponed = batch.postponed_dates || {};
+  const dates = new Set();
+  const cur = new Date(batch.start_date + 'T00:00:00');
+  const end = new Date(batch.end_date + 'T00:00:00');
+  while (cur <= end) {
+    if ((batch.days_of_week || []).includes(cur.getDay())) {
+      const date = cur.toISOString().slice(0, 10);
+      if (!cancelled.has(date)) dates.add(postponed[date] || date);
+    }
+    cur.setDate(cur.getDate() + 1);
+  }
+  return [...dates].sort();
+}
+
+function isBatchActive(batch) {
+  const dates = getBatchSessionDates(batch);
+  return batch.status !== 'inactive' && batch.status !== 'completed' && (!dates.length || dates.some(date => date >= localDateKey()));
+}
+
 function Classes() {
   const [items, setItems] = useState([]);
   const [students, setStudents] = useState([]);
@@ -1651,6 +1719,7 @@ function Classes() {
   const [editing, setEditing] = useState(null);
   const [parentProgram, setParentProgram] = useState(null);
   const [schedulerBatch, setSchedulerBatch] = useState(null);
+  const [showCompleted, setShowCompleted] = useState(false);
   const empty = { name: '', description: '', age_group: '', duration_months: 4, capacity: 30, start_date: '', end_date: '', days_of_week: [0], fee_amount: 1500 };
   const [form, setForm] = useState(empty);
   const load = () => api('/programs').then(r => setItems(r.items || []));
@@ -1689,9 +1758,16 @@ function Classes() {
         action={<Button className="bg-saffron-gradient shadow" onClick={openNewProgram}><Plus size={15} className="mr-1" /> New Program</Button>} />
 
       {programs.length === 0 ? <EmptyState text="No programs yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openNewProgram}><Plus size={14} className="mr-1" />Create first program</Button>} /> : (
-        <div className="space-y-5">
+        <>
+          <div className="flex gap-2 rounded-xl glass p-1 w-fit">
+            <Button size="sm" variant={!showCompleted ? 'default' : 'ghost'} onClick={() => setShowCompleted(false)}>Active Programs</Button>
+            <Button size="sm" variant={showCompleted ? 'default' : 'ghost'} onClick={() => setShowCompleted(true)}>Completed Programs</Button>
+          </div>
+          <div className="space-y-5">
           {programs.map((p, i) => {
-            const batches = batchesFor(p.id);
+            const allBatches = batchesFor(p.id);
+            const batches = allBatches.filter(batch => showCompleted ? !isBatchActive(batch) : isBatchActive(batch));
+            if (!batches.length) return null;
             return (
               <motion.section key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="rounded-3xl glass p-5 md:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -1735,7 +1811,8 @@ function Classes() {
               </motion.section>
             );
           })}
-        </div>
+          </div>
+        </>
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
