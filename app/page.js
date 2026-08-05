@@ -2886,7 +2886,7 @@ function SimpleAttendanceReport() {
   const load = async () => {
     setState({ loading: true, error: '', data: null });
     try {
-      const data = await api('/reports/attendance?page_size=100&sort=session_date&direction=desc');
+      const data = await api('/reports/attendance?page_size=100');
       setState({ loading: false, error: '', data });
     } catch (error) {
       setState({ loading: false, error: error.message || 'Attendance summary is unavailable', data: null });
