@@ -1908,6 +1908,8 @@ function SessionScheduler({ batch, onClose }) {
   const [loading, setLoading] = useState(false);
   const [postponeTarget, setPostponeTarget] = useState(null);
   const [postponeDate, setPostponeDate] = useState('');
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelReason, setCancelReason] = useState('');
 
   const load = () => {
     if (!batch) return;
@@ -1919,14 +1921,21 @@ function SessionScheduler({ batch, onClose }) {
   };
   useEffect(() => { load(); }, [batch?.id]);
 
-  const cancel = async (session) => {
-    if (!confirm(`Cancel the session on ${session.date}?`)) return;
+  const requestCancel = (session) => {
+    setCancelTarget(session);
+    setCancelReason('');
+  };
+
+  const submitCancel = async () => {
+    if (!cancelReason.trim()) return toast.error('Please enter a cancellation reason');
     try {
       await api(`/programs/${batch.id}/cancel-session`, {
         method: 'POST',
-        body: JSON.stringify({ date: session.date, action: 'cancel' })
+        body: JSON.stringify({ date: cancelTarget.date, action: 'cancel', reason: cancelReason.trim() })
       });
       toast.success('Session cancelled');
+      setCancelTarget(null);
+      setCancelReason('');
       load();
     } catch (e) { toast.error(e.message); }
   };
@@ -1955,13 +1964,13 @@ function SessionScheduler({ batch, onClose }) {
       {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Loading sessions…</div> :
         sessions.length === 0 ? <EmptyState text="No sessions generated yet. Edit the batch and add dates and session days." /> :
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-          {sessions.map(s => <div key={s.date} className={`rounded-xl border p-3 ${s.marked ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-card'}`}>
+          {sessions.map(s => <div key={s.date} className={`rounded-xl border p-3 ${s.cancelled ? 'bg-rose-500/10 border-rose-500/30' : s.marked ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-card'}`}>
             <div className="text-sm font-semibold">{new Date(`${s.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</div>
-            <div className="text-[11px] text-muted-foreground mt-1">{s.marked ? `${s.present}/${s.total} present` : 'Not marked'}</div>
-            {!s.marked && <div className="mt-2 space-y-1.5">
+            <div className="text-[11px] text-muted-foreground mt-1">{s.cancelled ? <><Badge className="bg-rose-500 text-white">Cancelled</Badge>{s.cancellation_reason && <div className="mt-1">Reason: {s.cancellation_reason}</div>}</> : s.marked ? `${s.present}/${s.total} present` : 'Not marked'}</div>
+            {!s.marked && !s.cancelled && <div className="mt-2 space-y-1.5">
               {postponeTarget === s.date && <Input type="date" value={postponeDate} onChange={e => setPostponeDate(e.target.value)} className="h-8 text-xs" />}
               <div className="flex gap-1">
-                <Button size="sm" variant="ghost" className="h-7 text-xs text-rose-600" onClick={() => cancel(s)}><Trash2 size={12} className="mr-1" /> Cancel</Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs text-rose-600" onClick={() => requestCancel(s)}><Trash2 size={12} className="mr-1" /> Cancel</Button>
                 {postponeTarget === s.date ?
                   <Button size="sm" className="h-7 text-xs bg-saffron-gradient" onClick={() => postpone(s)}>Save date</Button> :
                   <Button size="sm" variant="ghost" className="h-7 text-xs text-primary" onClick={() => { setPostponeTarget(s.date); setPostponeDate(''); }}>Postpone</Button>}
@@ -1969,6 +1978,22 @@ function SessionScheduler({ batch, onClose }) {
             </div>}
           </div>)}
         </div>}
+      <Dialog open={!!cancelTarget} onOpenChange={open => !open && setCancelTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancel Session</DialogTitle>
+            <DialogDescription>Record why this session is being cancelled. It will remain visible in the scheduler history.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Cancellation reason</Label>
+            <Textarea value={cancelReason} onChange={e => setCancelReason(e.target.value)} placeholder="e.g. Temple closed for a festival" rows={3} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelTarget(null)}>Keep Session</Button>
+            <Button className="bg-rose-500 text-white" onClick={submitCancel}>Cancel Session</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
@@ -2051,6 +2076,7 @@ function Attendance() {
   const save = async () => {
     if (!program) { toast.error('Please pick a batch first'); return; }
     if (!date) { toast.error('Pick a session date'); return; }
+    if (selectedSession?.cancelled) { toast.error('Cancelled sessions cannot receive attendance'); return; }
     try {
       const records = list.map(s => ({ student_id: s.id, status: marks[s.id] || 'present' }));
       await api('/attendance-bulk', { method: 'POST', body: JSON.stringify({ date, program_id: program, records }) });
@@ -2139,9 +2165,9 @@ function Attendance() {
           </div>
         )}
         <div className="ml-auto flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => bulk('present')} disabled={!date}>All Present</Button>
-          <Button size="sm" variant="outline" onClick={() => bulk('absent')} disabled={!date}>All Absent</Button>
-          <Button onClick={save} className="bg-saffron-gradient shadow" disabled={!date || !program}>Save Attendance</Button>
+          <Button size="sm" variant="outline" onClick={() => bulk('present')} disabled={!date || selectedSession?.cancelled}>All Present</Button>
+          <Button size="sm" variant="outline" onClick={() => bulk('absent')} disabled={!date || selectedSession?.cancelled}>All Absent</Button>
+          <Button onClick={save} className="bg-saffron-gradient shadow" disabled={!date || !program || selectedSession?.cancelled}>Save Attendance</Button>
         </div>
       </div>
 
@@ -2156,32 +2182,24 @@ function Attendance() {
             {sessions.map(s => {
               const active = s.date === date;
               const cls = active ? 'bg-saffron-gradient text-white shadow-lg scale-105' :
+s.cancelled ? 'bg-rose-500/15 border border-rose-500/40 text-rose-800 dark:text-rose-200' :
                 s.marked ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-800 dark:text-emerald-200' :
                 s.is_past ? 'bg-muted text-muted-foreground border border-transparent' :
                 s.is_today ? 'bg-primary/10 border border-primary/40 text-primary' :
                 'bg-white/50 dark:bg-white/5 border border-transparent';
               const d = new Date(s.date + 'T00:00:00');
-              const cancelSession = async (ev) => {
-                ev.stopPropagation();
-                if (!confirm(`Cancel session on ${d.toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long' })}? Students won't be charged for this session.`)) return;
-                await api(`/programs/${program}/cancel-session`, { method: 'POST', body: JSON.stringify({ date: s.date, action: 'cancel' }) });
-                toast.success('Session cancelled');
-                Promise.all([api(`/programs/${program}/sessions`), api(`/enrollments?program_id=${program}`)]).then(([sessionResult, enrollmentResult]) => { setSessions(sessionResult.sessions || []); setEnrollments(enrollmentResult.items || []); });
-              };
               return (
                 <div key={s.date} className="relative shrink-0 group">
-                  <button onClick={() => setDate(s.date)}
+                  <button disabled={s.cancelled} onClick={() => setDate(s.date)}
                     className={`relative rounded-xl px-3 pr-9 py-2 min-w-[76px] transition ${cls}`}>
                     <div className="text-[9px] uppercase font-semibold opacity-80">{d.toLocaleString('en', { month: 'short' })}</div>
                     <div className="text-lg font-bold leading-none">{d.getDate()}</div>
                     <div className="text-[9px] opacity-80 mt-0.5">{d.toLocaleString('en', { weekday: 'short' })}</div>
-                    {s.marked && !active && <div className="text-[9px] mt-1 flex items-center justify-center gap-0.5"><Check size={9} /> {s.present}/{s.total}</div>}
+                    {s.cancelled && !active && <div className="text-[9px] mt-1 font-semibold text-rose-700">CANCELLED</div>}
+                    {s.marked && !s.cancelled && !active && <div className="text-[9px] mt-1 flex items-center justify-center gap-0.5"><Check size={9} /> {s.present}/{s.total}</div>}
                     {s.is_today && !active && <div className="text-[9px] mt-1 font-semibold">TODAY</div>}
                   </button>
-                  {!s.marked && !s.is_past && (
-                    <button onClick={cancelSession}
-                      className="absolute top-1 right-1 z-10 w-6 h-6 rounded-full bg-rose-500 text-white text-[10px] opacity-100 transition hover:bg-rose-600" title="Cancel this session">✕</button>
-                  )}
+                  {/* Session cancellation is managed only from the Session Scheduler. */}
                 </div>
               );
             })}
@@ -2197,7 +2215,7 @@ function Attendance() {
           <div>
             <div className="font-semibold">{selectedSession.day_name}, {new Date(date + 'T00:00:00').toLocaleDateString('en', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
             <div className="text-[11px] opacity-80">
-              {selectedSession.marked ? `Already marked · ${selectedSession.present}/${selectedSession.total} present · saving will overwrite` : 'Not yet marked · ready to record'}
+              {selectedSession.cancelled ? `Cancelled${selectedSession.cancellation_reason ? ` · ${selectedSession.cancellation_reason}` : ''}` : selectedSession.marked ? `Already marked · ${selectedSession.present}/${selectedSession.total} present · saving will overwrite` : 'Not yet marked · ready to record'}
             </div>
           </div>
         </div>
@@ -2246,7 +2264,7 @@ function Attendance() {
                   </div>
                   <div className="flex flex-wrap justify-end gap-1.5 shrink-0 max-w-[min(100%,18rem)]">
                     {['present', 'absent'].map(v => (
-                      <button key={v} onClick={() => setMark(s.id, v)}
+                      <button key={v} disabled={selectedSession?.cancelled} onClick={() => setMark(s.id, v)}
                         className={`text-[11px] px-2.5 py-1 rounded-full capitalize font-medium transition ${chip(v, marks[s.id] === v)}`}>{v}</button>
                     ))}
                   </div>
