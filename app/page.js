@@ -343,7 +343,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               {view === 'teachers' && <Teachers teachers={teachers} setTeachers={setTeachers} />}
               {view === 'classes' && <Classes />}
               {view === 'attendance' && <Attendance />}
-              {view === 'fees' && <Fees />}
+              {view === 'fees' && <Fees currentUser={user} />}
               {view === 'notifications' && <Notifications students={students} />}
               {view === 'reports' && <Reports />}
               {view === 'events' && <Events />}
@@ -2177,7 +2177,7 @@ function Attendance() {
 /* ============================================================
    FEES
 ============================================================ */
-function Fees() {
+function Fees({ currentUser }) {
   const [items, setItems] = useState([]);
   const [students, setStudents] = useState([]);
   const [programs, setPrograms] = useState([]);
@@ -2203,10 +2203,10 @@ function Fees() {
   const totalPaid = paid.reduce((a, f) => a + Number(f.paid_amount || 0), 0);
   const openPayment = (fee) => {
     setPaymentFor(fee);
-    setPaymentAmount('');
+    setPaymentAmount(String(Math.max(0, Number(fee.amount || 0) - Number(fee.paid_amount || 0))));
     setPaymentMode(fee.payment_mode || 'cash');
     setCollectionDate(new Date().toISOString().slice(0, 10));
-    setCollectedBy('');
+    setCollectedBy(currentUser?.name || '');
     setPaymentNotes('');
   };
   const addPayment = async () => {
@@ -2326,7 +2326,7 @@ function Fees() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><Label>Collected on</Label><Input type="date" value={collectionDate} onChange={e => setCollectionDate(e.target.value)} /></div>
-                <div><Label>Collected by</Label><Input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Name" /></div>
+                <div><Label>Collected by</Label><Input value={collectedBy} onChange={e => setCollectedBy(e.target.value)} placeholder="Logged-in administrator" readOnly={Boolean(currentUser?.name)} /></div>
               </div>
               <div><Label>Notes</Label><Textarea rows={3} value={paymentNotes} onChange={e => setPaymentNotes(e.target.value)} placeholder="Who collected it, receipt details, or follow-up notes" /></div>
               <div className="flex justify-end gap-2">
