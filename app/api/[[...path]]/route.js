@@ -848,6 +848,7 @@ async function router(req, method) {
     const prog = await db.collection('programs').findOne({ id, ...orgScope(user) });
     if (!prog) return json({ error: 'Not found' }, 404);
     const cancelledDates = new Set(prog.cancelled_dates || []);
+    const postponedDates = prog.postponed_dates || {};
     let sessions = prog.sessions;
     if (!sessions || !sessions.length) sessions = generateSessions(prog);
     sessions = [...new Set([...(sessions || []), ...cancelledDates])].sort();
@@ -856,14 +857,20 @@ async function router(req, method) {
     const att = await db.collection('attendance').find({ program_id: id, organization_id: user.organization_id }).toArray();
     const byDate = {};
     att.forEach(a => { if (!byDate[a.date]) byDate[a.date] = { total: 0, present: 0 }; byDate[a.date].total++; if (a.status === 'present' || a.status === 'late') byDate[a.date].present++; });
-    const enriched = sessions.map(d => ({
+    const enriched = sessions.map(d => {
+      const postponedEntry = Object.entries(postponedDates).find(([, newDate]) => newDate === d);
+      const postponedFrom = postponedEntry?.[0] || '';
+      return {
       date: d, day_name: new Date(d + 'T00:00:00').toLocaleDateString('en', { weekday: 'long' }),
       cancelled: cancelledDates.has(d),
       cancellation_reason: prog.cancellation_reasons?.[d] || '',
+      postponed_from: postponedFrom,
+      postponement_reason: postponedFrom ? (prog.postponement_reasons?.[postponedFrom] || '') : '',
       marked: !cancelledDates.has(d) && !!byDate[d], present: byDate[d]?.present || 0, total: byDate[d]?.total || 0,
       is_past: new Date(d) < new Date().setHours(0, 0, 0, 0),
       is_today: d === new Date().toISOString().slice(0, 10),
-    }));
+      };
+    });
     return json({ program_id: id, program_name: prog.name, days_of_week: prog.days_of_week, sessions: enriched });
   }
 
@@ -1301,25 +1308,30 @@ async function router(req, method) {
     const cancelled = new Set(prog.cancelled_dates || []);
     const postponed = { ...(prog.postponed_dates || {}) };
     const cancellationReasons = { ...(prog.cancellation_reasons || {}) };
+    const postponementReasons = { ...(prog.postponement_reasons || {}) };
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date || '')) return json({ error: 'A valid session date is required' }, 422);
     if (body.action === 'cancel' && !String(body.reason || '').trim()) return json({ error: 'A cancellation reason is required' }, 422);
     if (body.action === 'postpone') {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(body.new_date || '')) return json({ error: 'A valid new session date is required' }, 422);
+      if (!String(body.reason || '').trim()) return json({ error: 'A postponement reason is required' }, 422);
       if (body.date === body.new_date) return json({ error: 'Choose a different date for postponement' }, 422);
       postponed[body.date] = body.new_date;
+      postponementReasons[body.date] = String(body.reason).trim();
       cancelled.delete(body.date);
     } else if (body.action === 'restore') {
       cancelled.delete(body.date);
       delete cancellationReasons[body.date];
       delete postponed[body.date];
+      delete postponementReasons[body.date];
     } else {
       cancelled.add(body.date);
       cancellationReasons[body.date] = String(body.reason).trim();
       delete postponed[body.date];
+      delete postponementReasons[body.date];
     }
 
-    const updated = { cancelled_dates: [...cancelled], cancellation_reasons: cancellationReasons, postponed_dates: postponed };
+    const updated = { cancelled_dates: [...cancelled], cancellation_reasons: cancellationReasons, postponed_dates: postponed, postponement_reasons: postponementReasons };
     updated.sessions = generateSessions({ ...prog, ...updated });
     await db.collection('programs').updateOne({ id }, { $set: updated });
     return json({ ok: true, cancelled_dates: updated.cancelled_dates, postponed_dates: updated.postponed_dates });
