@@ -1720,11 +1720,9 @@ function Classes() {
             {!parentProgram && <div className="col-span-2"><Label>Age group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="6-14" /></div>}
             {parentProgram && <>
               <div className="col-span-2"><Label>Session days *</Label><DaysPicker value={form.days_of_week} onChange={v => setForm({ ...form, days_of_week: v })} /><div className="text-[10px] text-muted-foreground mt-1.5">{form.days_of_week.length ? `Runs ${form.days_of_week.map(d => DAY_FULL[d]).join(', ')}` : 'Select at least one day'}</div></div>
-              <div><Label>Fee (per term)</Label><Input type="number" value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} /></div>
               <div><Label>Capacity</Label><Input type="number" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} /></div>
               <div><Label>Start date</Label><Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} /></div>
               <div><Label>End date</Label><Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} /></div>
-              <div><Label>Duration (months)</Label><Input type="number" value={form.duration_months} onChange={e => setForm({ ...form, duration_months: e.target.value })} /></div>
             </>}
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient" disabled={!!parentProgram && form.days_of_week.length === 0}>{editing ? 'Update' : `Create ${parentProgram ? 'Batch' : 'Program'}`}</Button></DialogFooter>
