@@ -274,9 +274,11 @@ Current: stdout via supervisor. **Recommended additions**:
 
 ### 5.5 Backup strategy
 
-- **User-driven**: Backup page in-app (JSON per org)
-- **DB-level**: `mongodump` cron job to S3, retention 30d
-- **Application-level**: nightly export of every org's JSON to persistent storage
+- **Versioned manifest**: the Backup API exports a `gokulam360-backup` v2.0 JSON manifest containing every non-system MongoDB collection discovered at export time.
+- **Tenant scope**: Organization Administrators export only documents belonging to their organization; password hashes are excluded.
+- **System scope**: Super Admins can export and restore the complete application dataset, including credentials required for full recovery. These files must be encrypted and stored securely.
+- **Atomic restore**: restore validates the manifest, collection names, and payload shape before replacing data inside a MongoDB transaction. A transaction-capable replica set is required; unsupported deployments fail safely rather than performing a partial restore.
+- **Operational backup**: use database-level `mongodump`/managed snapshots for disaster recovery, with encrypted off-site retention. Application JSON is a portable operational export, not a replacement for database backups.
 
 ---
 

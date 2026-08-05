@@ -7,7 +7,7 @@ import confetti from 'canvas-confetti';
 import {
   BarChart3, Users, GraduationCap, IndianRupee, CalendarCheck2, Calendar as CalendarIcon,
   Building2, LogOut, Menu, Moon, Sun, Search, Plus, Edit3, Trash2, IdCard, Printer,
-  UserCircle2, TrendingUp, ChevronRight, Sparkles, Flame, BookOpen, ClipboardCheck,
+  UserCircle2, Bot, TrendingUp, ChevronRight, Sparkles, Flame, BookOpen, ClipboardCheck,
   Bell, Send, MessageSquare, Camera, FileText, Download, FileSpreadsheet, Command as CmdIcon,
   Rocket, Award, Heart, Activity, ArrowUpRight, Phone, PartyPopper, Zap, Layers, School,
   ChevronLeft, Upload, Check, CheckCircle2, Circle, Palette, Wallet, UserPlus
@@ -242,6 +242,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
   const nav = useMemo(() => {
     const items = [
       { key: 'dashboard', label: 'Dashboard', icon: BarChart3, roles: ['super_admin', 'org_admin', 'teacher'] },
+      { key: 'ask-ai', label: 'Ask AI', icon: Bot, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'organizations', label: 'Organizations', icon: Building2, roles: ['super_admin'] },
       { key: 'students', label: 'Students', icon: GraduationCap, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'teachers', label: 'Faculty', icon: Users, roles: ['super_admin', 'org_admin'] },
@@ -338,6 +339,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
           <AnimatePresence mode="wait">
             <motion.div key={view} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.25 }}>
               {view === 'dashboard' && <Dashboard user={user} org={org} onNav={setView} />}
+              {view === 'ask-ai' && <AskAI />}
               {view === 'organizations' && <Organizations />}
               {view === 'students' && <Students students={students} setStudents={setStudents} />}
               {view === 'teachers' && <Faculty teachers={teachers} setTeachers={setTeachers} />}
@@ -3324,6 +3326,52 @@ function Backup() {
       </div>
     </div>
   );
+}
+
+
+function AskAI() {
+  const [question, setQuestion] = useState('');
+  const [result, setResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const suggestions = ['How many students are present today?', 'List absent students and phone numbers', 'What sessions are coming up?', 'Which students have 3 or fewer credits?'];
+
+  const ask = async (value = question) => {
+    const text = String(value || '').trim();
+    if (!text) return;
+    setLoading(true); setError('');
+    try { setResult(await api('/ask-ai', { method: 'POST', body: JSON.stringify({ question: text }) })); }
+    catch (e) { setError(e?.message || 'Unable to answer that question'); setResult(null); }
+    finally { setLoading(false); }
+  };
+  const download = async (format) => {
+    if (!result?.rows?.length) return;
+    const headers = result.columns || [];
+    if (format === 'csv') {
+      const csv = [headers.join(','), ...result.rows.map(row => headers.map(h => JSON.stringify(row[h] ?? '')).join(','))].join('\n');
+      const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv'})); a.download = 'gokulam360-ai-result.csv'; a.click(); URL.revokeObjectURL(a.href);
+    } else if (format === 'xlsx') {
+      const XLSX = await import('xlsx');
+      const ws = XLSX.utils.json_to_sheet(result.rows); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, 'Results'); XLSX.writeFile(wb, 'gokulam360-ai-result.xlsx');
+    } else {
+      const { jsPDF } = await import('jspdf');
+      const doc = new jsPDF({orientation:'landscape'}); doc.setFontSize(12); doc.text(result.title || 'Gokulam360 AI result', 12, 14);
+      doc.setFontSize(8); result.rows.slice(0, 35).forEach((row, i) => doc.text(headers.map(h => String(row[h] ?? '')).join(' | ').slice(0, 170), 12, 24 + i * 6)); doc.save('gokulam360-ai-result.pdf');
+    }
+  };
+  return <div className="space-y-5">
+    <PageHeader title="Ask AI" subtitle="Ask about your students, attendance, sessions, credits, and payments" icon={Bot} />
+    <Card className="glass border-white/60"><CardContent className="p-5 space-y-4">
+      <div className="flex gap-2"><Input value={question} onChange={e => setQuestion(e.target.value)} onKeyDown={e => e.key === 'Enter' && ask()} placeholder="e.g. List absent students and their phone numbers" /><Button onClick={() => ask()} disabled={loading}>{loading ? 'Thinking…' : 'Ask'}</Button></div>
+      <div className="flex flex-wrap gap-2">{suggestions.map(s => <Button key={s} variant="outline" size="sm" onClick={() => { setQuestion(s); ask(s); }}>{s}</Button>)}</div>
+      {error && <div className="rounded-xl bg-red-50 text-red-700 p-3">{error}</div>}
+      {result && <div className="space-y-4">
+        <div className="flex items-center justify-between gap-3"><div><h2 className="font-semibold">{result.title}</h2><p className="text-sm text-muted-foreground">{result.answer}</p></div><div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => download('csv')}><Download size={14} className="mr-1"/>CSV</Button><Button variant="outline" size="sm" onClick={() => download('xlsx')}><FileSpreadsheet size={14} className="mr-1"/>Excel</Button><Button variant="outline" size="sm" onClick={() => download('pdf')}><FileText size={14} className="mr-1"/>PDF</Button></div></div>
+        {result.summary && <div className="grid grid-cols-2 md:grid-cols-4 gap-3">{Object.entries(result.summary).map(([key, value]) => <div key={key} className="rounded-xl bg-white/60 p-3"><div className="text-xs text-muted-foreground">{key.replaceAll('_',' ')}</div><div className="text-xl font-semibold">{value}</div></div>)}</div>}
+        {result.rows?.length ? <div className="overflow-x-auto rounded-xl border"><table className="w-full text-sm"><thead><tr className="text-left border-b">{(result.columns || []).map(h => <th key={h} className="p-3 capitalize">{h.replaceAll('_',' ')}</th>)}</tr></thead><tbody>{result.rows.map((row, i) => <tr key={row.id || i} className="border-b last:border-0">{(result.columns || []).map(h => <td key={h} className="p-3">{String(row[h] ?? '—')}</td>)}</tr>)}</tbody></table></div> : <div className="rounded-xl bg-white/50 p-8 text-center text-muted-foreground">No matching records found.</div>}
+      </div>}
+    </CardContent></Card>
+  </div>;
 }
 
 /* ============================================================
