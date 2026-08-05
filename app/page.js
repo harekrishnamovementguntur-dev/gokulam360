@@ -3040,42 +3040,42 @@ function Events() {
   };
   const covers = ['#7c3aed,#ec4899', '#4f46e5,#0ea5e9', '#0891b2,#22d3ee', '#a855f7,#3b82f6', '#8b5cf6,#d946ef'];
 
+  const eventCards = items.map((e, i) => {
+    const targetNames = (Array.isArray(e.program_ids) ? e.program_ids : [])
+      .map(id => programs.find(p => p.id === id)?.name).filter(Boolean);
+    return (
+      <motion.div key={e.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
+        className="rounded-2xl overflow-hidden glass card-lift group">
+        <div className="h-28 relative" style={{ background: `linear-gradient(135deg, ${covers[i % covers.length]})` }}>
+          {e.image_url ? <img src={e.image_url} alt="" className="absolute inset-0 h-full w-full object-cover" /> : (
+            <div className="absolute inset-0 flex items-center justify-center"><CalendarIcon className="text-white/90" size={40} /></div>
+          )}
+          <div className="absolute bottom-3 left-3 bg-white/20 backdrop-blur rounded-lg text-white text-center px-2 py-1 min-w-[54px]">
+            <div className="text-[9px] uppercase">{new Date(e.date).toLocaleString('en', { month: 'short' })}</div>
+            <div className="text-xl font-bold leading-none">{new Date(e.date).getDate()}</div>
+          </div>
+        </div>
+        <div className="p-4">
+          <div className="flex items-center justify-between gap-2"><div className="font-bold truncate">{e.name}</div>{e.is_announcement && <Badge className="bg-violet-600 text-white text-[10px]">Featured</Badge>}</div>
+          <p className="text-xs text-muted-foreground mt-1 line-clamp-2 min-h-[32px]">{e.description}</p>
+          {targetNames.length > 0 && <div className="text-[11px] text-primary mt-2 truncate">For: {targetNames.join(', ')}</div>}
+          {e.is_announcement && targetNames.length === 0 && <div className="text-[11px] text-muted-foreground mt-2">Visible to all programs</div>}
+          <div className="flex gap-1 mt-3 pt-3 border-t opacity-0 group-hover:opacity-100 transition">
+            <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(e)}><Edit3 size={13} className="mr-1" /> Edit</Button>
+            <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(e)}><Trash2 size={13} /></Button>
+          </div>
+        </div>
+      </motion.div>
+    );
+  });
+
   return (
     <div className="space-y-5">
       <PageHeader title="Events" subtitle="Celebrations, festivals & activities" icon={CalendarIcon}
         action={<Button className="bg-saffron-gradient shadow" onClick={openNew}><Plus size={15} className="mr-1" /> New Event</Button>} />
-      {items.length === 0 ? <EmptyState text="No events yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openNew}><Plus size={14} className="mr-1" />Create first event</Button>} : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {items.map((e, i) => {
-            const targetNames = (Array.isArray(e.program_ids) ? e.program_ids : [])
-              .map(id => programs.find(p => p.id === id)?.name).filter(Boolean);
-            return (
-              <motion.div key={e.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-                className="rounded-2xl overflow-hidden glass card-lift group">
-                <div className="h-28 relative" style={{ background: `linear-gradient(135deg, ${covers[i % covers.length]})` }}>
-                  {e.image_url ? <img src={e.image_url} alt="" className="absolute inset-0 h-full w-full object-cover" /> : (
-                    <div className="absolute inset-0 flex items-center justify-center"><CalendarIcon className="text-white/90" size={40} /></div>
-                  )}
-                  <div className="absolute bottom-3 left-3 bg-white/20 backdrop-blur rounded-lg text-white text-center px-2 py-1 min-w-[54px]">
-                    <div className="text-[9px] uppercase">{new Date(e.date).toLocaleString('en', { month: 'short' })}</div>
-                    <div className="text-xl font-bold leading-none">{new Date(e.date).getDate()}</div>
-                  </div>
-                </div>
-                <div className="p-4">
-                  <div className="flex items-center justify-between gap-2"><div className="font-bold truncate">{e.name}</div>{e.is_announcement && <Badge className="bg-violet-600 text-white text-[10px]">Featured</Badge>}</div>
-                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2 min-h-[32px]">{e.description}</p>
-                  {targetNames.length > 0 && <div className="text-[11px] text-primary mt-2 truncate">For: {targetNames.join(', ')}</div>}
-                  {e.is_announcement && targetNames.length === 0 && <div className="text-[11px] text-muted-foreground mt-2">Visible to all programs</div>}
-                  <div className="flex gap-1 mt-3 pt-3 border-t opacity-0 group-hover:opacity-100 transition">
-                    <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(e)}><Edit3 size={13} className="mr-1" /> Edit</Button>
-                    <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(e)}><Trash2 size={13} /></Button>
-                  </div>
-                </div>
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
+      {items.length === 0 ? (
+        <EmptyState text="No events yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={openNew}><Plus size={14} className="mr-1" />Create first event</Button>} />
+      ) : <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">{eventCards}</div>}
 
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="max-w-lg">
