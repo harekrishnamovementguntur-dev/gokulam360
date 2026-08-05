@@ -295,22 +295,40 @@ Sidebar → **Events** → **New Event**. Fields: name, date, description. Beaut
 
 ---
 
-## 15. Data Backup & Restore
+## 15. Ask AI
 
-### 15.1 Export
+Open **Ask AI** from the Administrator sidebar and ask plain-language questions about your organization's data.
+
+Examples:
+- “How many students are present today?”
+- “What sessions are coming up?”
+- “How many students are absent for Damodara?”
+- “List absent students and their phone numbers.”
+- “List students whose remaining credits are 3 or less.”
+- “Show payment and fee records.”
+
+Answers are organization-scoped and grounded in stored records. Results include a summary and table where applicable. Use **CSV**, **Excel**, or **PDF** to download the result.
+
+Ask AI currently answers operational questions about attendance, sessions, credits, students, and payments. Unsupported questions return a clear explanation rather than inventing data.
+
+---
+
+## 16. Data Backup & Restore
+
+### 16.1 Export
 
 1. Sidebar → **Backup**.
 2. Click **Export as JSON** (purple card).
 3. A timestamped file downloads: `gokulam360-backup-YYYY-MM-DD-HH-MM-SS.json`
 4. Contains everything: organizations, students, teachers, programs, attendance, fees, events, notifications, activity.
 
-### 15.2 Restore
+### 16.2 Restore
 
 1. Same page → **Upload backup file** (rose card).
 2. Confirm the destructive prompt.
 3. Your org's data is **replaced** with the file's contents.
 
-### 15.3 Recommended cadence
+### 16.3 Recommended cadence
 
 - Weekly (after Sunday class)
 - Before term rollover
@@ -319,7 +337,7 @@ Sidebar → **Events** → **New Event**. Fields: name, date, description. Beaut
 
 ---
 
-## 16. Command Palette (⌘K)
+## 17. Command Palette (⌘K)
 
 Press **⌘K** (Mac) or **Ctrl+K** (Windows/Linux) anywhere. A search dialog appears with:
 
@@ -331,7 +349,7 @@ Type to filter. Enter to select.
 
 ---
 
-## 17. Parent Portal (Public + Login)
+## 18. Parent Portal (Public + Login)
 
 ### 17.1 Public QR link (no login)
 
@@ -352,7 +370,7 @@ Parents with a login account (created by admin) see a richer view via `parent@..
 
 ---
 
-## 18. Frequently Asked Questions
+## 19. Frequently Asked Questions
 
 **Q: A student joined mid-term. Do they still pay full fee?**
 A: Yes. They're credited with only the *remaining* sessions from their join date, but any unused sessions **carry over to the next term automatically** — they get their full 16 lessons wherever they happen.
