@@ -244,7 +244,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
       { key: 'dashboard', label: 'Dashboard', icon: BarChart3, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'organizations', label: 'Organizations', icon: Building2, roles: ['super_admin'] },
       { key: 'students', label: 'Students', icon: GraduationCap, roles: ['super_admin', 'org_admin', 'teacher'] },
-      { key: 'teachers', label: 'Teachers', icon: Users, roles: ['super_admin', 'org_admin'] },
+      { key: 'teachers', label: 'Faculty', icon: Users, roles: ['super_admin', 'org_admin'] },
       { key: 'classes', label: 'Programs', icon: School, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'fees', label: 'Fees', icon: IndianRupee, roles: ['super_admin', 'org_admin'] },
@@ -340,7 +340,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               {view === 'dashboard' && <Dashboard user={user} org={org} onNav={setView} />}
               {view === 'organizations' && <Organizations />}
               {view === 'students' && <Students students={students} setStudents={setStudents} />}
-              {view === 'teachers' && <Teachers teachers={teachers} setTeachers={setTeachers} />}
+              {view === 'teachers' && <Faculty teachers={teachers} setTeachers={setTeachers} />}
               {view === 'classes' && <Classes />}
               {view === 'attendance' && <Attendance />}
               {view === 'fees' && <Fees currentUser={user} />}
@@ -384,7 +384,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
           {teachers.length > 0 && (
             <>
               <CommandSeparator />
-              <CommandGroup heading="Teachers">
+              <CommandGroup heading="Faculty">
                 {teachers.slice(0, 10).map(t => (
                   <CommandItem key={t.id} onSelect={() => { setView('teachers'); setCmdOpen(false); }}>
                     <Users size={14} className="mr-2 text-primary" /> {t.name}
@@ -416,7 +416,7 @@ function Dashboard({ user, org, onNav }) {
     { key: 'students', label: 'Total Students', value: stats.totalStudents, sub: `${stats.activeStudents} active`, icon: GraduationCap, grad: 'bg-saffron-gradient', ring: 'from-orange-500/40 to-amber-500/20' },
     { key: 'attendance', label: 'Attendance', value: stats.attendancePct, isPct: true, sub: 'last 4 weeks', icon: CalendarCheck2, grad: 'bg-emerald-gradient', ring: 'from-emerald-500/40 to-teal-500/20' },
     { key: 'pending', label: 'Pending Fees', value: stats.pendingFees, isMoney: true, sub: `${fmtINR(stats.collectedFees)} collected`, icon: IndianRupee, grad: 'bg-rose-gradient', ring: 'from-rose-500/40 to-pink-500/20' },
-    { key: 'teachers', label: 'Teachers', value: stats.totalTeachers, sub: 'Faculty on board', icon: Users, grad: 'bg-violet-gradient', ring: 'from-violet-500/40 to-fuchsia-500/20' },
+    { key: 'teachers', label: 'Faculty', value: stats.totalTeachers, sub: 'Faculty on board', icon: Users, grad: 'bg-violet-gradient', ring: 'from-violet-500/40 to-fuchsia-500/20' },
   ];
 
   return (
@@ -1632,9 +1632,9 @@ function EnrollmentCard({ e, onRenew, past = false }) {
 /* ============================================================
    TEACHERS
 ============================================================ */
-function Teachers({ teachers, setTeachers }) {
+function Faculty({ teachers, setTeachers }) {
   const [open, setOpen] = useState(false);
-  const empty = { employee_id: '', name: '', email: '', mobile: '', address: '', qualification: '', skills: '' };
+  const empty = { employee_id: '', name: '', email: '', mobile: '', address: '', qualification: '', department: '' };
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState(null);
   const load = () => api('/teachers').then(r => setTeachers(r.items));
@@ -1647,8 +1647,8 @@ function Teachers({ teachers, setTeachers }) {
   };
   return (
     <div className="space-y-5">
-      <PageHeader title="Teachers" subtitle={`${teachers.length} faculty members`} icon={Users}
-        action={<Button className="bg-saffron-gradient shadow" onClick={() => { setEditing(null); setForm({ ...empty, employee_id: 'T-' + String(Math.floor(100 + Math.random() * 900)) }); setOpen(true); }}><Plus size={15} className="mr-1" /> Add Teacher</Button>} />
+      <PageHeader title="Faculty" subtitle={`${teachers.length} faculty members`} icon={Users}
+        action={<Button className="bg-saffron-gradient shadow" onClick={() => { setEditing(null); setForm({ ...empty, employee_id: 'T-' + String(Math.floor(100 + Math.random() * 900)) }); setOpen(true); }}><Plus size={15} className="mr-1" /> Add Faculty</Button>} />
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {teachers.map((t, i) => (
           <motion.div key={t.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
@@ -1664,7 +1664,7 @@ function Teachers({ teachers, setTeachers }) {
             <div className="mt-3 text-[11px] text-muted-foreground space-y-1">
               <div className="flex items-center gap-1.5"><Phone size={11} /> {t.mobile || '-'}</div>
               <div className="flex items-center gap-1.5"><Send size={11} /> {t.email || '-'}</div>
-              {t.skills && <div className="flex items-center gap-1.5"><Sparkles size={11} /> {t.skills}</div>}
+              {(t.department || t.skills) && <div className="flex items-center gap-1.5"><Sparkles size={11} /> {t.department || t.skills}</div>}
             </div>
             <div className="flex gap-1 mt-3 pt-3 border-t">
               <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => { setEditing(t); setForm({ ...empty, ...t }); setOpen(true); }}><Edit3 size={13} className="mr-1" /> Edit</Button>
@@ -1674,14 +1674,14 @@ function Teachers({ teachers, setTeachers }) {
         ))}
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent><DialogHeader><DialogTitle>{editing ? 'Edit' : 'New'} Teacher</DialogTitle></DialogHeader>
+        <DialogContent><DialogHeader><DialogTitle>{editing ? 'Edit' : 'New'} Faculty</DialogTitle></DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Employee ID</Label><Input value={form.employee_id} onChange={e => setForm({ ...form, employee_id: e.target.value })} /></div>
             <div><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
             <div><Label>Email</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
             <div><Label>Mobile</Label><Input value={form.mobile} onChange={e => setForm({ ...form, mobile: e.target.value })} /></div>
             <div className="col-span-2"><Label>Qualification</Label><Input value={form.qualification} onChange={e => setForm({ ...form, qualification: e.target.value })} /></div>
-            <div className="col-span-2"><Label>Skills</Label><Input value={form.skills} onChange={e => setForm({ ...form, skills: e.target.value })} /></div>
+            <div className="col-span-2"><Label>Department</Label><Input value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} /></div>
             <div className="col-span-2"><Label>Address</Label><Textarea rows={2} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
           </div>
           <DialogFooter><Button onClick={save} className="bg-saffron-gradient">Save</Button></DialogFooter>
@@ -1908,6 +1908,9 @@ function SessionScheduler({ batch, onClose }) {
   const [loading, setLoading] = useState(false);
   const [postponeTarget, setPostponeTarget] = useState(null);
   const [postponeDate, setPostponeDate] = useState('');
+  const [postponeReason, setPostponeReason] = useState('');
+  const [cancelTarget, setCancelTarget] = useState(null);
+  const [cancelReason, setCancelReason] = useState('');
 
   const load = () => {
     if (!batch) return;
@@ -1919,14 +1922,21 @@ function SessionScheduler({ batch, onClose }) {
   };
   useEffect(() => { load(); }, [batch?.id]);
 
-  const cancel = async (session) => {
-    if (!confirm(`Cancel the session on ${session.date}?`)) return;
+  const requestCancel = (session) => {
+    setCancelTarget(session);
+    setCancelReason('');
+  };
+
+  const submitCancel = async () => {
+    if (!cancelReason.trim()) return toast.error('Please enter a cancellation reason');
     try {
       await api(`/programs/${batch.id}/cancel-session`, {
         method: 'POST',
-        body: JSON.stringify({ date: session.date, action: 'cancel' })
+        body: JSON.stringify({ date: cancelTarget.date, action: 'cancel', reason: cancelReason.trim() })
       });
       toast.success('Session cancelled');
+      setCancelTarget(null);
+      setCancelReason('');
       load();
     } catch (e) { toast.error(e.message); }
   };
@@ -1934,14 +1944,16 @@ function SessionScheduler({ batch, onClose }) {
   const postpone = async (session) => {
     if (!postponeDate) return toast.error('Choose the new session date');
     if (postponeDate === session.date) return toast.error('Choose a different date');
+    if (!postponeReason.trim()) return toast.error('Please enter a postponement reason');
     try {
       await api(`/programs/${batch.id}/cancel-session`, {
         method: 'POST',
-        body: JSON.stringify({ date: session.date, new_date: postponeDate, action: 'postpone' })
+        body: JSON.stringify({ date: session.date, new_date: postponeDate, reason: postponeReason.trim(), action: 'postpone' })
       });
       toast.success(`Session postponed to ${postponeDate}`);
       setPostponeTarget(null);
       setPostponeDate('');
+      setPostponeReason('');
       load();
     } catch (e) { toast.error(e.message); }
   };
@@ -1955,20 +1967,40 @@ function SessionScheduler({ batch, onClose }) {
       {loading ? <div className="py-10 text-center text-sm text-muted-foreground">Loading sessions…</div> :
         sessions.length === 0 ? <EmptyState text="No sessions generated yet. Edit the batch and add dates and session days." /> :
         <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-          {sessions.map(s => <div key={s.date} className={`rounded-xl border p-3 ${s.marked ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-card'}`}>
+          {sessions.map(s => <div key={s.date} className={`rounded-xl border p-3 ${s.cancelled ? 'bg-rose-500/10 border-rose-500/30' : s.marked ? 'bg-emerald-500/10 border-emerald-500/30' : 'bg-card'}`}>
             <div className="text-sm font-semibold">{new Date(`${s.date}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</div>
-            <div className="text-[11px] text-muted-foreground mt-1">{s.marked ? `${s.present}/${s.total} present` : 'Not marked'}</div>
-            {!s.marked && <div className="mt-2 space-y-1.5">
-              {postponeTarget === s.date && <Input type="date" value={postponeDate} onChange={e => setPostponeDate(e.target.value)} className="h-8 text-xs" />}
+            {s.postponed_from && <div className="text-[11px] text-primary mt-1">Postponed from {new Date(`${s.postponed_from}T00:00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}{s.postponement_reason ? ` · ${s.postponement_reason}` : ''}</div>}
+            <div className="text-[11px] text-muted-foreground mt-1">{s.cancelled ? <><Badge className="bg-rose-500 text-white">Cancelled</Badge>{s.cancellation_reason && <div className="mt-1">Reason: {s.cancellation_reason}</div>}</> : s.marked ? `${s.present}/${s.total} present` : 'Not marked'}</div>
+            {!s.marked && !s.cancelled && <div className="mt-2 space-y-1.5">
+              {postponeTarget === s.date && <div className="space-y-1.5">
+                <Input type="date" value={postponeDate} onChange={e => setPostponeDate(e.target.value)} className="h-8 text-xs" />
+                <Input value={postponeReason} onChange={e => setPostponeReason(e.target.value)} placeholder="Reason for postponement" className="h-8 text-xs" />
+              </div>}
               <div className="flex gap-1">
-                <Button size="sm" variant="ghost" className="h-7 text-xs text-rose-600" onClick={() => cancel(s)}><Trash2 size={12} className="mr-1" /> Cancel</Button>
+                <Button size="sm" variant="ghost" className="h-7 text-xs text-rose-600" onClick={() => requestCancel(s)}><Trash2 size={12} className="mr-1" /> Cancel</Button>
                 {postponeTarget === s.date ?
                   <Button size="sm" className="h-7 text-xs bg-saffron-gradient" onClick={() => postpone(s)}>Save date</Button> :
-                  <Button size="sm" variant="ghost" className="h-7 text-xs text-primary" onClick={() => { setPostponeTarget(s.date); setPostponeDate(''); }}>Postpone</Button>}
+                  <Button size="sm" variant="ghost" className="h-7 text-xs text-primary" onClick={() => { setPostponeTarget(s.date); setPostponeDate(''); setPostponeReason(''); }}>Postpone</Button>}
               </div>
             </div>}
           </div>)}
         </div>}
+      <Dialog open={!!cancelTarget} onOpenChange={open => !open && setCancelTarget(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Cancel Session</DialogTitle>
+            <DialogDescription>Record why this session is being cancelled. It will remain visible in the scheduler history.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label>Cancellation reason</Label>
+            <Textarea value={cancelReason} onChange={e => setCancelReason(e.target.value)} placeholder="e.g. Temple closed for a festival" rows={3} />
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelTarget(null)}>Keep Session</Button>
+            <Button className="bg-rose-500 text-white" onClick={submitCancel}>Cancel Session</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
     </DialogContent>
   </Dialog>;
@@ -1986,7 +2018,11 @@ function Attendance() {
   const [marks, setMarks] = useState({});
   const [existing, setExisting] = useState({});
   const [enrollments, setEnrollments] = useState([]);
-  useEffect(() => { api('/students').then(r => setStudents(r.items)); api('/programs').then(r => setPrograms(r.items)); }, []);
+  const [teachers, setTeachers] = useState([]);
+  const [attendanceMode, setAttendanceMode] = useState('students');
+  const [facultyDate, setFacultyDate] = useState(localDateKey());
+  const [facultyMarks, setFacultyMarks] = useState({});
+  useEffect(() => { api('/students').then(r => setStudents(r.items || [])); api('/programs').then(r => setPrograms(r.items || [])); api('/teachers').then(r => setTeachers(r.items || [])); }, []);
   useEffect(() => {
     if (!program) { setSessions([]); setDate(''); setEnrollments([]); return; }
     api(`/programs/${program}/sessions`).then(r => {
@@ -2007,6 +2043,33 @@ function Attendance() {
     }).catch(() => {});
   }, [program, date]);
 
+  useEffect(() => {
+    if (attendanceMode !== 'faculty') return;
+    api(`/faculty-attendance?date=${facultyDate}`)
+      .then(r => {
+        const next = {};
+        (r.items || []).forEach(record => { next[record.faculty_id] = record.status; });
+        setFacultyMarks(next);
+      })
+      .catch(() => setFacultyMarks({}));
+  }, [attendanceMode, facultyDate]);
+
+  const facultyList = teachers.filter(t => !t.is_deleted);
+  const setFacultyMark = (id, status) => setFacultyMarks(prev => ({ ...prev, [id]: status }));
+  const bulkFaculty = (status) => {
+    const next = {};
+    facultyList.forEach(faculty => { next[faculty.id] = status; });
+    setFacultyMarks(next);
+  };
+  const saveFacultyAttendance = async () => {
+    if (!facultyDate) { toast.error('Pick an attendance date'); return; }
+    try {
+      const records = facultyList.map(faculty => ({ faculty_id: faculty.id, status: facultyMarks[faculty.id] || 'present' }));
+      await api('/faculty-attendance', { method: 'POST', body: JSON.stringify({ date: facultyDate, records }) });
+      toast.success(`Faculty attendance saved for ${records.length} faculty members`);
+    } catch (e) { toast.error(e.message); }
+  };
+
   const selectedProgram = programs.find(p => p.id === program);
   const selectedSession = sessions.find(s => s.date === date);
   const list = students.filter(s => {
@@ -2020,6 +2083,7 @@ function Attendance() {
   const save = async () => {
     if (!program) { toast.error('Please pick a batch first'); return; }
     if (!date) { toast.error('Pick a session date'); return; }
+    if (selectedSession?.cancelled) { toast.error('Cancelled sessions cannot receive attendance'); return; }
     try {
       const records = list.map(s => ({ student_id: s.id, status: marks[s.id] || 'present' }));
       await api('/attendance-bulk', { method: 'POST', body: JSON.stringify({ date, program_id: program, records }) });
@@ -2042,9 +2106,56 @@ function Attendance() {
     excused: sel ? 'bg-sky-500 text-white shadow-sky-500/50 shadow-lg' : 'bg-sky-500/10 text-sky-700 hover:bg-sky-500/20',
   })[v];
 
+  if (attendanceMode === 'faculty') {
+    return (
+      <div className="space-y-5">
+        <PageHeader title="Faculty Attendance" subtitle="Record attendance for faculty members" icon={Users} />
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setAttendanceMode('students')}>Student Attendance</Button>
+          <Button size="sm" className="bg-saffron-gradient text-white">Faculty Attendance</Button>
+        </div>
+        <div className="rounded-2xl glass p-4 flex flex-wrap gap-3 items-end">
+          <div><Label className="text-[11px]">Date</Label><Input type="date" value={facultyDate} onChange={e => setFacultyDate(e.target.value)} /></div>
+          <div className="ml-auto flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => bulkFaculty('present')}>All Present</Button>
+            <Button size="sm" variant="outline" onClick={() => bulkFaculty('absent')}>All Absent</Button>
+            <Button onClick={saveFacultyAttendance} className="bg-saffron-gradient shadow">Save Attendance</Button>
+          </div>
+        </div>
+        <div className="rounded-2xl glass p-4">
+          {facultyList.length === 0 ? <EmptyState text="No faculty members found" /> : (
+            <div className="space-y-1.5">
+              {facultyList.map(faculty => (
+                <div key={faculty.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 transition">
+                  <Avatar className="h-9 w-9"><AvatarFallback className="bg-violet-gradient text-white text-xs">{initials(faculty.name)}</AvatarFallback></Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{faculty.name}</div>
+                    <div className="text-[10px] text-muted-foreground">{faculty.department || faculty.skills || 'Faculty'}</div>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {['present', 'absent'].map(status => (
+                      <button key={status} onClick={() => setFacultyMark(faculty.id, status)}
+                        className={`text-[11px] px-2.5 py-1 rounded-full capitalize font-medium transition ${status === 'present'
+                          ? (facultyMarks[faculty.id] === status ? 'bg-emerald-500 text-white' : 'bg-emerald-500/10 text-emerald-700')
+                          : (facultyMarks[faculty.id] === status ? 'bg-rose-500 text-white' : 'bg-rose-500/10 text-rose-700')}`}>{status}</button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <PageHeader title="Attendance" subtitle="Session-based marking · scheduled auto-generated" icon={ClipboardCheck} />
+      <div className="flex gap-2">
+        <Button size="sm" className="bg-saffron-gradient text-white">Student Attendance</Button>
+        <Button size="sm" variant="outline" onClick={() => { setAttendanceMode('faculty'); setFacultyDate(localDateKey()); }}>Faculty Attendance</Button>
+      </div>
 
       {/* Batch picker */}
       <div className="rounded-2xl glass p-4 flex flex-wrap gap-3 items-end">
@@ -2061,9 +2172,9 @@ function Attendance() {
           </div>
         )}
         <div className="ml-auto flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => bulk('present')} disabled={!date}>All Present</Button>
-          <Button size="sm" variant="outline" onClick={() => bulk('absent')} disabled={!date}>All Absent</Button>
-          <Button onClick={save} className="bg-saffron-gradient shadow" disabled={!date || !program}>Save Attendance</Button>
+          <Button size="sm" variant="outline" onClick={() => bulk('present')} disabled={!date || selectedSession?.cancelled}>All Present</Button>
+          <Button size="sm" variant="outline" onClick={() => bulk('absent')} disabled={!date || selectedSession?.cancelled}>All Absent</Button>
+          <Button onClick={save} className="bg-saffron-gradient shadow" disabled={!date || !program || selectedSession?.cancelled}>Save Attendance</Button>
         </div>
       </div>
 
@@ -2078,32 +2189,24 @@ function Attendance() {
             {sessions.map(s => {
               const active = s.date === date;
               const cls = active ? 'bg-saffron-gradient text-white shadow-lg scale-105' :
+s.cancelled ? 'bg-rose-500/15 border border-rose-500/40 text-rose-800 dark:text-rose-200' :
                 s.marked ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-800 dark:text-emerald-200' :
                 s.is_past ? 'bg-muted text-muted-foreground border border-transparent' :
                 s.is_today ? 'bg-primary/10 border border-primary/40 text-primary' :
                 'bg-white/50 dark:bg-white/5 border border-transparent';
               const d = new Date(s.date + 'T00:00:00');
-              const cancelSession = async (ev) => {
-                ev.stopPropagation();
-                if (!confirm(`Cancel session on ${d.toLocaleDateString('en', { weekday: 'long', day: 'numeric', month: 'long' })}? Students won't be charged for this session.`)) return;
-                await api(`/programs/${program}/cancel-session`, { method: 'POST', body: JSON.stringify({ date: s.date, action: 'cancel' }) });
-                toast.success('Session cancelled');
-                Promise.all([api(`/programs/${program}/sessions`), api(`/enrollments?program_id=${program}`)]).then(([sessionResult, enrollmentResult]) => { setSessions(sessionResult.sessions || []); setEnrollments(enrollmentResult.items || []); });
-              };
               return (
                 <div key={s.date} className="relative shrink-0 group">
-                  <button onClick={() => setDate(s.date)}
+                  <button disabled={s.cancelled} onClick={() => setDate(s.date)}
                     className={`relative rounded-xl px-3 pr-9 py-2 min-w-[76px] transition ${cls}`}>
                     <div className="text-[9px] uppercase font-semibold opacity-80">{d.toLocaleString('en', { month: 'short' })}</div>
                     <div className="text-lg font-bold leading-none">{d.getDate()}</div>
                     <div className="text-[9px] opacity-80 mt-0.5">{d.toLocaleString('en', { weekday: 'short' })}</div>
-                    {s.marked && !active && <div className="text-[9px] mt-1 flex items-center justify-center gap-0.5"><Check size={9} /> {s.present}/{s.total}</div>}
+                    {s.cancelled && !active && <div className="text-[9px] mt-1 font-semibold text-rose-700">CANCELLED</div>}
+                    {s.marked && !s.cancelled && !active && <div className="text-[9px] mt-1 flex items-center justify-center gap-0.5"><Check size={9} /> {s.present}/{s.total}</div>}
                     {s.is_today && !active && <div className="text-[9px] mt-1 font-semibold">TODAY</div>}
                   </button>
-                  {!s.marked && !s.is_past && (
-                    <button onClick={cancelSession}
-                      className="absolute top-1 right-1 z-10 w-6 h-6 rounded-full bg-rose-500 text-white text-[10px] opacity-100 transition hover:bg-rose-600" title="Cancel this session">✕</button>
-                  )}
+                  {/* Session cancellation is managed only from the Session Scheduler. */}
                 </div>
               );
             })}
@@ -2119,7 +2222,7 @@ function Attendance() {
           <div>
             <div className="font-semibold">{selectedSession.day_name}, {new Date(date + 'T00:00:00').toLocaleDateString('en', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
             <div className="text-[11px] opacity-80">
-              {selectedSession.marked ? `Already marked · ${selectedSession.present}/${selectedSession.total} present · saving will overwrite` : 'Not yet marked · ready to record'}
+              {selectedSession.cancelled ? `Cancelled${selectedSession.cancellation_reason ? ` · ${selectedSession.cancellation_reason}` : ''}` : selectedSession.marked ? `Already marked · ${selectedSession.present}/${selectedSession.total} present · saving will overwrite` : 'Not yet marked · ready to record'}
             </div>
           </div>
         </div>
@@ -2168,7 +2271,7 @@ function Attendance() {
                   </div>
                   <div className="flex flex-wrap justify-end gap-1.5 shrink-0 max-w-[min(100%,18rem)]">
                     {['present', 'absent'].map(v => (
-                      <button key={v} onClick={() => setMark(s.id, v)}
+                      <button key={v} disabled={selectedSession?.cancelled} onClick={() => setMark(s.id, v)}
                         className={`text-[11px] px-2.5 py-1 rounded-full capitalize font-medium transition ${chip(v, marks[s.id] === v)}`}>{v}</button>
                     ))}
                   </div>
