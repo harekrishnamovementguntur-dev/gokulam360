@@ -538,6 +538,17 @@ async function router(req, method) {
        const { enrollment_details: ignoredEnrollmentDetails, ...persistedBody } = body;
        const organizationId = user.role === 'super_admin' ? body.organization_id : user.organization_id;
        if (!organizationId) return json({ error: 'organization_id is required' }, 400);
+       if (resource === 'programs') {
+         const requestedModel = persistedBody.billing_model || 'credit';
+         if (!['credit', 'date'].includes(requestedModel)) return json({ error: 'billing_model must be credit or date' }, 422);
+         if (persistedBody.parent_program_id) {
+           const parent = await db.collection('programs').findOne({ id: persistedBody.parent_program_id, ...orgScope(user) });
+           if (!parent) return json({ error: 'Parent program not found' }, 404);
+           persistedBody.billing_model = parent.billing_model || 'credit';
+         } else {
+           persistedBody.billing_model = requestedModel;
+         }
+       }
        const doc = {
          id: uuidv4(),
          ...persistedBody,
@@ -586,7 +597,12 @@ async function router(req, method) {
         const selectedCount = await db.collection('events').countDocuments({ organization_id: before.organization_id, is_announcement: true, is_deleted: { $ne: true }, id: { $ne: id } });
         if (selectedCount >= 3) return json({ error: 'Only 3 announcements can be shown to parents at a time' }, 400);
       }
-      if (resource === 'programs') updated.sessions = generateSessions({ ...before, ...body });
+      if (resource === 'programs') {
+        const nextModel = before.parent_program_id ? (before.billing_model || 'credit') : (body.billing_model || before.billing_model || 'credit');
+        if (!['credit', 'date'].includes(nextModel)) return json({ error: 'billing_model must be credit or date' }, 422);
+        updated.billing_model = nextModel;
+        updated.sessions = generateSessions({ ...before, ...body });
+      }
       await col.updateOne({ id, ...orgScope(user) }, { $set: updated });
        const doc = await col.findOne({ id, ...orgScope(user) });
       // Sync student enrollments diff
@@ -616,6 +632,32 @@ async function router(req, method) {
 
   // Enrollments endpoints
   if (resource === 'enrollments') {
+    if (method === 'POST' && id === 'credits') {
+      if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
+      const body = await req.json();
+      const quantity = Number(body.credit_quantity);
+      const amount = Number(body.fee_amount);
+      if (!body.enrollment_id || !Number.isInteger(quantity) || quantity <= 0) return json({ error: 'A positive whole-number credit quantity is required' }, 422);
+      if (!Number.isFinite(amount) || amount < 0) return json({ error: 'A valid amount is required' }, 422);
+      const enrollment = await db.collection('enrollments').findOne({ id: body.enrollment_id, ...orgScope(user), left_at: null, status: 'active' });
+      if (!enrollment) return json({ error: 'Active enrollment not found' }, 404);
+      const program = await db.collection('programs').findOne({ id: enrollment.program_id, ...orgScope(user) });
+      if ((program?.billing_model || 'credit') !== 'credit') return json({ error: 'Additional credits are available only for Credit model batches' }, 422);
+      const now = new Date().toISOString();
+      await db.collection('enrollments').updateOne(
+        { id: enrollment.id, ...orgScope(user) },
+        { $inc: { sessions_credited: quantity }, $set: { updated_at: now } },
+      );
+      if (amount > 0) {
+        await db.collection('fees').insertOne({
+          id: uuidv4(), organization_id: enrollment.organization_id, student_id: enrollment.student_id,
+          program_id: enrollment.program_id, fee_type: 'Credit Purchase', amount, paid_amount: amount,
+          payment_mode: body.payment_mode || 'cash', credit_quantity: quantity, status: 'paid',
+          created_at: now, updated_at: now,
+        });
+      }
+      return json({ ok: true, enrollment_id: enrollment.id, credits_added: quantity, amount_paid: amount });
+    }
     if (method === 'GET') {
       const q = orgScope(user);
       const url2 = new URL(req.url);
