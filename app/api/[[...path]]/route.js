@@ -119,6 +119,82 @@ function generateSessions(program) {
   return [...sessions].sort();
 }
 
+async function finalizePastStudentAttendance(db, user, programId, sessions) {
+  const today = new Date().toISOString().slice(0, 10);
+  const pastDates = sessions.filter(date => date < today);
+  if (!pastDates.length) return;
+
+  const enrollmentQuery = { ...orgScope(user), program_id: programId, left_at: null, status: 'active' };
+  const enrollments = await db.collection('enrollments').find(enrollmentQuery).toArray();
+  const studentIds = [...new Set(enrollments.map(enrollment => enrollment.student_id))];
+  if (!studentIds.length) return;
+
+  const students = await db.collection('students').find({
+    ...orgScope(user),
+    id: { $in: studentIds },
+    status: 'active',
+    is_deleted: { $ne: true },
+  }).toArray();
+  const activeStudents = students.filter(student => !student.active_from || student.active_from.slice(0, 10) <= today);
+  const activeIds = activeStudents.map(student => student.id);
+  if (!activeIds.length) return;
+
+  const existing = await db.collection('attendance').find({
+    ...orgScope(user),
+    program_id: programId,
+    student_id: { $in: activeIds },
+    date: { $in: pastDates },
+  }).toArray();
+  const recorded = new Set(existing.map(record => `${record.student_id}:${record.date}`));
+  const now = new Date().toISOString();
+  const docs = [];
+
+  for (const date of pastDates) {
+    for (const student of activeStudents) {
+      const enrollment = enrollments.find(item => item.student_id === student.id);
+      if (!enrollment) continue;
+      const activeFrom = (student.active_from || enrollment.enrolled_at || '').slice(0, 10);
+      if (activeFrom && date < activeFrom) continue;
+      const key = `${student.id}:${date}`;
+      if (recorded.has(key)) continue;
+      docs.push({
+        id: uuidv4(),
+        organization_id: enrollment.organization_id || user.organization_id,
+        program_id: programId,
+        date,
+        student_id: student.id,
+        status: 'absent',
+        auto_finalized: true,
+        marked_by: 'system',
+        created_at: now,
+      });
+      recorded.add(key);
+    }
+  }
+
+  if (docs.length) await db.collection('attendance').insertMany(docs);
+
+  const history = await db.collection('attendance').find({
+    ...orgScope(user),
+    program_id: programId,
+    student_id: { $in: activeIds },
+  }).toArray();
+
+  for (const enrollment of enrollments) {
+    if (!activeIds.includes(enrollment.student_id)) continue;
+    const used = history.filter(record =>
+      record.student_id === enrollment.student_id &&
+      attendanceConsumesCredit(record.status) &&
+      (!enrollment.enrolled_at || record.date >= enrollment.enrolled_at.slice(0, 10)),
+    ).length;
+    const credited = Number(enrollment.sessions_credited || 0);
+    await db.collection('enrollments').updateOne(
+      { id: enrollment.id, organization_id: enrollment.organization_id || user.organization_id },
+      { $set: { sessions_attended: used, sessions_remaining: Math.max(0, credited - used), updated_at: now } },
+    );
+  }
+}
+
 async function syncEnrollments(db, student, oldProgramIds = [], enrollmentDetails = {}, options = {}) {
   const orgId = student.organization_id;
   const newIds = student.program_ids || [];
@@ -608,6 +684,7 @@ async function router(req, method) {
         updated_at: new Date().toISOString(),
         is_deleted: false,
       };
+      if (resource === 'students' && doc.status === 'active') doc.active_from = doc.created_at;
       // Auto-generate public token for students
       if (resource === 'students' && !doc.public_token) doc.public_token = uuidv4();
       if (resource === 'events' && doc.is_announcement) {
@@ -643,6 +720,10 @@ async function router(req, method) {
        // Do not let callers move records between tenants or alter server-owned fields.
        const { id: ignoredId, organization_id: ignoredOrganizationId, created_at: ignoredCreatedAt, updated_at: ignoredUpdatedAt, is_deleted: ignoredDeleted, enrollment_details: ignoredEnrollmentDetails, ...changes } = body;
        const updated = { ...changes, updated_at: new Date().toISOString() };
+      if (resource === 'students' && changes.status && changes.status !== before.status) {
+        updated.status_changed_at = updated.updated_at;
+        if (changes.status === 'active') updated.active_from = updated.updated_at;
+      }
       if (resource === 'events' && changes.is_announcement === true && !before.is_announcement) {
         const selectedCount = await db.collection('events').countDocuments({ organization_id: before.organization_id, is_announcement: true, is_deleted: { $ne: true }, id: { $ne: id } });
         if (selectedCount >= 3) return json({ error: 'Only 3 announcements can be shown to parents at a time' }, 400);
@@ -768,6 +849,7 @@ async function router(req, method) {
     if (!prog) return json({ error: 'Not found' }, 404);
     let sessions = prog.sessions;
     if (!sessions || !sessions.length) sessions = generateSessions(prog);
+    await finalizePastStudentAttendance(db, user, id, sessions);
     // Attach attendance count per session
     const att = await db.collection('attendance').find({ program_id: id, organization_id: user.organization_id }).toArray();
     const byDate = {};
