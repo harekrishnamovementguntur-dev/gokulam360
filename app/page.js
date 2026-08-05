@@ -150,7 +150,7 @@ function AccountDialog({ user, open, onOpenChange, onUpdated }) {
 }
 
 function ForgotPasswordDialog({ open, onOpenChange }) {
-  const [email, setEmail] = useState(''); const [otp, setOtp] = useState(''); const [newPassword, setNewPassword] = useState(''); const [confirmPassword, setConfirmPassword] = useState(''); const [step, setStep = useState('request'); const [busy, setBusy] = useState(false);
+  const [email, setEmail] = useState(''); const [otp, setOtp] = useState(''); const [newPassword, setNewPassword] = useState(''); const [confirmPassword, setConfirmPassword] = useState(''); const [step, setStep] = useState('request'); const [busy, setBusy] = useState(false);
   const request = async () => { setBusy(true); try { await api('/auth/password/forgot/request',{method:'POST',body:JSON.stringify({email})}); setStep('confirm'); toast.success('If the account exists, a verification code has been sent'); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
   const confirm = async () => { if(newPassword.length<8) return toast.error('Password must be at least 8 characters'); if(newPassword !== confirmPassword) return toast.error('Passwords do not match'); setBusy(true); try { await api('/auth/password/forgot/confirm',{method:'POST',body:JSON.stringify({email,otp,new_password:newPassword})}); toast.success('Password reset. You can sign in now.'); onOpenChange(false); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>Forgot password?</DialogTitle><DialogDescription>We will send a one-time code to your account email.</DialogDescription></DialogHeader>
