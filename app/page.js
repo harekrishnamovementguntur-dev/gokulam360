@@ -2879,6 +2879,53 @@ function TaskHome({ user, org, onNav }) {
   );
 }
 
+function SimpleAttendanceReport() {
+  const [state, setState] = useState({ loading: true, error: '', data: null });
+  const [exporting, setExporting] = useState(false);
+
+  const load = async () => {
+    setState({ loading: true, error: '', data: null });
+    try {
+      const data = await api('/reports/attendance?page_size=100&sort=session_date&direction=desc');
+      setState({ loading: false, error: '', data });
+    } catch (error) {
+      setState({ loading: false, error: error.message || 'Attendance summary is unavailable', data: null });
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const data = state.data || {};
+  const items = data.items || [];
+  const summary = data.summary || {};
+  const download = () => {
+    if (!items.length) return;
+    setExporting(true);
+    const headers = ['Session date', 'Session', 'Present', 'Late', 'Absent', 'Excused', 'Total'];
+    const csv = [headers, ...items.map((item) => [
+      item.session_date || '', item.session_label || 'Session', item.present || 0,
+      item.late || 0, item.absent || 0, item.excused || 0, item.total || 0,
+    ])].map((row) => row.map((value) => '"' + String(value).replaceAll('"', '""') + '"').join(',')).join('\n');
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    link.download = 'attendance-summary.csv';
+    link.click();
+    URL.revokeObjectURL(link.href);
+    setExporting(false);
+  };
+
+  return (
+    <div className="mx-auto max-w-6xl space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div><div className="text-sm text-muted-foreground">Reports</div><h1 className="mt-1 text-3xl font-bold">Attendance summary</h1><p className="mt-1 text-sm text-muted-foreground">See who was present without needing to understand sessions or ledger records.</p></div>
+        <div className="flex gap-2"><Button variant="outline" onClick={load} disabled={state.loading}><RefreshCw size={15} className="mr-1" />Refresh</Button><Button variant="outline" onClick={download} disabled={!items.length || exporting}><Download size={15} className="mr-1" />CSV</Button></div>
+      </div>
+      {state.error && <div role="alert" className="rounded-xl border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">{state.error}</div>}
+      {state.loading ? <div className="rounded-2xl glass p-8 text-center text-muted-foreground">Loading attendance summary…</div> : <><div className="grid grid-cols-2 gap-3 md:grid-cols-5">{[['Present', summary.present], ['Late', summary.late], ['Absent', summary.absent], ['Excused', summary.excused], ['Total', summary.total]].map(([label, value]) => <div key={label} className="rounded-2xl glass p-4"><div className="text-2xl font-bold">{value ?? 0}</div><div className="mt-1 text-xs text-muted-foreground">{label}</div></div>)}</div>{!items.length ? <div className="rounded-2xl glass p-8 text-center text-muted-foreground">No attendance has been recorded yet.</div> : <div className="overflow-hidden rounded-2xl glass"><Table><TableHeader><TableRow><TableHead>Session date</TableHead><TableHead>Session</TableHead><TableHead>Present</TableHead><TableHead>Late</TableHead><TableHead>Absent</TableHead><TableHead>Excused</TableHead><TableHead>Total</TableHead></TableRow></TableHeader><TableBody>{items.map((item) => <TableRow key={item.session_id}><TableCell>{item.session_date || '—'}</TableCell><TableCell>{item.session_label || 'Session'}</TableCell><TableCell>{item.present || 0}</TableCell><TableCell>{item.late || 0}</TableCell><TableCell>{item.absent || 0}</TableCell><TableCell>{item.excused || 0}</TableCell><TableCell>{item.total || 0}</TableCell></TableRow>)}</TableBody></Table></div>}</>}
+    </div>
+  );
+}
+
 function TaskShell({ user, org, onLogout, dark, setDark, refreshMe }) {
   const [view, setView] = useState('home');
   const [reportView, setReportView] = useState('members');
@@ -2960,7 +3007,7 @@ function TaskShell({ user, org, onLogout, dark, setDark, refreshMe }) {
               <div className="flex flex-wrap gap-2"><Button variant={reportView === 'members' ? 'default' : 'outline'} onClick={() => setReportView('members')}>People</Button><Button variant={reportView === 'finance' ? 'default' : 'outline'} onClick={() => setReportView('finance')}>Money</Button><Button variant={reportView === 'attendance' ? 'default' : 'outline'} onClick={() => setReportView('attendance')}>Attendance</Button></div>
               {reportView === 'members' && <MemberMembershipReports />}
               {reportView === 'finance' && <PaymentCreditReports />}
-              {reportView === 'attendance' && <Reports />}
+              {reportView === 'attendance' && <SimpleAttendanceReport />}
             </div>
           )}
         </main>
