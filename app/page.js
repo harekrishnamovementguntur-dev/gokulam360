@@ -430,8 +430,7 @@ function Dashboard({ user, org, onNav }) {
         </div>
         <div className="relative">
           <div className="inline-flex items-center gap-2 rounded-full bg-white/60 backdrop-blur px-3 py-1 text-[11px] font-medium mb-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-em
-erald-500 pulse-dot" /> Live â€¢ {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 pulse-dot" /> Live â€¢ {new Date().toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'long' })}
           </div>
           <h1 className="text-3xl md:text-4xl font-bold tracking-tight text-indigo-950 dark:text-indigo-100">
             {greet()}, <span className="text-gradient">{user.name.split(' ')[0]}</span> ðŸ™
@@ -852,8 +851,7 @@ function Organizations() {
               </div>
               <div className="mt-3 space-y-1 text-xs">
                 <div className="flex items-center gap-2"><span className="text-muted-foreground">Email</span><span className="ml-auto font-medium truncate max-w-[60%]">{o.contact_email || '-'}</span></div>
-                <div className="flex items-center gap-2"><span className="text-muted-foregroun
-d">Phone</span><span className="ml-auto font-medium">{o.contact_phone || '-'}</span></div>
+                <div className="flex items-center gap-2"><span className="text-muted-foreground">Phone</span><span className="ml-auto font-medium">{o.contact_phone || '-'}</span></div>
                 <div className="flex items-center gap-2"><span className="text-muted-foreground">Since</span><span className="ml-auto font-medium">{new Date(o.created_at).toLocaleDateString()}</span></div>
               </div>
             </motion.div>
@@ -1235,8 +1233,7 @@ function Students({ students, setStudents }) {
             { k: 'all', l: 'All', c: counts.all },
             { k: 'active', l: 'Active', c: counts.active },
             { k: 'inactive', l: 'Inactive', c: counts.inactive },
-            { k: 'discontinued', l: 'Left', c: counts.
-discontinued },
+            { k: 'discontinued', l: 'Left', c: counts.discontinued },
           ].map(t => (
             <button key={t.k} onClick={() => setStatusFilter(t.k)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${statusFilter === t.k ? 'bg-saffron-gradient text-white shadow' : 'text-muted-foreground hover:text-foreground'}`}>
@@ -1603,8 +1600,7 @@ function Teachers({ teachers, setTeachers }) {
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-function DaysPicker({ value = [
-], onChange }) {
+function DaysPicker({ value = [], onChange }) {
   const toggle = (d) => onChange(value.includes(d) ? value.filter(x => x !== d) : [...value, d].sort());
   return (
     <div className="flex gap-1.5 flex-wrap">
@@ -1921,8 +1917,7 @@ function Attendance() {
               {list.map(s => {
                 const enr = enrollments.find(e => e.student_id === s.id && !e.left_at);
                 const remaining = enr?.sessions_remaining ?? null;
-                const credited = 
-enr?.sessions_credited ?? null;
+                const credited = enr?.sessions_credited ?? null;
                 const exhausted = remaining === 0 && credited > 0;
                 return (
                 <div key={s.id} className={`flex items-center gap-3 p-2 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 transition ${exhausted ? 'opacity-60' : ''}`}>
@@ -2351,8 +2346,7 @@ function Reports() {
         <TabsList>
           <TabsTrigger value="students">Students</TabsTrigger>
           <TabsTrigger value="attendance">Attendance</TabsTrigger>
-          <TabsTrigger value="att
-endance-summary">Monthly Summary</TabsTrigger>
+          <TabsTrigger value="attendance-summary">Monthly Summary</TabsTrigger>
           <TabsTrigger value="fees">Fees</TabsTrigger>
         </TabsList>
         <TabsContent value={tab} className="mt-4">
@@ -2747,8 +2741,7 @@ function Backup() {
       <div className="grid md:grid-cols-2 gap-4">
         {/* Export card */}
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="rounded-3xl relative overflow-hidden p-6 text-white shadow-2xl"
-          style={{ background: 'linear-gradient(135deg, #4
-c1d95 0%, #6d28d9 55%, #a855f7 100%)' }}>
+          style={{ background: 'linear-gradient(135deg, #4c1d95 0%, #6d28d9 55%, #a855f7 100%)' }}>
           <div className="absolute -right-8 -bottom-8 opacity-15"><Download size={180} /></div>
           <div className="relative">
             <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur grid place-items-center mb-4"><Download size={22} /></div>
@@ -2952,4 +2945,3 @@ function App() {
 }
 
 export default App;
-
