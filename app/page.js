@@ -10,7 +10,7 @@ import {
   UserCircle2, Bot, TrendingUp, ChevronRight, Sparkles, Flame, BookOpen, ClipboardCheck,
   Bell, Send, MessageSquare, Camera, FileText, Download, FileSpreadsheet, Command as CmdIcon,
   Rocket, Award, Heart, Activity, ArrowUpRight, Phone, PartyPopper, Zap, Layers, School,
-  ChevronLeft, Upload, Check, CheckCircle2, Circle, Palette, Wallet, UserPlus
+  ChevronLeft, Upload, Check, CheckCircle2, Circle, Palette, Wallet, UserPlus, Eye, EyeOff
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip as RTooltip,
@@ -105,30 +105,57 @@ function AuroraBlobs() {
   );
 }
 
+function PasswordField({ label, value, onChange, minLength = 8 }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div>
+      <Label>{label}</Label>
+      <div className="relative">
+        <Input
+          type={visible ? 'text' : 'password'}
+          value={value}
+          onChange={onChange}
+          minLength={minLength}
+          className="pr-11"
+        />
+        <button
+          type="button"
+          onClick={() => setVisible(current => !current)}
+          className="absolute inset-y-0 right-0 flex w-11 items-center justify-center text-muted-foreground hover:text-foreground"
+          aria-label={visible ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+        >
+          {visible ? <EyeOff size={18} /> : <Eye size={18} />}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function AccountDialog({ user, open, onOpenChange, onUpdated }) {
   const [name, setName] = useState(user.name || '');
   const [phone, setPhone] = useState(user.phone || '');
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [step, setStep] = useState('details');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [step, setStep = useState('details');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (open) { setName(user.name || ''); setPhone(user.phone || ''); setStep('details'); setOtp(''); setNewPassword(''); } }, [open, user]);
+  useEffect(() => { if (open) { setName(user.name || ''); setPhone(user.phone || ''); setStep('details'); setOtp(''); setNewPassword(''); setConfirmPassword(''); } }, [open, user]);
   const saveDetails = async () => { setBusy(true); try { const r=await api('/auth/me',{method:'PUT',body:JSON.stringify({name,phone})}); onUpdated(r.user); toast.success('Account details updated'); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
   const requestOtp = async () => { setBusy(true); try { await api('/auth/password/change/request',{method:'POST'}); setStep('password'); toast.success('Verification code sent to your email'); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
-  const changePassword = async () => { if (newPassword.length < 8) return toast.error('Password must be at least 8 characters'); setBusy(true); try { await api('/auth/password/change/confirm',{method:'POST',body:JSON.stringify({otp,new_password:newPassword})}); toast.success('Password changed'); setStep('details'); setOtp(''); setNewPassword(''); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
+  const changePassword = async () => { if (newPassword.length < 8) return toast.error('Password must be at least 8 characters'); if (newPassword !== confirmPassword) return toast.error('Passwords do not match'); setBusy(true); try { await api('/auth/password/change/confirm',{method:'POST',body:JSON.stringify({otp,new_password:newPassword})}); toast.success('Password changed'); setStep('details'); setOtp(''); setNewPassword(''); setConfirmPassword(''); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>Manage account</DialogTitle><DialogDescription>Update your profile and secure your account.</DialogDescription></DialogHeader>
     {step === 'details' ? <div className="space-y-4"><div><Label>Name</Label><Input value={name} onChange={e=>setName(e.target.value)} /></div><div><Label>Email</Label><Input value={user.email} disabled /></div><div><Label>Phone</Label><Input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Optional phone number" /></div><div className="text-sm text-muted-foreground">Role: {user.role.replaceAll('_',' ')}</div><div className="flex justify-between gap-2"><Button variant="outline" onClick={requestOtp} disabled={busy}>Change password</Button><Button onClick={saveDetails} disabled={busy}>Save details</Button></div></div>
-    : <div className="space-y-4"><p className="text-sm text-muted-foreground">Enter the code sent to {user.email}, then choose a new password.</p><div><Label>Email OTP</Label><Input value={otp} onChange={e=>setOtp(e.target.value)} inputMode="numeric" maxLength={6} /></div><div><Label>New password</Label><Input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} minLength={8} /></div><div className="flex justify-between gap-2"><Button variant="outline" onClick={()=>setStep('details')}>Back</Button><Button onClick={changePassword} disabled={busy}>Set new password</Button></div></div>}
+    : <div className="space-y-4"><p className="text-sm text-muted-foreground">Enter the code sent to {user.email}, then choose a new password.</p><div><Label>Email OTP</Label><Input value={otp} onChange={e=>setOtp(e.target.value)} inputMode="numeric" maxLength={6} /></div><PasswordField label="New password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} /><PasswordField label="Confirm new password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} /><div className="flex justify-between gap-2"><Button variant="outline" onClick={()=>setStep('details')}>Back</Button><Button onClick={changePassword} disabled={busy}>Set new password</Button></div></div>}
   </DialogContent></Dialog>;
 }
 
 function ForgotPasswordDialog({ open, onOpenChange }) {
-  const [email, setEmail] = useState(''); const [otp, setOtp] = useState(''); const [newPassword, setNewPassword] = useState(''); const [step, setStep] = useState('request'); const [busy, setBusy] = useState(false);
+  const [email, setEmail] = useState(''); const [otp, setOtp] = useState(''); const [newPassword, setNewPassword] = useState(''); const [confirmPassword, setConfirmPassword] = useState(''); const [step, setStep = useState('request'); const [busy, setBusy] = useState(false);
   const request = async () => { setBusy(true); try { await api('/auth/password/forgot/request',{method:'POST',body:JSON.stringify({email})}); setStep('confirm'); toast.success('If the account exists, a verification code has been sent'); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
-  const confirm = async () => { if(newPassword.length<8) return toast.error('Password must be at least 8 characters'); setBusy(true); try { await api('/auth/password/forgot/confirm',{method:'POST',body:JSON.stringify({email,otp,new_password:newPassword})}); toast.success('Password reset. You can sign in now.'); onOpenChange(false); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
+  const confirm = async () => { if(newPassword.length<8) return toast.error('Password must be at least 8 characters'); if(newPassword !== confirmPassword) return toast.error('Passwords do not match'); setBusy(true); try { await api('/auth/password/forgot/confirm',{method:'POST',body:JSON.stringify({email,otp,new_password:newPassword})}); toast.success('Password reset. You can sign in now.'); onOpenChange(false); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>Forgot password?</DialogTitle><DialogDescription>We will send a one-time code to your account email.</DialogDescription></DialogHeader>
     {step==='request' ? <div className="space-y-4"><div><Label>Email</Label><Input type="email" value={email} onChange={e=>setEmail(e.target.value)} /></div><Button className="w-full" onClick={request} disabled={busy}>Send verification code</Button></div>
-    : <div className="space-y-4"><p className="text-sm text-muted-foreground">Enter the code sent to {email}.</p><div><Label>Email OTP</Label><Input value={otp} onChange={e=>setOtp(e.target.value)} inputMode="numeric" maxLength={6} /></div><div><Label>New password</Label><Input type="password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} minLength={8} /></div><Button className="w-full" onClick={confirm} disabled={busy}>Reset password</Button></div>}
+    : <div className="space-y-4"><p className="text-sm text-muted-foreground">Enter the code sent to {email}.</p><div><Label>Email OTP</Label><Input value={otp} onChange={e=>setOtp(e.target.value)} inputMode="numeric" maxLength={6} /></div><PasswordField label="New password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} /><PasswordField label="Confirm new password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} /><Button className="w-full" onClick={confirm} disabled={busy}>Reset password</Button></div>}
   </DialogContent></Dialog>;
 }
 
