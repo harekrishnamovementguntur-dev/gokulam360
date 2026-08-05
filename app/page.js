@@ -1235,11 +1235,13 @@ function Students({ students, setStudents }) {
     doc.save(`idcard-${cardOf.student_id}.pdf`);
   };
 
-  const creditsFor = (studentId) => enrollments.filter(e => e.student_id === studentId).reduce((total, e) => ({
-    given: total.given + Number(e.sessions_credited || 0), remaining: total.remaining + Number(e.sessions_remaining || 0),
-  }), { given: 0, remaining: 0 });
+  const creditsFor = (studentId) => enrollments.filter(e => e.student_id === studentId).reduce((total, e) => {
+      const given = Number(e.sessions_credited || 0);
+      const used = Number(e.sessions_attended || 0);
+      return { given: total.given + given, used: total.used + used, remaining: total.remaining + Math.max(0, Number(e.sessions_remaining ?? (given - used))) };
+    }, { given: 0, used: 0, remaining: 0 });
 
-  const counts = useMemo(() => {
+    const counts = useMemo(() => {
     return {
       all: students.length,
       active: students.filter(s => s.status === 'active').length,
@@ -1304,9 +1306,10 @@ function Students({ students, setStudents }) {
               </div>
               <div className="text-[11px] text-muted-foreground mt-3 space-y-0.5">
                 {s.mobile && <div className="flex items-center gap-1.5"><Phone size={11} /> {s.mobile}</div>}
+                {(() => { const credits = creditsFor(s.id); return <div className="text-[10px] text-primary truncate" title={`${credits.given} granted · ${credits.used} used · ${credits.remaining} left`}>{credits.given} granted · {credits.used} used · {credits.remaining} left</div>; })()}
               </div>
-              <div className="flex gap-1 mt-3 pt-3 border-t">
-                <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setHistoryOf(s)}><Activity size={13} className="mr-1" /> History</Button>
+              <div className="flex flex-wrap gap-1 mt-3 pt-3 border-t">
+                <Button size="sm" variant="ghost" className="min-w-0 flex-1 text-xs h-8" onClick={() => setHistoryOf(s)}><Activity size={13} className="mr-1" /> History</Button>
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setCardOf(s)}><IdCard size={13} className="mr-1" /> ID Card</Button>
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(s)}><Edit3 size={13} className="mr-1" /> Edit</Button>
                 <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(s)}><Trash2 size={13} /></Button>
@@ -2123,21 +2126,53 @@ function Attendance() {
 function Fees() {
   const [items, setItems] = useState([]);
   const [students, setStudents] = useState([]);
-  useEffect(() => { api('/fees').then(r => setItems(r.items)); api('/students').then(r => setStudents(r.items)); }, []);
+  const [programs, setPrograms] = useState([]);
+  const [programFilter, setProgramFilter] = useState('');
+  const [paymentFor, setPaymentFor] = useState(null);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentMode, setPaymentMode] = useState('cash');
+  const refresh = () => api('/fees').then(r => setItems(r.items || []));
+  useEffect(() => {
+    refresh();
+    api('/students').then(r => setStudents(r.items || []));
+    api('/programs').then(r => setPrograms(r.items || []));
+  }, []);
   const sMap = Object.fromEntries(students.map(s => [s.id, s]));
-  const pending = items.filter(f => f.status === 'pending');
-  const paid = items.filter(f => f.status === 'paid');
-  const totalPending = pending.reduce((a, f) => a + (f.amount - (f.paid_amount || 0)), 0);
-  const totalPaid = paid.reduce((a, f) => a + (f.paid_amount || 0), 0);
-  const markPaid = async (f) => {
-    await api(`/fees/${f.id}`, { method: 'PUT', body: JSON.stringify({ status: 'paid', paid_amount: f.amount, paid_at: new Date().toISOString() }) });
-    api('/fees').then(r => setItems(r.items));
+  const batches = programs.filter(p => p.parent_program_id);
+  const visibleItems = programFilter ? items.filter(f => f.program_id === programFilter) : items;
+  const pending = visibleItems.filter(f => Number(f.amount || 0) > Number(f.paid_amount || 0));
+  const paid = visibleItems.filter(f => Number(f.paid_amount || 0) > 0);
+  const totalPending = pending.reduce((a, f) => a + Math.max(0, Number(f.amount || 0) - Number(f.paid_amount || 0)), 0);
+  const totalPaid = paid.reduce((a, f) => a + Number(f.paid_amount || 0), 0);
+  const openPayment = (fee) => { setPaymentFor(fee); setPaymentAmount(''); setPaymentMode(fee.payment_mode || 'cash'); };
+  const addPayment = async () => {
+    if (!paymentFor) return;
+    const amount = Number(paymentAmount);
+    const outstanding = Math.max(0, Number(paymentFor.amount || 0) - Number(paymentFor.paid_amount || 0));
+    if (!Number.isFinite(amount) || amount <= 0 || amount > outstanding) { toast.error(`Enter an amount between ₹1 and ₹${outstanding.toLocaleString('en-IN')}`); return; }
+    const now = new Date().toISOString();
+    const nextPaid = Number(paymentFor.paid_amount || 0) + amount;
+    const history = Array.isArray(paymentFor.payment_history) ? paymentFor.payment_history : [];
+    await api(`/fees/${paymentFor.id}`, { method: 'PUT', body: JSON.stringify({
+      paid_amount: nextPaid, status: nextPaid >= Number(paymentFor.amount || 0) ? 'paid' : 'pending', paid_at: now,
+      payment_mode: paymentMode, payment_history: [...history, { id: crypto.randomUUID(), amount, mode: paymentMode, paid_at: now }],
+    })});
+    setPaymentFor(null); await refresh();
     confetti({ particleCount: 60, spread: 70, origin: { y: 0.7 }, colors: ['#7c3aed', '#0ea5e9'] });
-    toast.success('Payment received 💰');
+    toast.success(nextPaid >= Number(paymentFor.amount || 0) ? 'Payment completed 💰' : 'Partial payment recorded 💰');
   };
   return (
     <div className="space-y-5">
       <PageHeader title="Fees" subtitle="Track collections & pending dues" icon={IndianRupee} />
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm font-medium text-muted-foreground">Classify by</span>
+        <Select value={programFilter || 'all'} onValueChange={v => setProgramFilter(v === 'all' ? '' : v)}>
+          <SelectTrigger className="w-64"><SelectValue placeholder="All programs & batches" /></SelectTrigger>
+          <SelectContent><SelectItem value="all">All programs & batches</SelectItem>
+            {batches.map(batch => { const parent = programs.find(p => p.id === batch.parent_program_id); return <SelectItem key={batch.id} value={batch.id}>{parent?.name || 'Program'} · {batch.name}</SelectItem>; })}
+          </SelectContent>
+        </Select>
+      </div>
       <div className="grid md:grid-cols-3 gap-4">
         <div className="rounded-2xl relative overflow-hidden p-5 text-white shadow-xl" style={{ background: 'linear-gradient(135deg,#059669,#10b981)' }}>
           <div className="absolute -right-4 -bottom-4 opacity-20"><IndianRupee size={80} /></div>
@@ -2159,9 +2194,9 @@ function Fees() {
       </div>
       <div className="rounded-2xl glass overflow-hidden">
         <Table>
-          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead><TableHead></TableHead></TableRow></TableHeader>
+          <TableHeader><TableRow><TableHead>Student</TableHead><TableHead>Program / Batch</TableHead><TableHead>Type</TableHead><TableHead>Amount</TableHead><TableHead>Paid</TableHead><TableHead>Status</TableHead><TableHead>Due</TableHead><TableHead></TableHead></TableRow></TableHeader>
           <TableBody>
-            {items.map(f => {
+            {visibleItems.map(f => {
               const s = sMap[f.student_id];
               return (
                 <TableRow key={f.id}>
@@ -2173,12 +2208,12 @@ function Fees() {
                       <div className="text-sm font-medium">{s ? `${s.first_name} ${s.last_name}` : '-'}</div>
                     </div>
                   </TableCell>
-                  <TableCell>{f.fee_type}</TableCell>
+                  <TableCell className="text-xs">{(() => { const batch = programs.find(p => p.id === f.program_id); const parent = batch && programs.find(p => p.id === batch.parent_program_id); return batch ? <div><div className="font-medium">{parent?.name || 'Program'}</div><div className="text-muted-foreground">{batch.name}</div></div> : '—'; })()}</TableCell><TableCell>{f.fee_type}</TableCell>
                   <TableCell>{fmtINR(f.amount)}</TableCell>
                   <TableCell>{fmtINR(f.paid_amount)}</TableCell>
                   <TableCell><Badge className={f.status === 'paid' ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-rose-500 hover:bg-rose-600'}>{f.status}</Badge></TableCell>
                   <TableCell className="text-xs text-muted-foreground">{f.due_date}</TableCell>
-                  <TableCell className="text-right">{f.status !== 'paid' && <Button size="sm" className="bg-saffron-gradient" onClick={() => markPaid(f)}>Mark Paid</Button>}</TableCell>
+                  <TableCell className="text-right">{Number(f.amount || 0) > Number(f.paid_amount || 0) && <Button size="sm" className="bg-saffron-gradient" onClick={() => openPayment(f)}>Add Payment</Button>}</TableCell>
                 </TableRow>
               );
             })}
@@ -2186,6 +2221,17 @@ function Fees() {
         </Table>
       </div>
     </div>
+      <Dialog open={Boolean(paymentFor)} onOpenChange={open => !open && setPaymentFor(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Add Payment</DialogTitle><DialogDescription>Record a full or partial payment. The remaining amount stays due.</DialogDescription></DialogHeader>
+          {paymentFor && <div className="space-y-4">
+            <div className="rounded-xl bg-muted/50 p-3 text-sm"><div className="font-medium">{sMap[paymentFor.student_id] ? `${sMap[paymentFor.student_id].first_name} ${sMap[paymentFor.student_id].last_name}` : 'Student'}</div><div className="text-muted-foreground">Outstanding: {fmtINR(Math.max(0, Number(paymentFor.amount || 0) - Number(paymentFor.paid_amount || 0)))}</div></div>
+            <div><Label>Amount</Label><Input type="number" min="1" max={Math.max(0, Number(paymentFor.amount || 0) - Number(paymentFor.paid_amount || 0))} value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="Enter amount" /></div>
+            <div><Label>Payment mode</Label><Select value={paymentMode} onValueChange={setPaymentMode}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="bank_transfer">Bank transfer</SelectItem><SelectItem value="cheque">Cheque</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></div>
+            <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setPaymentFor(null)}>Cancel</Button><Button className="bg-saffron-gradient" onClick={addPayment}>Save Payment</Button></div>
+          </div>}
+        </DialogContent>
+      </Dialog>
   );
 }
 
