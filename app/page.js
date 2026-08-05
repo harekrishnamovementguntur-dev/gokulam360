@@ -2220,7 +2220,6 @@ function Fees() {
           </TableBody>
         </Table>
       </div>
-    </div>
       <Dialog open={Boolean(paymentFor)} onOpenChange={open => !open && setPaymentFor(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader><DialogTitle>Add Payment</DialogTitle><DialogDescription>Record a full or partial payment. The remaining amount stays due.</DialogDescription></DialogHeader>
@@ -2232,6 +2231,7 @@ function Fees() {
           </div>}
         </DialogContent>
       </Dialog>
+    </div>
   );
 }
 
