@@ -1151,10 +1151,49 @@ async function router(req, method) {
       return json({ items: reportItems, summary: counts, filters: { from, to } });
     }
     if (type === 'fees') {
-      const items = await db.collection('fees').find({ ...scope, ...dateFilter('due_date') }).toArray();
+      const programId = url.searchParams.get('program_id') || '';
+      const batchId = url.searchParams.get('batch_id') || '';
+      const studentId = url.searchParams.get('student_id') || '';
+      const paymentStatus = url.searchParams.get('status') || '';
+      const fees = await db.collection('fees').find(scope).sort({ collection_date: -1, created_at: -1 }).toArray();
       const students = await db.collection('students').find(scope).toArray();
-      const sMap = Object.fromEntries(students.map(s => [s.id, `${s.first_name} ${s.last_name}`]));
-      return json({ items: items.map(f => ({ ...stripId(f), student_name: sMap[f.student_id] || '-' })) });
+      const programs = await db.collection('programs').find(scope).toArray();
+      const studentMap = Object.fromEntries(students.map(s => [s.id, s]));
+      const programMap = Object.fromEntries(programs.map(p => [p.id, p]));
+      const records = fees.filter(f => {
+        const batch = programMap[f.program_id];
+        const effectiveDate = String(f.collection_date || f.paid_at || f.due_date || f.created_at || '').slice(0, 10);
+        const matchesProgram = !programId || batch?.parent_program_id === programId || f.program_id === programId;
+        const matchesBatch = !batchId || f.program_id === batchId;
+        const matchesStudent = !studentId || f.student_id === studentId;
+        const matchesStatus = !paymentStatus || f.status === paymentStatus;
+        const matchesFrom = !from || effectiveDate >= from;
+        const matchesTo = !to || effectiveDate <= to;
+        return matchesProgram && matchesBatch && matchesStudent && matchesStatus && matchesFrom && matchesTo;
+      });
+      const reportItems = records.map(f => {
+        const student = studentMap[f.student_id];
+        const batch = programMap[f.program_id];
+        const program = batch?.parent_program_id ? programMap[batch.parent_program_id] : batch;
+        const amountMinor = Number.isFinite(Number(f.amount_minor)) ? Number(f.amount_minor) : Math.round(Number(f.amount || 0) * 100);
+        const paidMinor = Number.isFinite(Number(f.paid_amount_minor)) ? Number(f.paid_amount_minor) : Math.round(Number(f.paid_amount || 0) * 100);
+        return {
+          id: f.id,
+          student_name: [student?.first_name, student?.last_name].filter(Boolean).join(' ') || student?.student_id || '-',
+          program_name: program?.name || '-',
+          batch_name: batch?.parent_program_id ? batch.name : '-',
+          amount_minor: amountMinor,
+          amount_paid_minor: paidMinor,
+          pending_amount_minor: Math.max(0, amountMinor - paidMinor),
+          payment_date: f.collection_date || f.paid_at || f.created_at || f.due_date || '-',
+          payment_mode: f.payment_mode || '-',
+          collected_by: f.collected_by || '-',
+          status: f.status || (paidMinor >= amountMinor ? 'paid' : 'pending'),
+          fee_type: f.fee_type || 'Payment',
+          due_date: f.due_date || '-',
+        };
+      });
+      return json({ items: reportItems, filters: { program_id: programId, batch_id: batchId, student_id: studentId, status: paymentStatus, from, to } });
     }
     if (type === 'attendance-summary') {
       const students = await db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray();
