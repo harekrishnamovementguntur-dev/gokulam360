@@ -2697,6 +2697,7 @@ function Reports() {
   const [rows, setRows] = useState([]);
   const [attSummary, setAttSummary] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [reportPrograms, setReportPrograms] = useState([]);
@@ -2709,6 +2710,7 @@ function Reports() {
     setLoading(true);
     setRows([]);
     setAttSummary(null);
+    setReportError('');
     const params = new URLSearchParams();
     if (tab === 'fees') {
       if (paymentProgramFilter) params.set('program_id', paymentProgramFilter);
@@ -2720,7 +2722,7 @@ function Reports() {
     if ((tab === 'attendance' || tab === 'attendance-summary' || tab === 'fees') && toDate) params.set('to', toDate);
     const query = params.toString() ? `?${params.toString()}` : '';
     if (tab === 'attendance-summary') {
-      api(`/reports/attendance-summary${query}`).then(setAttSummary).finally(() => setLoading(false));
+      api(`/reports/attendance-summary${query}`).then(setAttSummary).catch(e => setReportError(e.message || 'Unable to load Monthly Summary')).finally(() => setLoading(false));
     } else {
       api(`/reports/${tab}${query}`).then(r => {
         setRows(Array.isArray(r.items) ? r.items : []);
@@ -2751,7 +2753,7 @@ function Reports() {
   const exportCSV = () => {
     if (tab === 'attendance-summary' && attSummary) {
       const headers = ['Student', 'Student ID', 'Overall', 'Present', 'Total Sessions', ...(attSummary.months || [])];
-      const lines = (attSummary.students || []).map(s => [s.name, s.student_id, `${s.overall}%`, s.present, s.total_sessions, ...(attSummary.months || []).map(m => s.monthly?.[m] === undefined ? '' : `${s.monthly[m]}%`)]);
+      const lines = (attSummary.students || []).map(s => [s.name, s.student_id, `${s.overall}%`, s.present, s.total_sessions, ...(attSummary.months || []).map(m => s.monthly?.[m] === undefined ? '' : `${s.monthly?.[m]}%`)]);
       const csv = [headers.join(','), ...lines.map(l => l.map(v => `"${v ?? ''}"`).join(','))].join('\\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'attendance-summary.csv'; a.click();
@@ -2834,7 +2836,7 @@ function Reports() {
         )}
         <TabsContent value={tab} className="mt-4">
           {tab === 'attendance-summary' ? (
-            <AttendanceSummaryTable data={attSummary} loading={loading} />
+            <AttendanceSummaryTable data={attSummary} loading={loading} error={reportError} />
           ) : (
             <div className="rounded-2xl glass overflow-hidden">
               {tab === 'attendance' && !loading && <AttendanceStatusSummary summary={attSummary?.summary} />}
@@ -2896,9 +2898,12 @@ function CanonicalAttendanceSummaryTable({ data, loading }) {
   </div>;
 }
 
-function AttendanceSummaryTable({ data, loading }) {
-  if (loading || !data) return <div className="rounded-2xl glass p-6 space-y-2">{[...Array(8)].map((_, i) => <Skeleton key={i} className="h-8" />)}</div>;
-  if (!data.students.length) return <EmptyState text="No attendance recorded yet" />;
+function AttendanceSummaryTable({ data, loading, error }) {
+  if (loading) return <div className="rounded-2xl glass p-6 space-y-2">{[...Array(8)].map((_, i) => <Skeleton key={i} className="h-8" />)}</div>;
+  if (error) return <EmptyState text={error} />;
+  const students = Array.isArray(data?.students) ? data.students : [];
+  const months = Array.isArray(data?.months) ? data.months : [];
+  if (!students.length) return <EmptyState text="No attendance recorded yet" />;
   const pctColor = (p) => {
     if (p === undefined || p === null || p === '-') return 'bg-muted text-muted-foreground';
     if (p >= 90) return 'bg-emerald-500 text-white';
@@ -2907,7 +2912,7 @@ function AttendanceSummaryTable({ data, loading }) {
     if (p >= 25) return 'bg-orange-500 text-white';
     return 'bg-rose-500 text-white';
   };
-  const sorted = [...data.students].sort((a, b) => b.overall - a.overall);
+  const sorted = [...students].sort((a, b) => b.overall - a.overall);
   const avg = sorted.length ? Math.round(sorted.reduce((s, x) => s + x.overall, 0) / sorted.length) : 0;
   const top = sorted.slice(0, 3);
   const bottom = sorted.slice(-3).reverse();
@@ -2917,7 +2922,7 @@ function AttendanceSummaryTable({ data, loading }) {
       <div className="grid md:grid-cols-3 gap-3">
         <div className="rounded-2xl glass p-4 flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-saffron-gradient grid place-items-center text-white shadow"><Users size={18} /></div>
-          <div><div className="text-2xl font-bold"><Counter value={data.students.length} /></div><div className="text-[10px] text-muted-foreground">Students tracked</div></div>
+          <div><div className="text-2xl font-bold"><Counter value={students.length} /></div><div className="text-[10px] text-muted-foreground">Students tracked</div></div>
         </div>
         <div className="rounded-2xl glass p-4 flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-emerald-gradient grid place-items-center text-white shadow"><TrendingUp size={18} /></div>
@@ -2925,7 +2930,7 @@ function AttendanceSummaryTable({ data, loading }) {
         </div>
         <div className="rounded-2xl glass p-4 flex items-center gap-3">
           <div className="w-11 h-11 rounded-xl bg-violet-gradient grid place-items-center text-white shadow"><CalendarIcon size={18} /></div>
-          <div><div className="text-2xl font-bold"><Counter value={data.months.length} /></div><div className="text-[10px] text-muted-foreground">Months tracked</div></div>
+          <div><div className="text-2xl font-bold"><Counter value={months.length} /></div><div className="text-[10px] text-muted-foreground">Months tracked</div></div>
         </div>
       </div>
       <div className="grid md:grid-cols-2 gap-3">
@@ -2956,7 +2961,7 @@ function AttendanceSummaryTable({ data, loading }) {
                 <TableHead>Student</TableHead>
                 <TableHead className="text-center">Overall</TableHead>
                 <TableHead className="text-center">Sessions</TableHead>
-                {data.months.map(m => <TableHead key={m} className="text-center whitespace-nowrap">{new Date(m + '-01').toLocaleString('en', { month: 'short', year: '2-digit' })}</TableHead>)}
+                {months.map(m => <TableHead key={m} className="text-center whitespace-nowrap">{new Date(m + '-01').toLocaleString('en', { month: 'short', year: '2-digit' })}</TableHead>)}
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -2972,7 +2977,7 @@ function AttendanceSummaryTable({ data, loading }) {
                   <TableCell className="text-center text-xs">{s.present}/{s.total_sessions}</TableCell>
                   {data.months.map(m => (
                     <TableCell key={m} className="text-center">
-                      {s.monthly[m] !== undefined ? (
+                      {s.monthly?.[m] !== undefined ? (
                         <div className={`inline-flex w-11 h-6 items-center justify-center rounded text-[11px] font-semibold ${pctColor(s.monthly[m])}`}>{s.monthly[m]}%</div>
                       ) : <span className="text-muted-foreground text-xs">—</span>}
                     </TableCell>
