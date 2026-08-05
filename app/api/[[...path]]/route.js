@@ -119,27 +119,72 @@ function generateSessions(program) {
   return [...sessions].sort();
 }
 
-async function syncEnrollments(db, student, oldProgramIds = [], enrollmentDetails = {}) {
+async function syncEnrollments(db, student, oldProgramIds = [], enrollmentDetails = {}, options = {}) {
   const orgId = student.organization_id;
   const newIds = student.program_ids || [];
   const now = new Date().toISOString();
   const today = now.slice(0, 10);
+  const reuseExistingCredits = options.reuseExistingCredits === true;
   const added = newIds.filter(id => !oldProgramIds.includes(id));
   const removed = oldProgramIds.filter(id => !newIds.includes(id));
+
+  // When an existing student joins another Credit model batch, move the
+  // student's unused credit balance to the new batch instead of creating
+  // another independent credit grant.
+  let transferable = [];
+  if (reuseExistingCredits) {
+    const active = await db.collection('enrollments').find({ organization_id: orgId, student_id: student.id, left_at: null, status: 'active' }).toArray();
+    const activeProgramIds = [...new Set(active.map(e => e.program_id))];
+    const activePrograms = await db.collection('programs').find({ id: { $in: activeProgramIds }, organization_id: orgId }).toArray();
+    const programMap = Object.fromEntries(activePrograms.map(p => [p.id, p]));
+    const history = await db.collection('attendance').find({ organization_id: orgId, student_id: student.id }).toArray();
+    transferable = active
+      .filter(e => (programMap[e.program_id]?.billing_model || 'credit') === 'credit')
+      .map(e => {
+        const enrolledDate = (e.enrolled_at || '').slice(0, 10);
+        const used = history.filter(a => a.program_id === e.program_id && attendanceConsumesCredit(a.status) && a.date >= enrolledDate).length;
+        const credited = Number(e.sessions_credited || 0);
+        return { enrollment: e, used, remaining: Math.max(0, credited - used) };
+      })
+      .filter(item => item.remaining > 0);
+  }
+
   for (const pid of added) {
-    const existing = await db.collection('enrollments').findOne({ student_id: student.id, program_id: pid, left_at: null });
+    const existing = await db.collection('enrollments').findOne({ organization_id: orgId, student_id: student.id, program_id: pid, left_at: null });
     if (existing) continue;
-    const prog = await db.collection('programs').findOne({ id: pid });
-    const allSessions = prog?.sessions || [];
-    // Admission can override the default remaining-session credit allocation and payment details.
+    const prog = await db.collection('programs').findOne({ id: pid, organization_id: orgId });
+    if (!prog) continue;
+    const model = prog.billing_model || 'credit';
+    const allSessions = prog.sessions || [];
     const detail = enrollmentDetails[pid] || {};
-    const remainingFromToday = allSessions.filter(d => d >= today);
-    const credited = detail.credit_quantity !== undefined && detail.credit_quantity !== ''
-      ? Math.max(0, Number(detail.credit_quantity) || 0)
-      : (remainingFromToday.length || allSessions.length);
-    const feeAmount = detail.fee_amount !== undefined && detail.fee_amount !== ''
+    const hasCreditDetail = detail.credit_quantity !== undefined && detail.credit_quantity !== '';
+    const hasFeeDetail = detail.fee_amount !== undefined && detail.fee_amount !== '';
+    let credited = 0;
+    let transferred = 0;
+
+    if (model === 'credit') {
+      if (hasCreditDetail) {
+        credited = Math.max(0, Number(detail.credit_quantity) || 0);
+      } else if (reuseExistingCredits) {
+        const source = transferable.find(item => item.remaining > 0);
+        if (source) {
+          transferred = source.remaining;
+          credited = transferred;
+          source.remaining = 0;
+          await db.collection('enrollments').updateOne(
+            { id: source.enrollment.id, organization_id: orgId },
+            { $set: { sessions_credited: source.used + transferred, sessions_attended: source.used, sessions_remaining: 0, updated_at: now } },
+          );
+        }
+      } else {
+        const remainingFromToday = allSessions.filter(d => d >= today);
+        credited = remainingFromToday.length || allSessions.length;
+      }
+    }
+
+    const feeAmount = hasFeeDetail
       ? Math.max(0, Number(detail.fee_amount) || 0)
-      : Number(prog?.fee_amount || 0);
+      : (model === 'date' ? Number(prog.fee_amount || 0) : (reuseExistingCredits && transferred ? 0 : Number(prog.fee_amount || 0)));
     const paidAmount = Math.min(feeAmount, Math.max(0, Number(detail.amount_paid) || 0));
     await db.collection('enrollments').insertOne({
       id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
@@ -150,18 +195,19 @@ async function syncEnrollments(db, student, oldProgramIds = [], enrollmentDetail
     if (feeAmount > 0 || paidAmount > 0) {
       await db.collection('fees').insertOne({
         id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
-        fee_type: 'Term Fee', amount: feeAmount, paid_amount: paidAmount,
+        fee_type: model === 'date' ? 'Batch Fee' : 'Term Fee', amount: feeAmount, paid_amount: paidAmount,
         payment_mode: detail.payment_mode || null,
         credit_quantity: credited,
         status: paidAmount >= feeAmount && feeAmount > 0 ? 'paid' : 'pending',
-        due_date: prog?.start_date || today, created_at: now,
+        due_date: prog.start_date || today, created_at: now,
       });
     }
   }
+
   for (const pid of removed) {
     await db.collection('enrollments').updateMany(
-      { student_id: student.id, program_id: pid, left_at: null },
-      { $set: { left_at: now, status: 'left' } }
+      { organization_id: orgId, student_id: student.id, program_id: pid, left_at: null },
+      { $set: { left_at: now, status: 'left' } },
     );
   }
 }
@@ -569,7 +615,7 @@ async function router(req, method) {
       await col.insertOne(doc);
       // Handle student enrollments
       if (resource === 'students' && doc.program_ids?.length) {
-        await syncEnrollments(db, doc, [], enrollmentDetails);
+        await syncEnrollments(db, doc, [], enrollmentDetails, { reuseExistingCredits: false });
       }
       // Log activity for known resources
       if (['students', 'teachers', 'events', 'programs'].includes(resource)) {
@@ -607,7 +653,7 @@ async function router(req, method) {
        const doc = await col.findOne({ id, ...orgScope(user) });
       // Sync student enrollments diff
       if (resource === 'students' && body.program_ids) {
-        await syncEnrollments(db, doc, before?.program_ids || [], body.enrollment_details || {});
+        await syncEnrollments(db, doc, before?.program_ids || [], body.enrollment_details || {}, { reuseExistingCredits: true });
       }
       return json(stripId(doc));
     }
@@ -636,9 +682,10 @@ async function router(req, method) {
       if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
       const body = await req.json();
       const quantity = Number(body.credit_quantity);
-      const amount = Number(body.fee_amount);
+      const totalAmount = Number(body.total_amount ?? body.fee_amount);
+      const amountPaid = Number(body.amount_paid ?? totalAmount);
       if (!body.enrollment_id || !Number.isInteger(quantity) || quantity <= 0) return json({ error: 'A positive whole-number credit quantity is required' }, 422);
-      if (!Number.isFinite(amount) || amount < 0) return json({ error: 'A valid amount is required' }, 422);
+      if (!Number.isFinite(totalAmount) || totalAmount < 0 || !Number.isFinite(amountPaid) || amountPaid < 0 || amountPaid > totalAmount) return json({ error: 'Valid total and paid amounts are required; paid cannot exceed total' }, 422);
       const enrollment = await db.collection('enrollments').findOne({ id: body.enrollment_id, ...orgScope(user), left_at: null, status: 'active' });
       if (!enrollment) return json({ error: 'Active enrollment not found' }, 404);
       const program = await db.collection('programs').findOne({ id: enrollment.program_id, ...orgScope(user) });
@@ -648,15 +695,16 @@ async function router(req, method) {
         { id: enrollment.id, ...orgScope(user) },
         { $inc: { sessions_credited: quantity }, $set: { updated_at: now } },
       );
-      if (amount > 0) {
+      if (totalAmount > 0 || amountPaid > 0) {
         await db.collection('fees').insertOne({
           id: uuidv4(), organization_id: enrollment.organization_id, student_id: enrollment.student_id,
-          program_id: enrollment.program_id, fee_type: 'Credit Purchase', amount, paid_amount: amount,
-          payment_mode: body.payment_mode || 'cash', credit_quantity: quantity, status: 'paid',
+          program_id: enrollment.program_id, fee_type: 'Credit Purchase', amount: totalAmount, paid_amount: amountPaid,
+          payment_mode: body.payment_mode || 'cash', credit_quantity: quantity,
+          status: amountPaid >= totalAmount && totalAmount > 0 ? 'paid' : 'pending',
           created_at: now, updated_at: now,
         });
       }
-      return json({ ok: true, enrollment_id: enrollment.id, credits_added: quantity, amount_paid: amount });
+      return json({ ok: true, enrollment_id: enrollment.id, credits_added: quantity, total_amount: totalAmount, amount_paid: amountPaid, outstanding_amount: Math.max(0, totalAmount - amountPaid) });
     }
     if (method === 'GET') {
       const q = orgScope(user);
