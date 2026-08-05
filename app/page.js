@@ -2220,15 +2220,42 @@ function Fees() {
           </TableBody>
         </Table>
       </div>
-      <Dialog open={Boolean(paymentFor)} onOpenChange={open => !open && setPaymentFor(null)}>
+      <Dialog open={Boolean(paymentFor)} onOpenChange={() => setPaymentFor(null)}>
         <DialogContent className="max-w-md">
-          <DialogHeader><DialogTitle>Add Payment</DialogTitle><DialogDescription>Record a full or partial payment. The remaining amount stays due.</DialogDescription></DialogHeader>
-          {paymentFor && <div className="space-y-4">
-            <div className="rounded-xl bg-muted/50 p-3 text-sm"><div className="font-medium">{sMap[paymentFor.student_id] ? `${sMap[paymentFor.student_id].first_name} ${sMap[paymentFor.student_id].last_name}` : 'Student'}</div><div className="text-muted-foreground">Outstanding: {fmtINR(Math.max(0, Number(paymentFor.amount || 0) - Number(paymentFor.paid_amount || 0)))}</div></div>
-            <div><Label>Amount</Label><Input type="number" min="1" max={Math.max(0, Number(paymentFor.amount || 0) - Number(paymentFor.paid_amount || 0))} value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="Enter amount" /></div>
-            <div><Label>Payment mode</Label><Select value={paymentMode} onValueChange={setPaymentMode}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="bank_transfer">Bank transfer</SelectItem><SelectItem value="cheque">Cheque</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></div>
-            <div className="flex justify-end gap-2"><Button variant="outline" onClick={() => setPaymentFor(null)}>Cancel</Button><Button className="bg-saffron-gradient" onClick={addPayment}>Save Payment</Button></div>
-          </div>}
+          <DialogHeader>
+            <DialogTitle>Add Payment</DialogTitle>
+            <DialogDescription>Record a full or partial payment. The remaining amount stays due.</DialogDescription>
+          </DialogHeader>
+          {paymentFor ? (
+            <div className="space-y-4">
+              <div className="rounded-xl bg-muted/50 p-3 text-sm">
+                <div className="font-medium">
+                  {sMap[paymentFor.student_id] ? sMap[paymentFor.student_id].first_name + ' ' + sMap[paymentFor.student_id].last_name : 'Student'}
+                </div>
+                <div className="text-muted-foreground">
+                  Outstanding: {fmtINR(Math.max(0, Number(paymentFor.amount || 0) - Number(paymentFor.paid_amount || 0)))}
+                </div>
+              </div>
+              <div>
+                <Label>Amount</Label>
+                <Input type="number" min="1" max={Math.max(0, Number(paymentFor.amount || 0) - Number(paymentFor.paid_amount || 0))} value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="Enter amount" />
+              </div>
+              <div>
+                <Label>Payment mode</Label>
+                <select className="w-full h-10 rounded-md border bg-background px-3 text-sm" value={paymentMode} onChange={e => setPaymentMode(e.target.value)}>
+                  <option value="cash">Cash</option>
+                  <option value="upi">UPI</option>
+                  <option value="bank_transfer">Bank transfer</option>
+                  <option value="cheque">Cheque</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => setPaymentFor(null)}>Cancel</Button>
+                <Button className="bg-saffron-gradient" onClick={addPayment}>Save Payment</Button>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
     </div>
