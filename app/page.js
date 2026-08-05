@@ -6,7 +6,7 @@ import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from
 import confetti from 'canvas-confetti';
 import {
   BarChart3, Users, GraduationCap, IndianRupee, CalendarCheck2, Calendar as CalendarIcon,
-  Building2, LogOut, Menu, Moon, Sun, Search, Plus, Edit3, Trash2, Archive, IdCard, Printer,
+  Building2, LogOut, Menu, Moon, Sun, Search, Plus, Edit3, Trash2, IdCard, Printer,
   UserCircle2, TrendingUp, ChevronRight, Sparkles, Flame, BookOpen, ClipboardCheck,
   Bell, Send, MessageSquare, Camera, FileText, Download, FileSpreadsheet, Command as CmdIcon,
   Rocket, Award, Heart, Activity, ArrowUpRight, Phone, PartyPopper, Zap, RefreshCw,
@@ -1580,7 +1580,7 @@ function Students({ user, students, setStudents }) {
     setDeleting(true);
     try {
       const result = await api(`/students/${deleteOf.id}`, { method: 'DELETE' });
-      toast.success(`Student archived. ${result.membership_count || 0} Membership(s) and ${result.participation_count || 0} Participation(s) updated.`);
+      toast.success(`Student deleted. ${result.membership_count || 0} Membership(s) and ${result.participation_count || 0} Participation(s) updated.`);
       setDeleteOf(null);
       load();
     } catch (e) {
@@ -1588,6 +1588,18 @@ function Students({ user, students, setStudents }) {
     } finally {
       setDeleting(false);
     }
+  };
+
+  const toggleStatus = async (student) => {
+    const nextStatus = student.status === 'active' ? 'inactive' : 'active';
+    try {
+      const updated = await api(`/students/${student.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      setStudents(current => current.map(item => item.id === student.id ? { ...item, ...updated } : item));
+      toast.success(`${student.first_name} ${student.last_name} is now ${nextStatus}.`);
+    } catch (e) { toast.error(e.message || 'Unable to update student status.'); }
   };
 
   const handlePhoto = (e) => {
@@ -1639,8 +1651,7 @@ function Students({ user, students, setStudents }) {
       all: students.length,
       active: students.filter(s => s.status === 'active').length,
       inactive: students.filter(s => s.status === 'inactive').length,
-      discontinued: students.filter(s => s.status === 'discontinued').length,
-    };
+          };
   }, [students]);
 
   return (
@@ -1672,7 +1683,6 @@ function Students({ user, students, setStudents }) {
             { k: 'all', l: 'All', c: counts.all },
             { k: 'active', l: 'Active', c: counts.active },
             { k: 'inactive', l: 'Inactive', c: counts.inactive },
-            { k: 'discontinued', l: 'Left', c: counts.discontinued },
           ].map(t => (
             <button key={t.k} onClick={() => setStatusFilter(t.k)}
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${statusFilter === t.k ? 'bg-saffron-gradient text-white shadow' : 'text-muted-foreground hover:text-foreground'}`}>
@@ -1720,7 +1730,8 @@ function Students({ user, students, setStudents }) {
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setHistoryOf(s)}><Activity size={13} className="mr-1" /> History</Button>
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setCardOf(s)}><IdCard size={13} className="mr-1" /> ID Card</Button>
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(s)}><Edit3 size={13} className="mr-1" /> Edit</Button>
-                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteOf(s)} aria-label={`Archive ${s.first_name} ${s.last_name}`}><Archive size={13} /></Button>
+                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => toggleStatus(s)} aria-label={`${s.status === 'active' ? 'Make inactive' : 'Make active'} ${s.first_name} ${s.last_name}`}><span className="text-[10px]">{s.status === 'active' ? 'Make inactive' : 'Make active'}</span></Button>
+                <Button size="icon" variant="ghost" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => setDeleteOf(s)} aria-label={`Delete ${s.first_name} ${s.last_name}`}><Trash2 size={13} /></Button>
               </div>
             </motion.div>
           ))}
@@ -1823,14 +1834,14 @@ function Students({ user, students, setStudents }) {
       <Dialog open={!!deleteOf} onOpenChange={v => !v && !deleting && setDeleteOf(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Archive student?</DialogTitle>
+            <DialogTitle>Delete student?</DialogTitle>
             <DialogDescription>
-              This will archive {deleteOf?.first_name} {deleteOf?.last_name}, inactivate their Memberships, and withdraw active Participations. Financial and Attendance history will be preserved.
+              This will remove {deleteOf?.first_name} {deleteOf?.last_name} from the active student list, inactivate their Memberships, and withdraw active Participations. Financial and Attendance history will be preserved.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteOf(null)} disabled={deleting}>Cancel</Button>
-            <Button variant="destructive" onClick={del} disabled={deleting}>{deleting ? 'Archiving…' : 'Archive student'}</Button>
+            <Button variant="destructive" onClick={del} disabled={deleting}>{deleting ? 'Deleting…' : 'Delete student'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
