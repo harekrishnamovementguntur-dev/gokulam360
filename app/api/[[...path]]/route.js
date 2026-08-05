@@ -47,19 +47,32 @@ async function sendTwilioMessage(channel, to, message) {
 }
 
 
+async function sendOtpEmail({ to, subject, message }) {
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [to], subject, text: message }),
+    });
+    if (!response.ok) return { status: 'failed' };
+    return { status: 'sent' };
+  } catch (error) {
+    console.error('OTP email delivery failed', error);
+    return { status: 'failed' };
+  }
+}
+
 function normalizeOtpChallenge(doc) {
   return doc ? { id: doc.id, expires_at: doc.expires_at, created_at: doc.created_at } : null;
 }
 
-async function createPasswordOtpChallenge({ db, user, mobile, purpose = 'change_password', messageLabel = 'password change' }) {
-  const normalized = normalizePhone(mobile);
-  if (!normalized) return { error: json({ error: 'Enter a valid mobile number.' }, 400) };
+async function createPasswordOtpChallenge({ db, user, purpose = 'change_password', messageLabel = 'password change' }) {
   const account = await db.collection('users').findOne({ id: user.id });
-  if (!account) return { error: json({ error: 'Account not found.' }, 404) };
-  const storedMobile = normalizePhone(account.mobile || account.phone);
-  if (!storedMobile || storedMobile !== normalized) {
-    return { error: json({ error: 'That mobile number is not registered for this account.' }, 400) };
-  }
+  if (!account || !account.email) return { error: json({ error: 'Account email is not configured.' }, 400) };
+  const email = String(account.email).trim().toLowerCase();
 
   const limit = allowRequest('auth.password.otp', user.id);
   if (!limit.allowed) {
@@ -74,7 +87,7 @@ async function createPasswordOtpChallenge({ db, user, mobile, purpose = 'change_
     user_id: user.id,
     organization_id: user.organization_id || null,
     purpose,
-    phone: normalized,
+    email,
     code_hash: await bcrypt.hash(code, 10),
     expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
     attempts: 0,
@@ -88,18 +101,18 @@ async function createPasswordOtpChallenge({ db, user, mobile, purpose = 'change_
   await db.collection('auth_otp_challenges').insertOne(challenge);
 
   const message = `Your Gokulam360 ${messageLabel} code is ${code}. It expires in 10 minutes.`;
-  let delivery = 'sms';
-  if (twilioClient && TWILIO_SMS_FROM) {
-    const sent = await sendTwilioMessage('sms', normalized, message);
+  let delivery = 'email';
+  if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
+    const sent = await sendOtpEmail({ to: email, subject: `Gokulam360 ${messageLabel} code`, message });
     if (sent.status === 'failed') {
       await db.collection('auth_otp_challenges').updateOne({ id: challenge.id }, { $set: { used_at: new Date().toISOString() } });
-      return { error: json({ error: 'Unable to send the OTP. Please try again.' }, 502) };
+      return { error: json({ error: 'Unable to send the OTP email. Please try again.' }, 502) };
     }
   } else if (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_OTP === 'true') {
     delivery = 'development';
   } else {
     await db.collection('auth_otp_challenges').updateOne({ id: challenge.id }, { $set: { used_at: new Date().toISOString() } });
-    return { error: json({ error: 'Mobile OTP is not configured. Add the SMS provider before using password changes.' }, 503) };
+    return { error: json({ error: 'Email OTP is not configured. Add RESEND_API_KEY and EMAIL_FROM.' }, 503) };
   }
 
   const response = { ok: true, delivery, expires_in_seconds: 600, challenge: normalizeOtpChallenge(challenge) };
@@ -443,14 +456,14 @@ async function router(req, method) {
       if (!account || !normalizedMobile || storedMobile !== normalizedMobile) {
         return json({ ok: true, message: 'If the account details match, an OTP will be sent.' });
       }
-      const result = await createPasswordOtpChallenge({ db, user: account, mobile: body.mobile, purpose: 'reset_password', messageLabel: 'password reset' });
+      const result = await createPasswordOtpChallenge({ db, user: account, purpose: 'reset_password', messageLabel: 'password reset' });
       return result.error || result.response;
     }
     if (id === 'forgot-password' && sub === 'reset' && method === 'POST') {
       const body = await req.json();
       const email = String(body.email || '').trim().toLowerCase();
       const account = email ? await db.collection('users').findOne({ email }) : null;
-      if (!account || normalizePhone(account.mobile || account.phone) !== normalizePhone(body.mobile)) return json({ error: 'The reset details could not be verified.' }, 400);
+      if (!account || String(account.email || '').trim().toLowerCase() !== email) return json({ error: 'The reset details could not be verified.' }, 400);
       const otp = String(body.otp || '').trim();
       const newPassword = String(body.new_password || '');
       if (newPassword.length < 8) return json({ error: 'New password must be at least 8 characters.' }, 400);
