@@ -2742,16 +2742,22 @@ function Reports() {
     fees: ['student_name', 'program_name', 'batch_name', 'amount_minor', 'amount_paid_minor', 'pending_amount_minor', 'payment_date', 'payment_mode', 'collected_by', 'status'],
   }[tab];
 
+  const reportLabel = { student_name: 'Student', program_name: 'Program', batch_name: 'Batch', amount_minor: 'Amount', amount_paid_minor: 'Amount Paid', pending_amount_minor: 'Pending Amount', payment_date: 'Payment Date', payment_mode: 'Payment Mode', collected_by: 'Collected By', status: 'Payment Status' };
+  const displayReportValue = (column, row) => {
+    if (column === 'amount_minor' || column === 'amount_paid_minor' || column === 'pending_amount_minor') return fmtINR(Number(row[column] || 0) / 100);
+    if (column === 'payment_date' && row[column]) return String(row[column]).slice(0, 10);
+    return row[column] ?? '';
+  };
   const exportCSV = () => {
     if (tab === 'attendance-summary' && attSummary) {
-      const headers = ['Session Date', 'Session ID', 'Present', 'Late', 'Absent', 'Excused', 'Total'];
-      const lines = (attSummary.items || []).map(s => [s.session_date || '', s.session_id, s.present, s.late, s.absent, s.excused, s.total]);
-      const csv = [headers.join(','), ...lines.map(l => l.map(v => `"${v}"`).join(','))].join('\n');
+      const headers = ['Student', 'Student ID', 'Overall', 'Present', 'Total Sessions', ...(attSummary.months || [])];
+      const lines = (attSummary.students || []).map(s => [s.name, s.student_id, `${s.overall}%`, s.present, s.total_sessions, ...(attSummary.months || []).map(m => s.monthly?.[m] === undefined ? '' : `${s.monthly[m]}%`)]);
+      const csv = [headers.join(','), ...lines.map(l => l.map(v => `"${v ?? ''}"`).join(','))].join('\\n');
       const blob = new Blob([csv], { type: 'text/csv' });
       const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'attendance-summary.csv'; a.click();
       return;
     }
-    const csv = [columns.join(','), ...rows.map(r => columns.map(c => `"${String(r[c] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    const csv = [columns.map(c => reportLabel[c] || c).join(','), ...rows.map(r => columns.map(c => `"${String(displayReportValue(c, r)).replace(/"/g, '""')}"`).join(','))].join('\\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${tab}-report.csv`; a.click();
   };
@@ -2759,11 +2765,14 @@ function Reports() {
     const XLSX = await import('xlsx');
     let ws, sheet = tab;
     if (tab === 'attendance-summary' && attSummary) {
-      const data = (attSummary.items || []).map(s => ({ 'Session Date': s.session_date || '', 'Session ID': s.session_id, Present: s.present, Late: s.late, Absent: s.absent, Excused: s.excused, Total: s.total }));
+      const data = (attSummary.students || []).map(s => Object.fromEntries([
+        ['Student', s.name], ['Student ID', s.student_id], ['Overall', `${s.overall}%`], ['Present', s.present], ['Total Sessions', s.total_sessions],
+        ...(attSummary.months || []).map(m => [m, s.monthly?.[m] === undefined ? '' : `${s.monthly[m]}%`])
+      ]));
       ws = XLSX.utils.json_to_sheet(data);
       sheet = 'attendance-summary';
     } else {
-      ws = XLSX.utils.json_to_sheet(rows.map(r => Object.fromEntries(columns.map(c => [c, r[c] ?? '']))));
+      ws = XLSX.utils.json_to_sheet(rows.map(r => Object.fromEntries(columns.map(c => [reportLabel[c] || c, displayReportValue(c, r)]))));
     }
     const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, sheet);
     XLSX.writeFile(wb, `${sheet}-report.xlsx`);
@@ -2777,10 +2786,10 @@ function Reports() {
     doc.setTextColor(30);
     let y = 28;
     doc.setFontSize(9); doc.setFont('helvetica', 'bold');
-    columns.forEach((c, i) => doc.text(c.replace(/_/g, ' ').toUpperCase(), 14 + i * 40, y));
+    columns.forEach((c, i) => doc.text((reportLabel[c] || c.replace(/_/g, ' ')).toUpperCase(), 14 + i * 40, y));
     y += 5; doc.setFont('helvetica', 'normal');
     rows.slice(0, 30).forEach(r => {
-      columns.forEach((c, i) => doc.text(String(r[c] ?? '').slice(0, 22), 14 + i * 40, y));
+      columns.forEach((c, i) => doc.text(String(displayReportValue(c, r)).slice(0, 22), 14 + i * 40, y));
       y += 5.5; if (y > 195) { doc.addPage(); y = 20; }
     });
     doc.save(`${tab}-report.pdf`);
@@ -2833,11 +2842,11 @@ function Reports() {
                 rows.length === 0 ? <EmptyState text="No data in this report" /> : (
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader><TableRow>{columns.map(c => <TableHead key={c} className="whitespace-nowrap">{c.replace(/_/g, ' ')}</TableHead>)}</TableRow></TableHeader>
+                      <TableHeader><TableRow>{columns.map(c => <TableHead key={c} className="whitespace-nowrap">{reportLabel[c] || c.replace(/_/g, ' ')}</TableHead>)}</TableRow></TableHeader>
                       <TableBody>
                         {rows.slice(0, 200).map((r, i) => (
                           <TableRow key={i}>
-                            {columns.map(c => <TableCell key={c} className="whitespace-nowrap text-xs">{String(r[c] ?? '-')}</TableCell>)}
+                            {columns.map(c => <TableCell key={c} className="whitespace-nowrap text-xs">{String(displayReportValue(c, r) || '-')}</TableCell>)}
                           </TableRow>
                         ))}
                       </TableBody>
