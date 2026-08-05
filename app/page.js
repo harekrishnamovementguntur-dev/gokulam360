@@ -10,7 +10,7 @@ import {
   UserCircle2, TrendingUp, ChevronRight, Sparkles, Flame, BookOpen, ClipboardCheck,
   Bell, Send, MessageSquare, Camera, FileText, Download, FileSpreadsheet, Command as CmdIcon,
   Rocket, Award, Heart, Activity, ArrowUpRight, Phone, PartyPopper, Zap, RefreshCw,
-  ChevronLeft, Upload, Check, CheckCircle2, Circle, Palette, Wallet, UserPlus
+  ChevronLeft, Upload, Check, CheckCircle2, Circle, Palette, Wallet, UserPlus, KeyRound
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, Tooltip as RTooltip,
@@ -313,6 +313,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
   const [cmdOpen, setCmdOpen] = useState(false);
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
+  const [accountOpen, setAccountOpen] = useState(false);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -1013,7 +1014,7 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
     name: '', address: '',
     contact_email: '', contact_phone: '',
     currency: 'INR', academic_year: '2025-26', logo_url: '',
-    admin_name: '', admin_email: '', admin_password: '',
+    admin_name: '', admin_email: '', admin_mobile: '', admin_password: '',
     first_program: { name: 'Sunday School', description: 'Weekly spiritual education for children', age_group: '6-14', duration_months: 4, capacity: 40, start_date: '', end_date: '' },
     fees: { admission: 500, term: 1500 },
   });
@@ -1035,7 +1036,7 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
     const s = steps[step].key;
     if (s === 'details') return form.name.trim().length > 1;
     if (s === 'contact') return form.contact_email.includes('@');
-    if (s === 'admin') return form.admin_name && form.admin_email.includes('@') && form.admin_password.length >= 6;
+    if (s === 'admin') return form.admin_name && form.admin_email.includes('@') && form.admin_mobile && form.admin_password.length >= 6;
     if (s === 'program') return true;
     return true;
   };
@@ -1176,6 +1177,7 @@ function OrgWizard({ open, onOpenChange, onCreated }) {
                     </div>
                     <div><Label>Full Name *</Label><Input value={form.admin_name} onChange={e => set({ admin_name: e.target.value })} placeholder="Radha Devi Dasi" /></div>
                     <div><Label>Email *</Label><Input type="email" value={form.admin_email} onChange={e => set({ admin_email: e.target.value })} placeholder="admin@yourorg.org" /></div>
+                    <div><Label>Mobile *</Label><Input type="tel" inputMode="tel" autoComplete="tel" value={form.admin_mobile} onChange={e => set({ admin_mobile: e.target.value })} placeholder="+91 98765 43210" /></div>
                     <div><Label>Password * (min 6 chars)</Label><Input type="password" value={form.admin_password} onChange={e => set({ admin_password: e.target.value })} placeholder="At least 6 characters" /></div>
                   </div>
                 )}
@@ -2926,6 +2928,87 @@ function SimpleAttendanceReport() {
   );
 }
 
+
+function ChangePasswordDialog({ open, onOpenChange }) {
+  const [mobile, setMobile] = useState('');
+  const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [step, setStep] = useState('mobile');
+  const [busy, setBusy] = useState(false);
+  const [developmentOtp, setDevelopmentOtp] = useState('');
+  const [error, setError] = useState('');
+
+  const reset = () => {
+    setMobile(''); setOtp(''); setNewPassword(''); setConfirmPassword('');
+    setStep('mobile'); setBusy(false); setDevelopmentOtp(''); setError('');
+  };
+  const close = (nextOpen) => { if (!nextOpen) reset(); onOpenChange(nextOpen); };
+
+  const requestOtp = async (event) => {
+    event.preventDefault(); setError(''); setBusy(true);
+    try {
+      const result = await api('/auth/password/request-otp', {
+        method: 'POST',
+        body: JSON.stringify({ mobile }),
+      });
+      setDevelopmentOtp(result.development_otp || '');
+      setStep('password');
+      toast.success(result.delivery === 'development' ? 'Development OTP generated.' : 'OTP sent to your mobile.');
+    } catch (e) { setError(e.message || 'Unable to send OTP.'); }
+    finally { setBusy(false); }
+  };
+
+  const changePassword = async (event) => {
+    event.preventDefault(); setError('');
+    if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return; }
+    setBusy(true);
+    try {
+      await api('/auth/password/change', {
+        method: 'POST',
+        body: JSON.stringify({ otp, new_password: newPassword }),
+      });
+      toast.success('Password changed successfully.');
+      close(false);
+    } catch (e) { setError(e.message || 'Unable to change password.'); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={close}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Change password</DialogTitle>
+          <DialogDescription>Confirm your registered mobile number, then use the one-time code to set a new password.</DialogDescription>
+        </DialogHeader>
+        {step === 'mobile' ? (
+          <form onSubmit={requestOtp} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="account-mobile">Registered mobile number</Label>
+              <Input id="account-mobile" inputMode="tel" autoComplete="tel" value={mobile} onChange={(e) => setMobile(e.target.value)} placeholder="+91 98765 43210" required />
+              <p className="text-xs text-muted-foreground">Use the mobile number saved on your Gokulam360 account.</p>
+            </div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <DialogFooter><Button type="submit" disabled={busy}>{busy ? 'Sending…' : 'Send OTP'}</Button></DialogFooter>
+          </form>
+        ) : (
+          <form onSubmit={changePassword} className="space-y-4">
+            {developmentOtp && <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900"><strong>Development OTP:</strong> {developmentOtp}</div>}
+            <div className="space-y-2">
+              <Label htmlFor="account-otp">6-digit OTP</Label>
+              <Input id="account-otp" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={otp} onChange={(e) => setOtp(e.target.value.replace(/\\D/g, '').slice(0, 6))} required />
+            </div>
+            <div className="space-y-2"><Label htmlFor="new-password">New password</Label><Input id="new-password" type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required /></div>
+            <div className="space-y-2"><Label htmlFor="confirm-password">Confirm new password</Label><Input id="confirm-password" type="password" autoComplete="new-password" minLength={8} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required /></div>
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <DialogFooter className="gap-2"><Button type="button" variant="ghost" onClick={() => { setStep('mobile'); setError(''); }}>Back</Button><Button type="submit" disabled={busy}>{busy ? 'Saving…' : 'Change password'}</Button></DialogFooter>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function TaskShell({ user, org, onLogout, dark, setDark, refreshMe }) {
   const [view, setView] = useState('home');
   const [reportView, setReportView] = useState('members');
@@ -2986,7 +3069,7 @@ function TaskShell({ user, org, onLogout, dark, setDark, refreshMe }) {
           <header className="sticky top-4 z-20 mb-5 flex min-h-14 items-center gap-3 rounded-2xl glass px-4">
             <select className="rounded-lg border bg-transparent px-2 py-1.5 text-sm md:hidden" value={view} onChange={(event) => go(event.target.value)}>{[...primary, ...more].map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select>
             <div className="hidden text-sm text-muted-foreground md:block">{org?.name || 'Organization'} <span className="mx-2">/</span><span className="font-semibold text-foreground">{title}</span></div>
-            <div className="ml-auto flex items-center gap-2"><Button variant="ghost" size="icon" onClick={() => setDark(!dark)}>{dark ? <Sun size={16} /> : <Moon size={16} />}</Button></div>
+            <div className="ml-auto flex items-center gap-1"><Button variant="ghost" size="sm" onClick={() => setAccountOpen(true)}><KeyRound size={15} className="mr-1.5" /> <span className="hidden sm:inline">Account</span></Button><Button variant="ghost" size="icon" onClick={() => setDark(!dark)} aria-label="Toggle theme">{dark ? <Sun size={16} /> : <Moon size={16} />}</Button></div>
           </header>
 
           {view === 'home' && <TaskHome user={user} org={org} onNav={go} />}
@@ -3011,6 +3094,7 @@ function TaskShell({ user, org, onLogout, dark, setDark, refreshMe }) {
             </div>
           )}
         </main>
+        <ChangePasswordDialog open={accountOpen} onOpenChange={setAccountOpen} />
       </div>
     </div>
   );
