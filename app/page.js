@@ -244,7 +244,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
       { key: 'dashboard', label: 'Dashboard', icon: BarChart3, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'organizations', label: 'Organizations', icon: Building2, roles: ['super_admin'] },
       { key: 'students', label: 'Students', icon: GraduationCap, roles: ['super_admin', 'org_admin', 'teacher'] },
-      { key: 'teachers', label: 'Teachers', icon: Users, roles: ['super_admin', 'org_admin'] },
+      { key: 'teachers', label: 'Faculty', icon: Users, roles: ['super_admin', 'org_admin'] },
       { key: 'classes', label: 'Programs', icon: School, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['super_admin', 'org_admin', 'teacher'] },
       { key: 'fees', label: 'Fees', icon: IndianRupee, roles: ['super_admin', 'org_admin'] },
@@ -340,7 +340,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               {view === 'dashboard' && <Dashboard user={user} org={org} onNav={setView} />}
               {view === 'organizations' && <Organizations />}
               {view === 'students' && <Students students={students} setStudents={setStudents} />}
-              {view === 'teachers' && <Teachers teachers={teachers} setTeachers={setTeachers} />}
+              {view === 'teachers' && <Faculty teachers={teachers} setTeachers={setTeachers} />}
               {view === 'classes' && <Classes />}
               {view === 'attendance' && <Attendance />}
               {view === 'fees' && <Fees currentUser={user} />}
@@ -384,7 +384,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
           {teachers.length > 0 && (
             <>
               <CommandSeparator />
-              <CommandGroup heading="Teachers">
+              <CommandGroup heading="Faculty">
                 {teachers.slice(0, 10).map(t => (
                   <CommandItem key={t.id} onSelect={() => { setView('teachers'); setCmdOpen(false); }}>
                     <Users size={14} className="mr-2 text-primary" /> {t.name}
@@ -1632,9 +1632,9 @@ function EnrollmentCard({ e, onRenew, past = false }) {
 /* ============================================================
    TEACHERS
 ============================================================ */
-function Teachers({ teachers, setTeachers }) {
+function Faculty({ teachers, setTeachers }) {
   const [open, setOpen] = useState(false);
-  const empty = { employee_id: '', name: '', email: '', mobile: '', address: '', qualification: '', skills: '' };
+  const empty = { employee_id: '', name: '', email: '', mobile: '', address: '', qualification: '', department: '' };
   const [form, setForm] = useState(empty);
   const [editing, setEditing] = useState(null);
   const load = () => api('/teachers').then(r => setTeachers(r.items));
@@ -1647,8 +1647,8 @@ function Teachers({ teachers, setTeachers }) {
   };
   return (
     <div className="space-y-5">
-      <PageHeader title="Teachers" subtitle={`${teachers.length} faculty members`} icon={Users}
-        action={<Button className="bg-saffron-gradient shadow" onClick={() => { setEditing(null); setForm({ ...empty, employee_id: 'T-' + String(Math.floor(100 + Math.random() * 900)) }); setOpen(true); }}><Plus size={15} className="mr-1" /> Add Teacher</Button>} />
+      <PageHeader title="Faculty" subtitle={`${teachers.length} faculty members`} icon={Users}
+        action={<Button className="bg-saffron-gradient shadow" onClick={() => { setEditing(null); setForm({ ...empty, employee_id: 'T-' + String(Math.floor(100 + Math.random() * 900)) }); setOpen(true); }}><Plus size={15} className="mr-1" /> Add Faculty</Button>} />
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
         {teachers.map((t, i) => (
           <motion.div key={t.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
@@ -1664,7 +1664,7 @@ function Teachers({ teachers, setTeachers }) {
             <div className="mt-3 text-[11px] text-muted-foreground space-y-1">
               <div className="flex items-center gap-1.5"><Phone size={11} /> {t.mobile || '-'}</div>
               <div className="flex items-center gap-1.5"><Send size={11} /> {t.email || '-'}</div>
-              {t.skills && <div className="flex items-center gap-1.5"><Sparkles size={11} /> {t.skills}</div>}
+              {(t.department || t.skills) && <div className="flex items-center gap-1.5"><Sparkles size={11} /> {t.department || t.skills}</div>}
             </div>
             <div className="flex gap-1 mt-3 pt-3 border-t">
               <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => { setEditing(t); setForm({ ...empty, ...t }); setOpen(true); }}><Edit3 size={13} className="mr-1" /> Edit</Button>
@@ -1674,14 +1674,14 @@ function Teachers({ teachers, setTeachers }) {
         ))}
       </div>
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent><DialogHeader><DialogTitle>{editing ? 'Edit' : 'New'} Teacher</DialogTitle></DialogHeader>
+        <DialogContent><DialogHeader><DialogTitle>{editing ? 'Edit' : 'New'} Faculty</DialogTitle></DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <div><Label>Employee ID</Label><Input value={form.employee_id} onChange={e => setForm({ ...form, employee_id: e.target.value })} /></div>
             <div><Label>Name</Label><Input value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
             <div><Label>Email</Label><Input value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
             <div><Label>Mobile</Label><Input value={form.mobile} onChange={e => setForm({ ...form, mobile: e.target.value })} /></div>
             <div className="col-span-2"><Label>Qualification</Label><Input value={form.qualification} onChange={e => setForm({ ...form, qualification: e.target.value })} /></div>
-            <div className="col-span-2"><Label>Skills</Label><Input value={form.skills} onChange={e => setForm({ ...form, skills: e.target.value })} /></div>
+            <div className="col-span-2"><Label>Department</Label><Input value={form.department} onChange={e => setForm({ ...form, department: e.target.value })} /></div>
             <div className="col-span-2"><Label>Address</Label><Textarea rows={2} value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
           </div>
           <DialogFooter><Button onClick={save} className="bg-saffron-gradient">Save</Button></DialogFooter>
@@ -1986,7 +1986,11 @@ function Attendance() {
   const [marks, setMarks] = useState({});
   const [existing, setExisting] = useState({});
   const [enrollments, setEnrollments] = useState([]);
-  useEffect(() => { api('/students').then(r => setStudents(r.items)); api('/programs').then(r => setPrograms(r.items)); }, []);
+  const [teachers, setTeachers] = useState([]);
+  const [attendanceMode, setAttendanceMode] = useState('students');
+  const [facultyDate, setFacultyDate] = useState(localDateKey());
+  const [facultyMarks, setFacultyMarks] = useState({});
+  useEffect(() => { api('/students').then(r => setStudents(r.items || [])); api('/programs').then(r => setPrograms(r.items || [])); api('/teachers').then(r => setTeachers(r.items || [])); }, []);
   useEffect(() => {
     if (!program) { setSessions([]); setDate(''); setEnrollments([]); return; }
     api(`/programs/${program}/sessions`).then(r => {
@@ -2006,6 +2010,33 @@ function Attendance() {
       setExisting(m); setMarks(m);
     }).catch(() => {});
   }, [program, date]);
+
+  useEffect(() => {
+    if (attendanceMode !== 'faculty') return;
+    api(`/faculty-attendance?date=${facultyDate}`)
+      .then(r => {
+        const next = {};
+        (r.items || []).forEach(record => { next[record.faculty_id] = record.status; });
+        setFacultyMarks(next);
+      })
+      .catch(() => setFacultyMarks({}));
+  }, [attendanceMode, facultyDate]);
+
+  const facultyList = teachers.filter(t => !t.is_deleted);
+  const setFacultyMark = (id, status) => setFacultyMarks(prev => ({ ...prev, [id]: status }));
+  const bulkFaculty = (status) => {
+    const next = {};
+    facultyList.forEach(faculty => { next[faculty.id] = status; });
+    setFacultyMarks(next);
+  };
+  const saveFacultyAttendance = async () => {
+    if (!facultyDate) { toast.error('Pick an attendance date'); return; }
+    try {
+      const records = facultyList.map(faculty => ({ faculty_id: faculty.id, status: facultyMarks[faculty.id] || 'present' }));
+      await api('/faculty-attendance', { method: 'POST', body: JSON.stringify({ date: facultyDate, records }) });
+      toast.success(`Faculty attendance saved for ${records.length} faculty members`);
+    } catch (e) { toast.error(e.message); }
+  };
 
   const selectedProgram = programs.find(p => p.id === program);
   const selectedSession = sessions.find(s => s.date === date);
@@ -2041,6 +2072,49 @@ function Attendance() {
     late: sel ? 'bg-amber-500 text-white shadow-amber-500/50 shadow-lg' : 'bg-amber-500/10 text-amber-700 hover:bg-amber-500/20',
     excused: sel ? 'bg-sky-500 text-white shadow-sky-500/50 shadow-lg' : 'bg-sky-500/10 text-sky-700 hover:bg-sky-500/20',
   })[v];
+
+  if (attendanceMode === 'faculty') {
+    return (
+      <div className="space-y-5">
+        <PageHeader title="Faculty Attendance" subtitle="Record attendance for faculty members" icon={Users} />
+        <div className="flex gap-2">
+          <Button size="sm" variant="outline" onClick={() => setAttendanceMode('students')}>Student Attendance</Button>
+          <Button size="sm" className="bg-saffron-gradient text-white">Faculty Attendance</Button>
+        </div>
+        <div className="rounded-2xl glass p-4 flex flex-wrap gap-3 items-end">
+          <div><Label className="text-[11px]">Date</Label><Input type="date" value={facultyDate} onChange={e => setFacultyDate(e.target.value)} /></div>
+          <div className="ml-auto flex gap-2">
+            <Button size="sm" variant="outline" onClick={() => bulkFaculty('present')}>All Present</Button>
+            <Button size="sm" variant="outline" onClick={() => bulkFaculty('absent')}>All Absent</Button>
+            <Button onClick={saveFacultyAttendance} className="bg-saffron-gradient shadow">Save Attendance</Button>
+          </div>
+        </div>
+        <div className="rounded-2xl glass p-4">
+          {facultyList.length === 0 ? <EmptyState text="No faculty members found" /> : (
+            <div className="space-y-1.5">
+              {facultyList.map(faculty => (
+                <div key={faculty.id} className="flex items-center gap-3 p-2 rounded-xl hover:bg-white/50 dark:hover:bg-white/5 transition">
+                  <Avatar className="h-9 w-9"><AvatarFallback className="bg-violet-gradient text-white text-xs">{initials(faculty.name)}</AvatarFallback></Avatar>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{faculty.name}</div>
+                    <div className="text-[10px] text-muted-foreground">{faculty.department || faculty.skills || 'Faculty'}</div>
+                  </div>
+                  <div className="flex gap-1.5">
+                    {['present', 'absent'].map(status => (
+                      <button key={status} onClick={() => setFacultyMark(faculty.id, status)}
+                        className={`text-[11px] px-2.5 py-1 rounded-full capitalize font-medium transition ${status === 'present'
+                          ? (facultyMarks[faculty.id] === status ? 'bg-emerald-500 text-white' : 'bg-emerald-500/10 text-emerald-700')
+                          : (facultyMarks[faculty.id] === status ? 'bg-rose-500 text-white' : 'bg-rose-500/10 text-rose-700')}`}>{status}</button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">
