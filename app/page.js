@@ -137,7 +137,7 @@ function AccountDialog({ user, open, onOpenChange, onUpdated }) {
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [step, setStep = useState('details');
+  const [step, setStep] = useState('details');
   const [busy, setBusy] = useState(false);
   useEffect(() => { if (open) { setName(user.name || ''); setPhone(user.phone || ''); setStep('details'); setOtp(''); setNewPassword(''); setConfirmPassword(''); } }, [open, user]);
   const saveDetails = async () => { setBusy(true); try { const r=await api('/auth/me',{method:'PUT',body:JSON.stringify({name,phone})}); onUpdated(r.user); toast.success('Account details updated'); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
