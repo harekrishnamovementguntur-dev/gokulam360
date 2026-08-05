@@ -1967,8 +1967,8 @@ function Attendance() {
   };
 
   const counts = useMemo(() => {
-    const c = { present: 0, absent: 0, late: 0, excused: 0 };
-    list.forEach(s => { const v = marks[s.id]; if (v) c[v]++; });
+    const c = { present: 0, absent: 0 };
+    list.forEach(s => { const v = marks[s.id]; if (v === 'present' || v === 'absent') c[v]++; });
     return c;
   }, [marks, list]);
 
@@ -2062,12 +2062,10 @@ function Attendance() {
         </div>
       )}
 
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 gap-3">
         {[
           { k: 'present', l: 'Present', c: counts.present, grad: 'bg-emerald-gradient' },
           { k: 'absent', l: 'Absent', c: counts.absent, grad: 'bg-rose-gradient' },
-          { k: 'late', l: 'Late', c: counts.late, grad: 'bg-saffron-gradient' },
-          { k: 'excused', l: 'Excused', c: counts.excused, grad: 'bg-teal-gradient' },
         ].map(s => (
           <div key={s.k} className="rounded-2xl glass p-4 flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl ${s.grad} grid place-items-center text-white`}><ClipboardCheck size={18} /></div>
@@ -2106,7 +2104,7 @@ function Attendance() {
                     </div>
                   </div>
                   <div className="flex flex-wrap justify-end gap-1.5 shrink-0 max-w-[min(100%,18rem)]">
-                    {['present', 'absent', 'late', 'excused'].map(v => (
+                    {['present', 'absent'].map(v => (
                       <button key={v} onClick={() => setMark(s.id, v)}
                         className={`text-[11px] px-2.5 py-1 rounded-full capitalize font-medium transition ${chip(v, marks[s.id] === v)}`}>{v}</button>
                     ))}
