@@ -96,7 +96,7 @@ function studentDisplayName(student) {
   return `${student?.first_name || ''} ${student?.last_name || ''}`.trim() || 'Unknown student';
 }
 function answerRows(intent, title, columns, rows, summary, answer) {
-  return { intent, title, answer, summary, columns, rows, exportable: rows.length > 0 };
+  return json({ intent, title, answer, summary, columns, rows, exportable: rows.length > 0 });
 }
 async function answerAskAI(db, user, question) {
   const q = String(question || '').trim().toLowerCase();
