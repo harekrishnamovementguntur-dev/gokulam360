@@ -1,18 +1,17 @@
 import { NextResponse } from 'next/server';
-import { MongoClient } from 'mongodb';
+import { randomInt } from 'node:crypto';
+import { getDb as getSharedDb } from '../_lib/server.js';
+import { archiveStudentCommand } from '../_lib/student-lifecycle.js';
 import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import twilio from 'twilio';
+import { exportCanonicalBackup, restoreCanonicalBackup } from '../_lib/canonical-backup.js';
+import { requireRuntimeEnv } from '../_lib/env.js';
+import { allowRequest } from '../_lib/rate-limit.js';
+import { summarizeStudentCredits } from '../../../lib/student-credit-summary.mjs';
 
-const MONGO_URL = process.env.MONGO_URL;
-const DB_NAME = process.env.DB_NAME || 'gokulam360';
-const JWT_SECRET = process.env.JWT_SECRET;
-
-// Authentication must never silently fall back to a publicly known secret.
-if (!JWT_SECRET) {
-  throw new Error('JWT_SECRET must be configured');
-}
+const { JWT_SECRET } = requireRuntimeEnv();
 
 const TWILIO_SID = process.env.TWILIO_ACCOUNT_SID;
 const TWILIO_TOKEN = process.env.TWILIO_AUTH_TOKEN;
@@ -47,14 +46,81 @@ async function sendTwilioMessage(channel, to, message) {
   }
 }
 
-let cachedClient = null;
-async function getDb() {
-  if (!cachedClient) {
-    cachedClient = new MongoClient(MONGO_URL);
-    await cachedClient.connect();
+
+async function sendOtpEmail({ to, subject, message }) {
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ from: process.env.EMAIL_FROM, to: [to], subject, text: message }),
+    });
+    if (!response.ok) return { status: 'failed' };
+    return { status: 'sent' };
+  } catch (error) {
+    console.error('OTP email delivery failed', error);
+    return { status: 'failed' };
   }
-  return cachedClient.db(DB_NAME);
 }
+
+function normalizeOtpChallenge(doc) {
+  return doc ? { id: doc.id, expires_at: doc.expires_at, created_at: doc.created_at } : null;
+}
+
+async function createPasswordOtpChallenge({ db, user, purpose = 'change_password', messageLabel = 'password change' }) {
+  const account = await db.collection('users').findOne({ id: user.id });
+  if (!account || !account.email) return { error: json({ error: 'Account email is not configured.' }, 400) };
+  const email = String(account.email).trim().toLowerCase();
+
+  const limit = allowRequest('auth.password.otp', user.id);
+  if (!limit.allowed) {
+    const response = json({ error: 'Too many OTP requests. Please try again later.' }, 429);
+    response.headers.set('Retry-After', String(limit.retryAfterSeconds));
+    return { error: response };
+  }
+
+  const code = String(randomInt(100000, 1000000));
+  const challenge = {
+    id: uuidv4(),
+    user_id: user.id,
+    organization_id: user.organization_id || null,
+    purpose,
+    email,
+    code_hash: await bcrypt.hash(code, 10),
+    expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+    attempts: 0,
+    used_at: null,
+    created_at: new Date().toISOString(),
+  };
+  await db.collection('auth_otp_challenges').updateMany(
+    { user_id: user.id, purpose, used_at: null },
+    { $set: { used_at: new Date().toISOString() } },
+  );
+  await db.collection('auth_otp_challenges').insertOne(challenge);
+
+  const message = `Your Gokulam360 ${messageLabel} code is ${code}. It expires in 10 minutes.`;
+  let delivery = 'email';
+  if (process.env.RESEND_API_KEY && process.env.EMAIL_FROM) {
+    const sent = await sendOtpEmail({ to: email, subject: `Gokulam360 ${messageLabel} code`, message });
+    if (sent.status === 'failed') {
+      await db.collection('auth_otp_challenges').updateOne({ id: challenge.id }, { $set: { used_at: new Date().toISOString() } });
+      return { error: json({ error: 'Unable to send the OTP email. Please try again.' }, 502) };
+    }
+  } else if (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_OTP === 'true') {
+    delivery = 'development';
+  } else {
+    await db.collection('auth_otp_challenges').updateOne({ id: challenge.id }, { $set: { used_at: new Date().toISOString() } });
+    return { error: json({ error: 'Email OTP is not configured. Add RESEND_API_KEY and EMAIL_FROM.' }, 503) };
+  }
+
+  const response = { ok: true, delivery, expires_in_seconds: 600, challenge: normalizeOtpChallenge(challenge) };
+  if (delivery === 'development') response.development_otp = code;
+  return { response: json(response) };
+}
+
+const getDb = getSharedDb;
 
 function json(data, status = 200) {
   return NextResponse.json(data, { status });
@@ -114,43 +180,6 @@ function generateSessions(program) {
   return sessions;
 }
 
-async function syncEnrollments(db, student, oldProgramIds = []) {
-  const orgId = student.organization_id;
-  const newIds = student.program_ids || [];
-  const now = new Date().toISOString();
-  const today = now.slice(0, 10);
-  const added = newIds.filter(id => !oldProgramIds.includes(id));
-  const removed = oldProgramIds.filter(id => !newIds.includes(id));
-  for (const pid of added) {
-    const existing = await db.collection('enrollments').findOne({ student_id: student.id, program_id: pid, left_at: null });
-    if (existing) continue;
-    const prog = await db.collection('programs').findOne({ id: pid });
-    const allSessions = prog?.sessions || [];
-    // sessions_credited = remaining sessions of this class from today forward
-    const remainingFromToday = allSessions.filter(d => d >= today);
-    const credited = remainingFromToday.length || allSessions.length;
-    await db.collection('enrollments').insertOne({
-      id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
-      enrolled_at: now, left_at: null, status: 'active',
-      sessions_credited: credited,
-      created_at: now,
-    });
-    if (prog?.fee_amount) {
-      await db.collection('fees').insertOne({
-        id: uuidv4(), organization_id: orgId, student_id: student.id, program_id: pid,
-        fee_type: 'Term Fee', amount: prog.fee_amount, paid_amount: 0, status: 'pending',
-        due_date: prog.start_date || today, created_at: now,
-      });
-    }
-  }
-  for (const pid of removed) {
-    await db.collection('enrollments').updateMany(
-      { student_id: student.id, program_id: pid, left_at: null },
-      { $set: { left_at: now, status: 'left' } }
-    );
-  }
-}
-
 // ========== SEED ==========
 async function handleSeed() {
   const db = await getDb();
@@ -159,7 +188,6 @@ async function handleSeed() {
   await db.collection('students').deleteMany({});
   await db.collection('teachers').deleteMany({});
   await db.collection('programs').deleteMany({});
-  await db.collection('attendance').deleteMany({});
   await db.collection('fees').deleteMany({});
   await db.collection('payments').deleteMany({});
   await db.collection('events').deleteMany({});
@@ -289,32 +317,8 @@ async function handleSeed() {
   }));
   await db.collection('fees').insertMany(fees);
 
-  // Attendance (last 4 weeks Sunday)
-  const attRecords = [];
-  const today = new Date();
-  for (let w = 0; w < 4; w++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - w * 7);
-    const dateStr = d.toISOString().slice(0, 10);
-    students.forEach((s, idx) => {
-      const rand = (idx + w) % 10;
-      let status = 'present';
-      if (rand === 0) status = 'absent';
-      else if (rand === 1) status = 'late';
-      else if (rand === 2) status = 'excused';
-      attRecords.push({
-        id: uuidv4(),
-        organization_id: orgId,
-        student_id: s.id,
-        program_id: s.program_id,
-        date: dateStr,
-        status,
-        marked_by: users[2].id,
-        created_at: new Date().toISOString(),
-      });
-    });
-  }
-  await db.collection('attendance').insertMany(attRecords);
+  // Attendance is seeded only through the canonical Attendance domain.
+  // Legacy attendance data is intentionally not created by this development seed.
 
   // Events
   const events = [
@@ -413,6 +417,13 @@ async function router(req, method) {
   if (resource === 'auth') {
     if (id === 'login' && method === 'POST') {
       const body = await req.json();
+      const clientIp = (req.headers.get('x-forwarded-for') || 'unknown').split(',')[0].trim();
+      const limit = allowRequest('auth.login', `${clientIp}:${String(body.email || '').toLowerCase()}`);
+      if (!limit.allowed) {
+        const response = json({ error: 'Too many login attempts. Please try again later.' }, 429);
+        response.headers.set('Retry-After', String(limit.retryAfterSeconds));
+        return response;
+      }
       const user = await db.collection('users').findOne({ email: body.email });
       if (!user) return json({ error: 'Invalid credentials' }, 401);
       const ok = await bcrypt.compare(body.password || '', user.password_hash);
@@ -428,6 +439,111 @@ async function router(req, method) {
       const org = u.organization_id ? await db.collection('organizations').findOne({ id: u.organization_id }) : null;
       return json({ user: u, organization: org ? stripId(org) : null });
     }
+
+    if (id === 'forgot-password' && sub === 'request-otp' && method === 'POST') {
+      const body = await req.json();
+      const email = String(body.email || '').trim().toLowerCase();
+      const normalizedMobile = normalizePhone(body.mobile);
+      const clientIp = (req.headers.get('x-forwarded-for') || 'unknown').split(',')[0].trim();
+      const limit = allowRequest('auth.password.forgot', clientIp + ':' + email);
+      if (!limit.allowed) {
+        const response = json({ error: 'Too many OTP requests. Please try again later.' }, 429);
+        response.headers.set('Retry-After', String(limit.retryAfterSeconds));
+        return response;
+      }
+      const account = email ? await db.collection('users').findOne({ email }) : null;
+      const storedMobile = account ? normalizePhone(account.mobile || account.phone) : null;
+      if (!account || !normalizedMobile || storedMobile !== normalizedMobile) {
+        return json({ ok: true, message: 'If the account details match, an OTP will be sent.' });
+      }
+      const result = await createPasswordOtpChallenge({ db, user: account, purpose: 'reset_password', messageLabel: 'password reset' });
+      return result.error || result.response;
+    }
+    if (id === 'forgot-password' && sub === 'reset' && method === 'POST') {
+      const body = await req.json();
+      const email = String(body.email || '').trim().toLowerCase();
+      const account = email ? await db.collection('users').findOne({ email }) : null;
+      if (!account || String(account.email || '').trim().toLowerCase() !== email) return json({ error: 'The reset details could not be verified.' }, 400);
+      const otp = String(body.otp || '').trim();
+      const newPassword = String(body.new_password || '');
+      if (newPassword.length < 8) return json({ error: 'New password must be at least 8 characters.' }, 400);
+      if (!/^\d{6}$/.test(otp)) return json({ error: 'Enter the 6-digit OTP.' }, 400);
+      const challenge = await db.collection('auth_otp_challenges').findOne({
+        user_id: account.id,
+        purpose: 'reset_password',
+        used_at: null,
+        expires_at: { $gt: new Date().toISOString() },
+      }, { sort: { created_at: -1 } });
+      if (!challenge) return json({ error: 'OTP expired or not requested. Request a new code.' }, 400);
+      if ((challenge.attempts || 0) >= 5) return json({ error: 'Too many incorrect attempts. Request a new code.' }, 429);
+      const valid = await bcrypt.compare(otp, challenge.code_hash);
+      if (!valid) {
+        await db.collection('auth_otp_challenges').updateOne({ id: challenge.id }, { $inc: { attempts: 1 } });
+        return json({ error: 'Incorrect OTP.' }, 400);
+      }
+      const changedAt = new Date().toISOString();
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      await db.collection('users').updateOne({ id: account.id }, { $set: { password_hash: passwordHash, updated_at: changedAt } });
+      await db.collection('auth_otp_challenges').updateOne({ id: challenge.id, used_at: null }, { $set: { used_at: changedAt } });
+      await db.collection('activity').insertOne({
+        id: uuidv4(),
+        organization_id: account.organization_id || null,
+        kind: 'password_reset',
+        title: 'Account password reset',
+        actor: account.name || account.email,
+        created_at: changedAt,
+      });
+      return json({ ok: true, message: 'Password reset successfully.' });
+    }
+    if (id === 'password' && sub === 'request-otp' && method === 'POST') {
+      const authRes = await requireAuth(req);
+      if (authRes.error) return authRes.error;
+      const body = await req.json();
+      const result = await createPasswordOtpChallenge({ db, user: authRes.user, mobile: body.mobile });
+      return result.error || result.response;
+    }
+    if (id === 'password' && sub === 'change' && method === 'POST') {
+      const authRes = await requireAuth(req);
+      if (authRes.error) return authRes.error;
+      const body = await req.json();
+      const newPassword = String(body.new_password || '');
+      const otp = String(body.otp || '').trim();
+      if (newPassword.length < 8) return json({ error: 'New password must be at least 8 characters.' }, 400);
+      if (!/^\d{6}$/.test(otp)) return json({ error: 'Enter the 6-digit OTP.' }, 400);
+
+      const challenge = await db.collection('auth_otp_challenges').findOne({
+        user_id: authRes.user.id,
+        purpose: 'change_password',
+        used_at: null,
+        expires_at: { $gt: new Date().toISOString() },
+      }, { sort: { created_at: -1 } });
+      if (!challenge) return json({ error: 'OTP expired or not requested. Request a new code.' }, 400);
+      if ((challenge.attempts || 0) >= 5) return json({ error: 'Too many incorrect attempts. Request a new code.' }, 429);
+      const valid = await bcrypt.compare(otp, challenge.code_hash);
+      if (!valid) {
+        await db.collection('auth_otp_challenges').updateOne({ id: challenge.id }, { $inc: { attempts: 1 } });
+        return json({ error: 'Incorrect OTP.' }, 400);
+      }
+
+      const passwordHash = await bcrypt.hash(newPassword, 10);
+      const changedAt = new Date().toISOString();
+      const updated = await db.collection('users').updateOne(
+        { id: authRes.user.id },
+        { $set: { password_hash: passwordHash, updated_at: changedAt } },
+      );
+      if (!updated.matchedCount) return json({ error: 'Account not found.' }, 404);
+      await db.collection('auth_otp_challenges').updateOne({ id: challenge.id, used_at: null }, { $set: { used_at: changedAt } });
+      await db.collection('activity').insertOne({
+        id: uuidv4(),
+        organization_id: authRes.user.organization_id || null,
+        kind: 'password_changed',
+        title: 'Account password changed',
+        actor: authRes.user.name || authRes.user.email,
+        created_at: changedAt,
+      });
+      return json({ ok: true, message: 'Password changed successfully.' });
+    }
+
   }
 
   // ---- protected ----
@@ -452,7 +568,7 @@ async function router(req, method) {
         const passHash = await bcrypt.hash(body.admin_password, 10);
         await db.collection('users').insertOne({
           id: uuidv4(), email: body.admin_email, password_hash: passHash, name: body.admin_name || 'Admin',
-          role: 'org_admin', organization_id: doc.id, created_at: new Date().toISOString()
+          role: 'org_admin', organization_id: doc.id, mobile: body.admin_mobile || '', created_at: new Date().toISOString()
         });
       }
       // Create first program
@@ -491,7 +607,6 @@ async function router(req, method) {
     students: ['org_admin', 'teacher', 'super_admin'],
     teachers: ['org_admin', 'super_admin'],
     programs: ['org_admin', 'teacher', 'super_admin'],
-    fees: ['org_admin', 'super_admin'],
     events: ['org_admin', 'teacher', 'super_admin'],
     attendance: ['org_admin', 'teacher', 'super_admin'],
   };
@@ -510,6 +625,27 @@ async function router(req, method) {
          if (!['organization_id', 'is_deleted', '_id'].includes(k)) q[k] = params[k];
        });
       const items = await col.find(q).sort({ created_at: -1 }).limit(500).toArray();
+      if (resource === 'students' && items.length) {
+        const studentIds = items.map(item => item.id);
+        const memberships = await db.collection('memberships').find(
+          orgScope(user, { student_id: { $in: studentIds }, status: { $nin: ['archived'] } }),
+          { projection: { id: 1, student_id: 1 } },
+        ).toArray();
+        const membershipIds = memberships.map(membership => membership.id);
+        const entries = membershipIds.length
+          ? await db.collection('credit_ledger_entries').find(
+              orgScope(user, { membership_id: { $in: membershipIds } }),
+              { projection: { membership_id: 1, quantity_delta: 1 } },
+            ).toArray()
+          : [];
+        const creditSummary = summarizeStudentCredits(memberships, entries);
+        return json({
+          items: items.map(item => ({
+            ...stripId(item),
+            credit_summary: creditSummary.get(item.id) || { granted: 0, remaining: 0 },
+          })),
+        });
+      }
       return json({ items: items.map(stripId) });
     }
     if (method === 'GET' && id && !sub) {
@@ -539,10 +675,6 @@ async function router(req, method) {
       // Generate sessions for programs
       if (resource === 'programs') doc.sessions = generateSessions(doc);
       await col.insertOne(doc);
-      // Handle student enrollments
-      if (resource === 'students' && doc.program_ids?.length) {
-        await syncEnrollments(db, doc, []);
-      }
       // Log activity for known resources
       if (['students', 'teachers', 'events', 'programs'].includes(resource)) {
         const titleMap = {
@@ -572,33 +704,36 @@ async function router(req, method) {
       if (resource === 'programs') updated.sessions = generateSessions({ ...before, ...body });
       await col.updateOne({ id, ...orgScope(user) }, { $set: updated });
        const doc = await col.findOne({ id, ...orgScope(user) });
-      // Sync student enrollments diff
-      if (resource === 'students' && body.program_ids) {
-        await syncEnrollments(db, doc, before?.program_ids || []);
-      }
       return json(stripId(doc));
     }
     if (method === 'DELETE' && id) {
       const existing = await col.findOne({ id, ...orgScope(user) });
       if (!existing) return json({ error: 'Not found' }, 404);
       if (resource === 'students') {
-        const fees = await db.collection('fees').deleteMany({ student_id: id, ...orgScope(user) });
-        await col.updateOne({ id, ...orgScope(user) }, { $set: { is_deleted: true, updated_at: new Date().toISOString() } });
-        await db.collection('activity').insertOne({
-          id: uuidv4(), organization_id: existing.organization_id, kind: 'student_deleted',
-          title: `Student deleted: ${existing.first_name || ''} ${existing.last_name || ''}`.trim(),
-          meta: { student_id: id, deleted_fee_records: fees.deletedCount || 0 },
-          actor: user.name || 'Admin', created_at: new Date().toISOString(),
-        });
-        return json({ ok: true, deleted_fee_records: fees.deletedCount || 0 });
+        try {
+          return json(await archiveStudentCommand({
+            db,
+            user,
+            organizationId: existing.organization_id,
+            studentId: id,
+          }));
+        } catch (error) {
+          if (Number.isInteger(error?.status) && error.status >= 400 && error.status < 500) {
+            return json({ error: error.message }, error.status);
+          }
+          throw error;
+        }
       }
       await col.updateOne({ id, ...orgScope(user) }, { $set: { is_deleted: true, updated_at: new Date().toISOString() } });
       return json({ ok: true });
     }
   }
 
-  // Enrollments endpoints
+  // Legacy Enrollment API is disabled for Administrator operations.
   if (resource === 'enrollments') {
+    if (['super_admin', 'org_admin', 'teacher'].includes(user.role)) {
+      return json({ error: 'Legacy Enrollments are disabled; use Memberships and Membership Term Participations' }, 410);
+    }
     if (method === 'GET') {
       const q = orgScope(user);
       const url2 = new URL(req.url);
@@ -625,14 +760,21 @@ async function router(req, method) {
       const old = await db.collection('enrollments').findOne({ id: body.enrollment_id, organization_id: user.organization_id });
       if (!old) return json({ error: 'Enrollment not found' }, 404);
       const prog = await db.collection('programs').findOne({ id: old.program_id });
-      const credited = prog?.sessions?.length || 16;
       const now = new Date().toISOString();
+      const attendance = await db.collection('attendance').find({
+        organization_id: user.organization_id, student_id: old.student_id, program_id: old.program_id,
+        date: { $gte: (old.enrolled_at || '').slice(0, 10), $lte: now.slice(0, 10) },
+      }).toArray();
+      const used = attendance.filter(record => record.status === 'present' || record.status === 'late').length;
+      const carryover = Math.max(0, (old.sessions_credited || 0) - used);
+      const termCredits = prog?.sessions?.length || 16;
+      const credited = termCredits + carryover;
       // Mark previous as completed
       await db.collection('enrollments').updateOne({ id: old.id }, { $set: { status: 'completed', left_at: now } });
       const fresh = {
         id: uuidv4(), organization_id: user.organization_id, student_id: old.student_id, program_id: old.program_id,
         enrolled_at: now, left_at: null, status: 'active', sessions_credited: credited,
-        renewed_from: old.id, created_at: now,
+        carryover_sessions: carryover, renewed_from: old.id, created_at: now,
       };
       await db.collection('enrollments').insertOne(fresh);
       if (prog?.fee_amount) {
@@ -665,56 +807,30 @@ async function router(req, method) {
     return json({ program_id: id, program_name: prog.name, days_of_week: prog.days_of_week, sessions: enriched });
   }
 
-  // Bulk attendance
-  if (resource === 'attendance-bulk' && method === 'POST') {
-    if (!['org_admin', 'teacher', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
-    const body = await req.json();
-    const { date, program_id, records } = body; // records: [{student_id, status}]
-    const validStatuses = new Set(['present', 'absent', 'late', 'excused']);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date || '') || !program_id || !Array.isArray(records) || !records.length) {
-      return json({ error: 'date, program_id, and non-empty records are required' }, 400);
-    }
-    if (records.some(r => !r?.student_id || !validStatuses.has(r.status))) return json({ error: 'Invalid attendance record' }, 400);
-    const program = await db.collection('programs').findOne({ id: program_id, ...orgScope(user) });
-    if (!program) return json({ error: 'Program not found' }, 404);
-    const studentIds = [...new Set(records.map(r => r.student_id))];
-    const matchingStudents = await db.collection('students').countDocuments({ id: { $in: studentIds }, ...orgScope(user), is_deleted: { $ne: true } });
-    if (matchingStudents !== studentIds.length) return json({ error: 'One or more students do not belong to this organization' }, 400);
-    // Remove existing for this date+program+org
-    await db.collection('attendance').deleteMany({ organization_id: user.organization_id, date, program_id });
-    const docs = records.map(r => ({
-      id: uuidv4(),
-      organization_id: user.organization_id,
-      program_id,
-      date,
-      student_id: r.student_id,
-      status: r.status,
-      marked_by: user.id,
-      created_at: new Date().toISOString(),
-    }));
-    if (docs.length) await db.collection('attendance').insertMany(docs);
-    return json({ ok: true, count: docs.length });
-  }
+  // Legacy /attendance-bulk is intentionally unsupported.
+  // Attendance mutations must use /attendance-records so history, credits, audit,
+  // outbox, and idempotency remain transactional.
 
-  // Dashboard stats
+  // Dashboard stats. Financial and attendance metrics use canonical collections.
   if (resource === 'dashboard' && method === 'GET') {
     const scope = orgScope(user, { is_deleted: { $ne: true } });
+    const financialScope = orgScope(user);
     const students = await db.collection('students').find(scope).toArray();
     const teachers = await db.collection('teachers').find(scope).toArray();
-    const feesScope = user.role === 'super_admin' ? {} : { organization_id: user.organization_id };
-    const fees = await db.collection('fees').find(feesScope).toArray();
-    const events = await db.collection('events').find(feesScope).toArray();
-    const attendance = await db.collection('attendance').find(feesScope).toArray();
+    const payments = await db.collection('payment_transactions').find(financialScope).toArray();
+    const ledger = await db.collection('credit_ledger_entries').find(financialScope).toArray();
+    const events = await db.collection('events').find(financialScope).toArray();
+    const attendance = await db.collection('attendance_records').find(financialScope).toArray();
 
     const activeStudents = students.filter(s => s.status === 'active').length;
     const totalStudents = students.length;
-    const pendingFees = fees.filter(f => f.status === 'pending').reduce((sum, f) => sum + (f.amount - (f.paid_amount || 0)), 0);
-    const collectedFees = fees.reduce((sum, f) => sum + (f.paid_amount || 0), 0);
+    const pendingPayments = payments.filter(p => p.status === 'draft').reduce((sum, p) => sum + (Number(p.amount_minor) || 0), 0) / 100;
+    const collectedPayments = payments.filter(p => ['posted', 'partially_refunded', 'refunded'].includes(p.status))
+      .reduce((sum, p) => sum + (Number(p.amount_minor) || 0), 0) / 100;
     const attPresent = attendance.filter(a => a.status === 'present' || a.status === 'late').length;
     const attTotal = attendance.length || 1;
     const attendancePct = Math.round((attPresent / attTotal) * 100);
 
-    // Monthly admissions (last 6 months)
     const monthly = {};
     const now = new Date();
     for (let i = 5; i >= 0; i--) {
@@ -729,7 +845,6 @@ async function router(req, method) {
     });
     const monthlyAdmissions = Object.entries(monthly).map(([month, count]) => ({ month, count }));
 
-    // Attendance trend (by date)
     const trend = {};
     attendance.forEach(a => {
       if (!trend[a.date]) trend[a.date] = { date: a.date, present: 0, absent: 0 };
@@ -737,12 +852,6 @@ async function router(req, method) {
       else trend[a.date].absent++;
     });
     const attendanceTrend = Object.values(trend).sort((a, b) => a.date.localeCompare(b.date));
-
-    // Fee split
-    const feeSplit = [
-      { name: 'Collected', value: collectedFees },
-      { name: 'Pending', value: pendingFees },
-    ];
 
     return json({
       totalStudents,
@@ -752,13 +861,13 @@ async function router(req, method) {
         return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
       }).length,
       attendancePct,
-      pendingFees,
-      collectedFees,
+      pendingPayments,
+      collectedPayments,
       totalTeachers: teachers.length,
+      totalCredits: ledger.reduce((sum, entry) => sum + (Number(entry.quantity_delta) || 0), 0),
       upcomingEvents: events.filter(e => new Date(e.date) >= new Date()).slice(0, 5),
       monthlyAdmissions,
       attendanceTrend,
-      feeSplit,
     });
   }
 
@@ -833,61 +942,6 @@ async function router(req, method) {
     return json({ student: stripId(student), attendance: att.map(stripId), fees: fees.map(stripId) });
   }
 
-  // Reports endpoint - returns comprehensive report data
-  if (resource === 'reports' && method === 'GET') {
-    const type = id;
-    const scope = orgScope(user);
-    const from = url.searchParams.get('from') || '';
-    const to = url.searchParams.get('to') || '';
-    const isDate = value => /^\d{4}-\d{2}-\d{2}$/.test(value);
-    if ((from && !isDate(from)) || (to && !isDate(to)) || (from && to && from > to)) {
-      return json({ error: 'Invalid date range' }, 400);
-    }
-    const dateFilter = field => {
-      const bounds = {};
-      if (from) bounds.$gte = from;
-      if (to) bounds.$lte = to;
-      return Object.keys(bounds).length ? { [field]: bounds } : {};
-    };
-    if (type === 'students') {
-      const items = await db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray();
-      return json({ items: items.map(stripId) });
-    }
-    if (type === 'attendance') {
-      const items = await db.collection('attendance').find({ ...scope, ...dateFilter('date') }).sort({ date: -1 }).toArray();
-      const students = await db.collection('students').find(scope).toArray();
-      const sMap = Object.fromEntries(students.map(s => [s.id, `${s.first_name} ${s.last_name}`]));
-      return json({ items: items.map(a => ({ ...stripId(a), student_name: sMap[a.student_id] || '-' })) });
-    }
-    if (type === 'fees') {
-      const items = await db.collection('fees').find({ ...scope, ...dateFilter('due_date') }).toArray();
-      const students = await db.collection('students').find(scope).toArray();
-      const sMap = Object.fromEntries(students.map(s => [s.id, `${s.first_name} ${s.last_name}`]));
-      return json({ items: items.map(f => ({ ...stripId(f), student_name: sMap[f.student_id] || '-' })) });
-    }
-    if (type === 'attendance-summary') {
-      const students = await db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray();
-      const attendance = await db.collection('attendance').find({ ...scope, ...dateFilter('date') }).toArray();
-      const summary = students.map(s => {
-        const sRecs = attendance.filter(a => a.student_id === s.id);
-        const months = {};
-        sRecs.forEach(a => {
-          const key = a.date.slice(0, 7);
-          if (!months[key]) months[key] = { present: 0, total: 0 };
-          months[key].total++;
-          if (a.status === 'present' || a.status === 'late') months[key].present++;
-        });
-        const monthly = Object.fromEntries(Object.entries(months).map(([k, v]) => [k, v.total ? Math.round((v.present / v.total) * 100) : 0]));
-        const totalPresent = sRecs.filter(a => a.status === 'present' || a.status === 'late').length;
-        const overall = sRecs.length ? Math.round((totalPresent / sRecs.length) * 100) : 0;
-        return { student_id: s.student_id, name: `${s.first_name} ${s.last_name}`, overall, monthly, total_sessions: sRecs.length, present: totalPresent };
-      });
-      const allMonths = Array.from(new Set(attendance.map(a => a.date.slice(0, 7)))).sort();
-      return json({ months: allMonths, students: summary });
-    }
-    return json({ error: 'Unknown report' }, 400);
-  }
-
   // Bulk import students
   if (resource === 'students-import' && method === 'POST') {
     if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
@@ -931,94 +985,26 @@ async function router(req, method) {
     return json({ imported: docs.length, errors });
   }
 
-  // Attendance summary report - per student monthly %
-  if (resource === 'reports' && id === 'attendance-summary' && method === 'GET') {
-    const scope = orgScope(user);
-    const students = await db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray();
-    const attendance = await db.collection('attendance').find(scope).toArray();
-    // Group attendance by student+month
-    const summary = students.map(s => {
-      const sRecs = attendance.filter(a => a.student_id === s.id);
-      const months = {};
-      sRecs.forEach(a => {
-        const key = a.date.slice(0, 7); // YYYY-MM
-        if (!months[key]) months[key] = { present: 0, total: 0 };
-        months[key].total++;
-        if (a.status === 'present' || a.status === 'late') months[key].present++;
-      });
-      const monthly = Object.fromEntries(Object.entries(months).map(([k, v]) => [k, v.total ? Math.round((v.present / v.total) * 100) : 0]));
-      const totalPresent = sRecs.filter(a => a.status === 'present' || a.status === 'late').length;
-      const overall = sRecs.length ? Math.round((totalPresent / sRecs.length) * 100) : 0;
-      return {
-        student_id: s.student_id,
-        name: `${s.first_name} ${s.last_name}`,
-        overall,
-        monthly,
-        total_sessions: sRecs.length,
-        present: totalPresent,
-      };
-    });
-    // Collect all months in dataset
-    const allMonths = Array.from(new Set(attendance.map(a => a.date.slice(0, 7)))).sort();
-    return json({ months: allMonths, students: summary });
-  }
-
-  // Backup export - entire org data as JSON
+  // Canonical backup and restore. Legacy collections are intentionally excluded.
   if (resource === 'backup' && id === 'export' && method === 'GET') {
     if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
-    const scope = { organization_id: user.organization_id };
-    const [organizations, students, teachers, programs, attendance, fees, events, notifications, activity] = await Promise.all([
-      user.role === 'super_admin' ? db.collection('organizations').find({}).toArray() : db.collection('organizations').find({ id: user.organization_id }).toArray(),
-      db.collection('students').find(scope).toArray(),
-      db.collection('teachers').find(scope).toArray(),
-      db.collection('programs').find(scope).toArray(),
-      db.collection('attendance').find(scope).toArray(),
-      db.collection('fees').find(scope).toArray(),
-      db.collection('events').find(scope).toArray(),
-      db.collection('notifications').find(scope).toArray(),
-      db.collection('activity').find(scope).toArray(),
-    ]);
-    return json({
-      exported_at: new Date().toISOString(),
-      exported_by: user.email,
-      organization_id: user.organization_id,
-      version: '1.0',
-      counts: { students: students.length, teachers: teachers.length, programs: programs.length, attendance: attendance.length, fees: fees.length, events: events.length, notifications: notifications.length },
-      data: {
-        organizations: organizations.map(stripId),
-        students: students.map(stripId),
-        teachers: teachers.map(stripId),
-        programs: programs.map(stripId),
-        attendance: attendance.map(stripId),
-        fees: fees.map(stripId),
-        events: events.map(stripId),
-        notifications: notifications.map(stripId),
-        activity: activity.map(stripId),
-      },
-    });
+    try {
+      return json(await exportCanonicalBackup({ db, user, requestedOrganizationId: new URL(req.url).searchParams.get('organization_id') }));
+    } catch (error) {
+      if (error?.status) return json({ error: { code: error.code, message: error.message } }, error.status);
+      throw error;
+    }
   }
 
-  // Backup restore - accept JSON, replaces the org's data
   if (resource === 'backup' && id === 'restore' && method === 'POST') {
     if (!['org_admin', 'super_admin'].includes(user.role)) return json({ error: 'Forbidden' }, 403);
-    const body = await req.json();
-    const data = body.data || {};
-    const orgId = user.organization_id;
-    const collections = ['students', 'teachers', 'programs', 'attendance', 'fees', 'events', 'notifications'];
-    const counts = {};
-    for (const c of collections) {
-      const items = (data[c] || []).map(x => ({ ...x, organization_id: orgId, id: x.id || uuidv4() }));
-      // Wipe org's existing data in this collection
-      await db.collection(c).deleteMany({ organization_id: orgId });
-      if (items.length) await db.collection(c).insertMany(items);
-      counts[c] = items.length;
+    try {
+      const body = await req.json();
+      return json(await restoreCanonicalBackup({ db, client: cachedClient, user, requestedOrganizationId: body.organization_id, backup: body }));
+    } catch (error) {
+      if (error?.status) return json({ error: { code: error.code, message: error.message } }, error.status);
+      throw error;
     }
-    await db.collection('activity').insertOne({
-      id: uuidv4(), organization_id: orgId, kind: 'backup_restored',
-      title: `Data restored from backup: ${Object.values(counts).reduce((a, b) => a + b, 0)} records`,
-      actor: user.name || 'Admin', created_at: new Date().toISOString(),
-    });
-    return json({ restored: counts });
   }
 
   // Cancel or restore a session

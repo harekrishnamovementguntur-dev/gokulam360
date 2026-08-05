@@ -32,9 +32,9 @@ function PublicPage({ params }) {
 
   const s = data.student;
   const attPct = data.attendance.length ? Math.round((data.attendance.filter(a => a.status === 'present' || a.status === 'late').length / data.attendance.length) * 100) : 0;
-  const feeDue = data.fees.filter(f => f.status !== 'paid').reduce((a, f) => a + (f.amount - (f.paid_amount || 0)), 0);
-  const feePaid = data.fees.reduce((a, f) => a + (f.paid_amount || 0), 0);
-  const events = data.events || [];
+  const feeDue = data.payments.filter(f => f.status !== 'paid').reduce((a, f) => a + (f.amount - (f.paid_amount || 0)), 0);
+  const feePaid = data.payments.reduce((a, f) => a + (f.paid_amount || 0), 0);
+  const events = data.announcements || [];
 
   return (
     <div className="min-h-screen bg-aurora relative">
@@ -71,9 +71,9 @@ function PublicPage({ params }) {
         </div>
 
         <div className="rounded-2xl glass p-5">
-          <div className="text-sm font-semibold mb-3 flex items-center gap-1.5"><BookOpen size={14} className="text-primary" /> Enrolled Classes</div>
+          <div className="text-sm font-semibold mb-3 flex items-center gap-1.5"><BookOpen size={14} className="text-primary" /> Classes</div>
           <div className="space-y-2">
-            {data.enrollments.map(e => (
+            {data.classes.map(e => (
               <div key={e.id} className="rounded-xl bg-white/50 dark:bg-white/5 border p-3">
                 <div className="flex items-center justify-between">
                   <div className="font-semibold text-sm">{e.program_name}</div>
@@ -98,8 +98,8 @@ function PublicPage({ params }) {
             {data.attendance.length === 0 && <div className="text-xs text-muted-foreground italic">No records yet</div>}
           </div>
           <div className="rounded-2xl glass p-5">
-            <div className="text-sm font-semibold mb-3">Fees</div>
-            {data.fees.map(f => (
+            <div className="text-sm font-semibold mb-3">Payments</div>
+            {data.payments.map(f => (
               <div key={f.id} className="flex items-center justify-between p-1.5 text-xs">
                 <div><div className="font-medium">{f.fee_type}</div><div className="text-[10px] text-muted-foreground">Due {f.due_date}</div></div>
                 <div className="text-right">
@@ -108,12 +108,12 @@ function PublicPage({ params }) {
                 </div>
               </div>
             ))}
-            {data.fees.length === 0 && <div className="text-xs text-muted-foreground italic">No fees on record</div>}
+            {data.payments.length === 0 && <div className="text-xs text-muted-foreground italic">No fees on record</div>}
           </div>
         </div>
 
         <section className="rounded-2xl glass overflow-hidden">
-          <div className="px-5 py-4 border-b flex items-center gap-2"><Calendar size={16} className="text-primary" /><div><div className="font-semibold text-sm">Announcements</div><div className="text-xs text-muted-foreground">Updates selected by the temple</div></div></div>
+          <div className="px-5 py-4 border-b flex items-center gap-2"><Calendar size={16} className="text-primary" /><div><div className="font-semibold text-sm">Announcements</div><div className="text-xs text-muted-foreground">Updates selected for your classes</div></div></div>
           {events.length ? <div className="divide-y">{events.map(event => <article key={event.id} className="p-4"><div className="flex gap-4"><div className="w-16 shrink-0 rounded-xl bg-saffron-gradient text-white text-center grid place-items-center py-2"><div className="text-[10px] uppercase">{new Date(event.date + 'T00:00:00').toLocaleString('en', { month: 'short' })}</div><div className="text-2xl font-bold leading-none">{new Date(event.date + 'T00:00:00').getDate()}</div></div><div className="min-w-0"><div className="font-semibold">{event.name}</div><p className="mt-1 text-sm text-muted-foreground whitespace-pre-wrap">{event.description}</p></div></div>{event.image_url && <img src={event.image_url} alt="Event advertisement" className="mt-4 w-full max-h-[420px] rounded-xl border bg-muted/30 object-contain" />}</article>)}</div> : <div className="p-5 text-sm text-muted-foreground">No announcements at the moment.</div>}
         </section>
 
