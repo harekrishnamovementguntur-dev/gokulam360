@@ -1130,7 +1130,7 @@ function Students({ students, setStudents }) {
   const [cardOf, setCardOf] = useState(null);
   const [historyOf, setHistoryOf] = useState(null);
   const [creditPurchaseFor, setCreditPurchaseFor] = useState(null);
-  const [purchaseForm, setPurchaseForm] = useState({ credit_quantity: '', fee_amount: '', payment_mode: 'cash' });
+  const [purchaseForm, setPurchaseForm] = useState({ credit_quantity: '', total_amount: '', amount_paid: '', payment_mode: 'cash' });
   const [org, setOrg] = useState(null);
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -1252,16 +1252,17 @@ function Students({ students, setStudents }) {
     const enrollment = creditEnrollments(student.id)[0];
     if (!enrollment) return toast.error('This student is not enrolled in a Credit model batch');
     setCreditPurchaseFor({ student, enrollment });
-    setPurchaseForm({ credit_quantity: '', fee_amount: '', payment_mode: 'cash' });
+    setPurchaseForm({ credit_quantity: '', total_amount: '', amount_paid: '', payment_mode: 'cash' });
   };
   const purchaseCredits = async () => {
     if (!creditPurchaseFor) return;
     const quantity = Number(purchaseForm.credit_quantity);
-    const amount = Number(purchaseForm.fee_amount);
+    const totalAmount = Number(purchaseForm.total_amount);
+    const amountPaid = Number(purchaseForm.amount_paid);
     if (!Number.isInteger(quantity) || quantity <= 0) return toast.error('Enter a whole number of credits');
-    if (!Number.isFinite(amount) || amount < 0) return toast.error('Enter a valid amount');
+    if (!Number.isFinite(totalAmount) || totalAmount < 0 || !Number.isFinite(amountPaid) || amountPaid < 0 || amountPaid > totalAmount) return toast.error('Enter valid total and paid amounts; paid cannot exceed total');
     try {
-      await api('/enrollments/credits', { method: 'POST', body: JSON.stringify({ enrollment_id: creditPurchaseFor.enrollment.id, credit_quantity: quantity, fee_amount: amount, payment_mode: purchaseForm.payment_mode }) });
+      await api('/enrollments/credits', { method: 'POST', body: JSON.stringify({ enrollment_id: creditPurchaseFor.enrollment.id, credit_quantity: quantity, total_amount: totalAmount, amount_paid: amountPaid, payment_mode: purchaseForm.payment_mode }) });
       toast.success(`${quantity} credits added for ${creditPurchaseFor.student.first_name}`);
       setCreditPurchaseFor(null); loadEnrollments();
     } catch (e) { toast.error(e.message); }
@@ -1410,7 +1411,7 @@ function Students({ students, setStudents }) {
                     );
                   })}
                 </div>
-                {form.program_ids?.length > 0 && <div className="mt-3 space-y-2">
+                {!editing && form.program_ids?.length > 0 && <div className="mt-3 space-y-2">
                   <div className="text-xs font-semibold">Admission details</div>
                   {form.program_ids.map(id => {
                     const batch = batches.find(p => p.id === id); const detail = batchDetails[id] || {};
@@ -1446,7 +1447,8 @@ function Students({ students, setStudents }) {
           <div className="space-y-3">
             <div className="rounded-xl bg-primary/5 border p-3 text-sm">Current balance: <b>{creditPurchaseFor ? creditsFor(creditPurchaseFor.student.id).remaining : 0} credits left</b></div>
             <div><Label>Credits to add</Label><Input type="number" min="1" step="1" value={purchaseForm.credit_quantity} onChange={e => setPurchaseForm({ ...purchaseForm, credit_quantity: e.target.value })} placeholder="e.g. 8" /></div>
-            <div><Label>Amount received</Label><Input type="number" min="0" value={purchaseForm.fee_amount} onChange={e => setPurchaseForm({ ...purchaseForm, fee_amount: e.target.value })} placeholder="e.g. 800" /></div>
+            <div><Label>Total amount</Label><Input type="number" min="0" value={purchaseForm.total_amount} onChange={e => setPurchaseForm({ ...purchaseForm, total_amount: e.target.value })} placeholder="e.g. 800" /></div>
+            <div><Label>Amount paid now</Label><Input type="number" min="0" value={purchaseForm.amount_paid} onChange={e => setPurchaseForm({ ...purchaseForm, amount_paid: e.target.value })} placeholder="0 for unpaid / partial" /></div>
             <div><Label>Payment mode</Label><Select value={purchaseForm.payment_mode} onValueChange={v => setPurchaseForm({ ...purchaseForm, payment_mode: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="bank_transfer">Bank transfer</SelectItem><SelectItem value="card">Card</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div>
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setCreditPurchaseFor(null)}>Cancel</Button><Button onClick={purchaseCredits} className="bg-saffron-gradient">Add credits</Button></DialogFooter>
@@ -1866,12 +1868,12 @@ function Classes() {
             <div className="col-span-2"><Label>Description</Label><Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder={parentProgram ? 'Describe this batch' : 'Describe the program'} /></div>
             {!parentProgram && <div className="col-span-2 rounded-xl border bg-primary/5 p-3"><Label>Program model</Label><div className="grid grid-cols-2 gap-2 mt-2"><label className={`flex items-center gap-2 rounded-lg border p-3 text-sm cursor-pointer ${form.billing_model === 'credit' ? 'border-primary bg-primary/10' : ''}`}><input type="checkbox" checked={form.billing_model === 'credit'} onChange={() => setForm({ ...form, billing_model: 'credit' })} /> Credit model</label><label className={`flex items-center gap-2 rounded-lg border p-3 text-sm cursor-pointer ${form.billing_model === 'date' ? 'border-primary bg-primary/10' : ''}`}><input type="checkbox" checked={form.billing_model === 'date'} onChange={() => setForm({ ...form, billing_model: 'date' })} /> Date model</label></div><div className="text-[10px] text-muted-foreground mt-2">Credit model uses purchased credits. Date model uses the batch fee and duration.</div></div>}
             {parentProgram && <>
-              <div className="col-span-2"><Label>Age group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="e.g. 6-14" /></div>
-              <div className="col-span-2"><Label>Session days *</Label><DaysPicker value={form.days_of_week} onChange={v => setForm({ ...form, days_of_week: v })} /><div className="text-[10px] text-muted-foreground mt-1.5">{form.days_of_week.length ? `Runs ${form.days_of_week.map(d => DAY_FULL[d]).join(', ')}` : 'Select at least one day'}</div></div>
+              <div><Label>Age group</Label><Input value={form.age_group} onChange={e => setForm({ ...form, age_group: e.target.value })} placeholder="e.g. 6-14" /></div>
               <div><Label>Capacity</Label><Input type="number" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} /></div>
-              {parentProgram && parentProgram.billing_model === 'date' && <div><Label>Fee for this batch</Label><Input type="number" min="0" value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} placeholder="0" /></div>}
+              {parentProgram && parentProgram.billing_model === 'date' && <div className="col-span-2"><Label>Fee for this batch</Label><Input type="number" min="0" value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} placeholder="0" /></div>}
               <div><Label>Start date</Label><Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} /></div>
               <div><Label>End date</Label><Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} /></div>
+              <div className="col-span-2"><Label>Session days *</Label><DaysPicker value={form.days_of_week} onChange={v => setForm({ ...form, days_of_week: v })} /><div className="text-[10px] text-muted-foreground mt-1.5">{form.days_of_week.length ? `Runs ${form.days_of_week.map(d => DAY_FULL[d]).join(', ')}` : 'Select at least one day'}</div></div>
             </>}
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient" disabled={!!parentProgram && form.days_of_week.length === 0}>{editing ? 'Update' : `Create ${parentProgram ? 'Batch' : 'Program'}`}</Button></DialogFooter>
