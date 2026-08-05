@@ -847,8 +847,10 @@ async function router(req, method) {
   if (resource === 'programs' && id && sub === 'sessions' && method === 'GET') {
     const prog = await db.collection('programs').findOne({ id, ...orgScope(user) });
     if (!prog) return json({ error: 'Not found' }, 404);
+    const cancelledDates = new Set(prog.cancelled_dates || []);
     let sessions = prog.sessions;
     if (!sessions || !sessions.length) sessions = generateSessions(prog);
+    sessions = [...new Set([...(sessions || []), ...cancelledDates])].sort();
     await finalizePastStudentAttendance(db, user, id, sessions);
     // Attach attendance count per session
     const att = await db.collection('attendance').find({ program_id: id, organization_id: user.organization_id }).toArray();
@@ -856,7 +858,9 @@ async function router(req, method) {
     att.forEach(a => { if (!byDate[a.date]) byDate[a.date] = { total: 0, present: 0 }; byDate[a.date].total++; if (a.status === 'present' || a.status === 'late') byDate[a.date].present++; });
     const enriched = sessions.map(d => ({
       date: d, day_name: new Date(d + 'T00:00:00').toLocaleDateString('en', { weekday: 'long' }),
-      marked: !!byDate[d], present: byDate[d]?.present || 0, total: byDate[d]?.total || 0,
+      cancelled: cancelledDates.has(d),
+      cancellation_reason: prog.cancellation_reasons?.[d] || '',
+      marked: !cancelledDates.has(d) && !!byDate[d], present: byDate[d]?.present || 0, total: byDate[d]?.total || 0,
       is_past: new Date(d) < new Date().setHours(0, 0, 0, 0),
       is_today: d === new Date().toISOString().slice(0, 10),
     }));
@@ -1296,8 +1300,10 @@ async function router(req, method) {
     if (!prog) return json({ error: 'Not found' }, 404);
     const cancelled = new Set(prog.cancelled_dates || []);
     const postponed = { ...(prog.postponed_dates || {}) };
+    const cancellationReasons = { ...(prog.cancellation_reasons || {}) };
 
     if (!/^\d{4}-\d{2}-\d{2}$/.test(body.date || '')) return json({ error: 'A valid session date is required' }, 422);
+    if (body.action === 'cancel' && !String(body.reason || '').trim()) return json({ error: 'A cancellation reason is required' }, 422);
     if (body.action === 'postpone') {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(body.new_date || '')) return json({ error: 'A valid new session date is required' }, 422);
       if (body.date === body.new_date) return json({ error: 'Choose a different date for postponement' }, 422);
@@ -1305,13 +1311,15 @@ async function router(req, method) {
       cancelled.delete(body.date);
     } else if (body.action === 'restore') {
       cancelled.delete(body.date);
+      delete cancellationReasons[body.date];
       delete postponed[body.date];
     } else {
       cancelled.add(body.date);
+      cancellationReasons[body.date] = String(body.reason).trim();
       delete postponed[body.date];
     }
 
-    const updated = { cancelled_dates: [...cancelled], postponed_dates: postponed };
+    const updated = { cancelled_dates: [...cancelled], cancellation_reasons: cancellationReasons, postponed_dates: postponed };
     updated.sessions = generateSessions({ ...prog, ...updated });
     await db.collection('programs').updateOne({ id }, { $set: updated });
     return json({ ok: true, cancelled_dates: updated.cancelled_dates, postponed_dates: updated.postponed_dates });
