@@ -2742,7 +2742,7 @@ function Reports() {
     fees: ['student_name', 'program_name', 'batch_name', 'amount_minor', 'amount_paid_minor', 'pending_amount_minor', 'payment_date', 'payment_mode', 'collected_by', 'status'],
   }[tab];
 
-  const reportLabel = { student_name: 'Student', program_name: 'Program', batch_name: 'Batch', amount_minor: 'Amount', amount_paid_minor: 'Amount Paid', pending_amount_minor: 'Pending Amount', payment_date: 'Payment Date', payment_mode: 'Payment Mode', collected_by: 'Collected By', status: 'Payment Status' };
+  const reportLabel = { student_name: 'Student', program_name: 'Program', batch_name: 'Batch', amount_minor: 'Amount', amount_paid_minor: 'Amount Paid', pending_amount_minor: 'Pending Amount', payment_date: 'Payment Date', payment_mode: 'Payment Mode', collected_by: 'Collected By', status: 'Status' };
   const displayReportValue = (column, row) => {
     if (column === 'amount_minor' || column === 'amount_paid_minor' || column === 'pending_amount_minor') return fmtINR(Number(row[column] || 0) / 100);
     if (column === 'payment_date' && row[column]) return String(row[column]).slice(0, 10);
@@ -2842,7 +2842,7 @@ function Reports() {
                 rows.length === 0 ? <EmptyState text="No data in this report" /> : (
                   <div className="overflow-x-auto">
                     <Table>
-                      <TableHeader><TableRow>{columns.map(c => <TableHead key={c} className="whitespace-nowrap">{reportLabel[c] || c.replace(/_/g, ' ')}</TableHead>)}</TableRow></TableHeader>
+                      <TableHeader><TableRow>{columns.map(c => <TableHead key={c} className="whitespace-nowrap">{tab === 'attendance' && c === 'status' ? 'Attendance Status' : (reportLabel[c] || c.replace(/_/g, ' '))}</TableHead>)}</TableRow></TableHeader>
                       <TableBody>
                         {rows.slice(0, 200).map((r, i) => (
                           <TableRow key={i}>
@@ -2865,12 +2865,10 @@ function Reports() {
 function AttendanceStatusSummary({ summary = {} }) {
   const cards = [
     ['Present', summary.present],
-    ['Late', summary.late],
     ['Absent', summary.absent],
-    ['Excused', summary.excused],
     ['Total', summary.total],
   ];
-  return <div className="grid grid-cols-2 md:grid-cols-5 gap-3 p-4 border-b border-border/50">
+  return <div className="grid grid-cols-2 md:grid-cols-3 gap-3 p-4 border-b border-border/50">
     {cards.map(([label, value]) => <div key={label} className="rounded-xl bg-background/40 p-3">
       <div className="text-2xl font-bold"><Counter value={Number(value || 0)} /></div>
       <div className="text-xs text-muted-foreground">{label}</div>
