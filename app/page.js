@@ -1129,6 +1129,8 @@ function Students({ students, setStudents }) {
   const [editing, setEditing] = useState(null);
   const [cardOf, setCardOf] = useState(null);
   const [historyOf, setHistoryOf] = useState(null);
+  const [creditPurchaseFor, setCreditPurchaseFor] = useState(null);
+  const [purchaseForm, setPurchaseForm] = useState({ credit_quantity: '', fee_amount: '', payment_mode: 'cash' });
   const [org, setOrg] = useState(null);
   const [q, setQ] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -1156,7 +1158,7 @@ function Students({ students, setStudents }) {
   const openEdit = (s) => {
     const selectedIds = s.program_ids && s.program_ids.length ? s.program_ids : (s.program_id ? [s.program_id] : []);
     const details = Object.fromEntries(enrollments.filter(e => e.student_id === s.id).map(e => [e.program_id, {
-      fee_amount: e.amount || '', amount_paid: e.paid_amount || '', credit_quantity: e.sessions_credited || '', payment_mode: e.payment_mode || 'cash',
+      fee_amount: e.amount || e.program?.fee_amount || '', amount_paid: e.paid_amount || '', credit_quantity: e.sessions_credited || '', payment_mode: e.payment_mode || 'cash',
     }]));
     setEditing(s); setBatchDetails(details); setForm({ ...empty, ...s, program_ids: selectedIds }); setOpen(true);
   };
@@ -1174,8 +1176,13 @@ function Students({ students, setStudents }) {
       const isNew = !editing;
       const selectedIds = form.program_ids || [];
       if (isNew) {
-        const missing = selectedIds.find(id => !batchDetails[id]?.credit_quantity || batchDetails[id]?.fee_amount === '');
-        if (missing) return toast.error('Enter the fee and credits for every selected batch');
+        const missing = selectedIds.find(id => {
+          const batch = batches.find(item => item.id === id);
+          const detail = batchDetails[id] || {};
+          const isCredit = (batch?.billing_model || 'credit') === 'credit';
+          return detail.fee_amount === '' || (isCredit && !detail.credit_quantity);
+        });
+        if (missing) return toast.error('Enter the fee for every batch and credits for each Credit model batch');
         const invalidPayment = selectedIds.find(id => Number(batchDetails[id]?.amount_paid || 0) > 0 && !batchDetails[id]?.payment_mode);
         if (invalidPayment) return toast.error('Choose a payment mode for each payment');
       }
@@ -1235,11 +1242,30 @@ function Students({ students, setStudents }) {
     doc.save(`idcard-${cardOf.student_id}.pdf`);
   };
 
-  const creditsFor = (studentId) => enrollments.filter(e => e.student_id === studentId).reduce((total, e) => {
+  const creditEnrollments = (studentId) => enrollments.filter(e => e.student_id === studentId && (e.program?.billing_model || 'credit') === 'credit');
+  const creditsFor = (studentId) => creditEnrollments(studentId).reduce((total, e) => {
       const given = Number(e.sessions_credited || 0);
       const used = Number(e.sessions_attended || 0);
       return { given: total.given + given, used: total.used + used, remaining: total.remaining + Math.max(0, Number(e.sessions_remaining ?? (given - used))) };
     }, { given: 0, used: 0, remaining: 0 });
+  const openCreditPurchase = (student) => {
+    const enrollment = creditEnrollments(student.id)[0];
+    if (!enrollment) return toast.error('This student is not enrolled in a Credit model batch');
+    setCreditPurchaseFor({ student, enrollment });
+    setPurchaseForm({ credit_quantity: '', fee_amount: '', payment_mode: 'cash' });
+  };
+  const purchaseCredits = async () => {
+    if (!creditPurchaseFor) return;
+    const quantity = Number(purchaseForm.credit_quantity);
+    const amount = Number(purchaseForm.fee_amount);
+    if (!Number.isInteger(quantity) || quantity <= 0) return toast.error('Enter a whole number of credits');
+    if (!Number.isFinite(amount) || amount < 0) return toast.error('Enter a valid amount');
+    try {
+      await api('/enrollments/credits', { method: 'POST', body: JSON.stringify({ enrollment_id: creditPurchaseFor.enrollment.id, credit_quantity: quantity, fee_amount: amount, payment_mode: purchaseForm.payment_mode }) });
+      toast.success(`${quantity} credits added for ${creditPurchaseFor.student.first_name}`);
+      setCreditPurchaseFor(null); loadEnrollments();
+    } catch (e) { toast.error(e.message); }
+  };
 
     const counts = useMemo(() => {
     return {
@@ -1306,12 +1332,13 @@ function Students({ students, setStudents }) {
               </div>
               <div className="text-[11px] text-muted-foreground mt-3 space-y-0.5">
                 {s.mobile && <div className="flex items-center gap-1.5"><Phone size={11} /> {s.mobile}</div>}
-                {(() => { const credits = creditsFor(s.id); return <div className="text-[10px] text-primary truncate" title={`${credits.given} granted · ${credits.used} used · ${credits.remaining} left`}>{credits.given} granted · {credits.used} used · {credits.remaining} left</div>; })()}
+                {(() => { const credits = creditsFor(s.id); const hasCredits = creditEnrollments(s.id).length > 0; return hasCredits ? <div className="text-[10px] text-primary truncate" title={`${credits.given} granted · ${credits.used} used · ${credits.remaining} left`}>{credits.given} granted · {credits.used} used · {credits.remaining} left</div> : <div className="text-[10px] text-muted-foreground">Date-based attendance</div>; })()}
               </div>
               <div className="flex flex-wrap gap-1 mt-3 pt-3 border-t">
                 <Button size="sm" variant="ghost" className="min-w-0 flex-1 text-xs h-8" onClick={() => setHistoryOf(s)}><Activity size={13} className="mr-1" /> History</Button>
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => setCardOf(s)}><IdCard size={13} className="mr-1" /> ID Card</Button>
                 <Button size="sm" variant="ghost" className="flex-1 text-xs h-8" onClick={() => openEdit(s)}><Edit3 size={13} className="mr-1" /> Edit</Button>
+                {creditEnrollments(s.id).length > 0 && <Button size="sm" variant="ghost" className="flex-1 text-xs h-8 text-primary" onClick={() => openCreditPurchase(s)}><Plus size={13} className="mr-1" /> Credits</Button>}
                 <Button size="icon" variant="ghost" className="h-8 w-8" onClick={() => del(s)}><Trash2 size={13} /></Button>
               </div>
             </motion.div>
@@ -1389,10 +1416,10 @@ function Students({ students, setStudents }) {
                     const batch = batches.find(p => p.id === id); const detail = batchDetails[id] || {};
                     if (!batch) return null;
                     return <div key={id} className="rounded-xl border bg-white/40 dark:bg-white/5 p-3 space-y-2">
-                      <div className="text-xs font-semibold">{programs.find(p => p.id === batch.parent_program_id)?.name} · {batch.name}</div>
+                      <div className="text-xs font-semibold">{programs.find(p => p.id === batch.parent_program_id)?.name} · {batch.name} <span className="text-[10px] text-muted-foreground">({batch.billing_model === 'date' ? 'Date model' : 'Credit model'})</span></div>
                       <div className="grid grid-cols-2 gap-2">
-                        <div><Label className="text-[10px]">Fee amount</Label><Input type="number" min="0" value={detail.fee_amount || ''} onChange={e => updateBatchDetail(id, { fee_amount: e.target.value })} placeholder="0" /></div>
-                        <div><Label className="text-[10px]">Credits granted</Label><Input type="number" min="0" value={detail.credit_quantity || ''} onChange={e => updateBatchDetail(id, { credit_quantity: e.target.value })} placeholder="e.g. 16" /></div>
+                        <div><Label className="text-[10px]">Fee amount</Label><Input type="number" min="0" value={detail.fee_amount ?? batch.fee_amount ?? ''} onChange={e => updateBatchDetail(id, { fee_amount: e.target.value })} placeholder="0" /></div>
+                        {batch.billing_model !== 'date' && <div><Label className="text-[10px]">Credits granted</Label><Input type="number" min="0" value={detail.credit_quantity || ''} onChange={e => updateBatchDetail(id, { credit_quantity: e.target.value })} placeholder="e.g. 16" /></div>}
                         <div><Label className="text-[10px]">Amount paid now</Label><Input type="number" min="0" value={detail.amount_paid || ''} onChange={e => updateBatchDetail(id, { amount_paid: e.target.value })} placeholder="0" /></div>
                         <div><Label className="text-[10px]">Payment mode</Label><Select value={detail.payment_mode || 'cash'} onValueChange={v => updateBatchDetail(id, { payment_mode: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="bank_transfer">Bank transfer</SelectItem><SelectItem value="card">Card</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div>
                       </div>
@@ -1410,6 +1437,19 @@ function Students({ students, setStudents }) {
             </TabsContent>
           </Tabs>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient">{editing ? 'Update' : 'Create'}</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!creditPurchaseFor} onOpenChange={v => !v && setCreditPurchaseFor(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader><DialogTitle>Purchase more credits</DialogTitle><DialogDescription>Add credits and record the payment for {creditPurchaseFor?.student.first_name} {creditPurchaseFor?.student.last_name}.</DialogDescription></DialogHeader>
+          <div className="space-y-3">
+            <div className="rounded-xl bg-primary/5 border p-3 text-sm">Current balance: <b>{creditPurchaseFor ? creditsFor(creditPurchaseFor.student.id).remaining : 0} credits left</b></div>
+            <div><Label>Credits to add</Label><Input type="number" min="1" step="1" value={purchaseForm.credit_quantity} onChange={e => setPurchaseForm({ ...purchaseForm, credit_quantity: e.target.value })} placeholder="e.g. 8" /></div>
+            <div><Label>Amount received</Label><Input type="number" min="0" value={purchaseForm.fee_amount} onChange={e => setPurchaseForm({ ...purchaseForm, fee_amount: e.target.value })} placeholder="e.g. 800" /></div>
+            <div><Label>Payment mode</Label><Select value={purchaseForm.payment_mode} onValueChange={v => setPurchaseForm({ ...purchaseForm, payment_mode: v })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="upi">UPI</SelectItem><SelectItem value="bank_transfer">Bank transfer</SelectItem><SelectItem value="card">Card</SelectItem><SelectItem value="other">Other</SelectItem></SelectContent></Select></div>
+          </div>
+          <DialogFooter><Button variant="outline" onClick={() => setCreditPurchaseFor(null)}>Cancel</Button><Button onClick={purchaseCredits} className="bg-saffron-gradient">Add credits</Button></DialogFooter>
         </DialogContent>
       </Dialog>
 
