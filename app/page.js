@@ -1714,6 +1714,18 @@ function localDateKey(date = new Date()) {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, '0'), String(date.getDate()).padStart(2, '0')].join('-');
 }
 
+function countScheduledSessions(startDate, endDate, daysOfWeek = []) {
+  if (!startDate || !endDate || !daysOfWeek.length || endDate < startDate) return 0;
+  const start = new Date(startDate + 'T00:00:00');
+  const end = new Date(endDate + 'T00:00:00');
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0;
+  let count = 0;
+  for (const cursor = new Date(start); cursor <= end; cursor.setDate(cursor.getDate() + 1)) {
+    if (daysOfWeek.includes(cursor.getDay())) count += 1;
+  }
+  return count;
+}
+
 function getScheduledSessionDates(batch) {
   if (Array.isArray(batch.sessions) && batch.sessions.length) {
     return [...new Set(batch.sessions)].sort();
@@ -1873,7 +1885,7 @@ function Classes() {
               {parentProgram && parentProgram.billing_model === 'date' && <div className="col-span-2"><Label>Fee for this batch</Label><Input type="number" min="0" value={form.fee_amount} onChange={e => setForm({ ...form, fee_amount: e.target.value })} placeholder="0" /></div>}
               <div><Label>Start date</Label><Input type="date" value={form.start_date} onChange={e => setForm({ ...form, start_date: e.target.value })} /></div>
               <div><Label>End date</Label><Input type="date" value={form.end_date} onChange={e => setForm({ ...form, end_date: e.target.value })} /></div>
-              <div className="col-span-2"><Label>Session days *</Label><DaysPicker value={form.days_of_week} onChange={v => setForm({ ...form, days_of_week: v })} /><div className="text-[10px] text-muted-foreground mt-1.5">{form.days_of_week.length ? `Runs ${form.days_of_week.map(d => DAY_FULL[d]).join(', ')}` : 'Select at least one day'}</div></div>
+              <div className="col-span-2"><Label>Session days *</Label><DaysPicker value={form.days_of_week} onChange={v => setForm({ ...form, days_of_week: v })} /><div className="text-[10px] text-muted-foreground mt-1.5">{form.days_of_week.length ? `Runs ${form.days_of_week.map(d => DAY_FULL[d]).join(', ')}` : 'Select at least one day'}</div><div className="mt-2 rounded-lg bg-primary/5 border border-primary/15 px-3 py-2 text-xs font-medium text-primary">{(() => { const count = countScheduledSessions(form.start_date, form.end_date, form.days_of_week); return count ? `${count} session${count === 1 ? '' : 's'} will be scheduled` : 'Choose a valid date range and at least one session day to see the session count'; })()}</div></div>
             </>}
           </div>
           <DialogFooter><Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button><Button onClick={save} className="bg-saffron-gradient" disabled={!!parentProgram && form.days_of_week.length === 0}>{editing ? 'Update' : `Create ${parentProgram ? 'Batch' : 'Program'}`}</Button></DialogFooter>
