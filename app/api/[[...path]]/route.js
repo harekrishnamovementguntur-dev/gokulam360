@@ -3,6 +3,7 @@ import { MongoClient } from 'mongodb';
 import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import twilio from 'twilio';
 
 const MONGO_URL = process.env.MONGO_URL;
@@ -77,6 +78,51 @@ function verifyToken(req) {
   } catch (e) {
     return null;
   }
+}
+
+
+function normalizeAccountEmail(value) {
+  return String(value || '').trim().toLowerCase();
+}
+function hashAccountOtp(code) {
+  return crypto.createHash('sha256').update(`${JWT_SECRET}:${code}`).digest('hex');
+}
+async function sendAccountOtp(email, code, purpose) {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.AUTH_EMAIL_FROM || process.env.RESEND_FROM_EMAIL;
+  if (!apiKey || !from) return false;
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      from, to: [email],
+      subject: purpose === 'forgot_password' ? 'Reset your Gokulam360 password' : 'Verify your Gokulam360 password change',
+      text: `Your Gokulam360 verification code is ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`
+    })
+  });
+  return response.ok;
+}
+async function issueAccountOtp(db, { email, userId, purpose, organizationId }) {
+  const now = Date.now();
+  const recent = await db.collection('account_otps').countDocuments({ email, purpose, created_at: { $gt: new Date(now - 60 * 1000) } });
+  if (recent) return { error: 'Please wait before requesting another code' };
+  const hourly = await db.collection('account_otps').countDocuments({ email, purpose, created_at: { $gt: new Date(now - 60 * 60 * 1000) } });
+  if (hourly >= 5) return { error: 'Too many verification attempts. Try again later' };
+  const code = String(crypto.randomInt(100000, 1000000));
+  if (!await sendAccountOtp(email, code, purpose)) return { error: 'Email delivery is not configured' };
+  await db.collection('account_otps').insertOne({ id: uuidv4(), email, user_id: userId, organization_id: organizationId || null, purpose, otp_hash: hashAccountOtp(code), expires_at: new Date(now + 10 * 60 * 1000), attempts: 0, used: false, created_at: new Date(now) });
+  return { ok: true };
+}
+async function consumeAccountOtp(db, { email, purpose, code }) {
+  const otp = await db.collection('account_otps').findOne({ email, purpose, used: false }, { sort: { created_at: -1 } });
+  if (!otp || otp.expires_at < new Date() || Number(otp.attempts || 0) >= 5) return false;
+  await db.collection('account_otps').updateOne({ id: otp.id }, { $inc: { attempts: 1 } });
+  if (hashAccountOtp(code) !== otp.otp_hash) return false;
+  await db.collection('account_otps').updateOne({ id: otp.id }, { $set: { used: true, used_at: new Date() } });
+  return true;
+}
+async function recordAccountAudit(db, user, action, metadata = {}) {
+  await db.collection('audit_logs').insertOne({ id: uuidv4(), organization_id: user.organization_id || null, actor_id: user.id, actor_email: user.email, action, metadata, created_at: new Date().toISOString() });
 }
 
 async function requireAuth(req, roles = null) {
@@ -568,7 +614,7 @@ async function handleSeed() {
 async function router(req, method) {
   const url = new URL(req.url);
   const parts = url.pathname.replace(/^\/api\/?/, '').split('/').filter(Boolean);
-  const [resource, id, sub] = parts;
+  const [resource, id, sub, action] = parts;
   const db = await getDb();
 
   // ---- public ----
@@ -651,6 +697,51 @@ async function router(req, method) {
       const u = authRes.user;
       const org = u.organization_id ? await db.collection('organizations').findOne({ id: u.organization_id }) : null;
       return json({ user: u, organization: org ? stripId(org) : null });
+    }
+    if (id === 'password' && sub === 'forgot' && action === 'request' && method === 'POST') {
+      const body = await req.json();
+      const email = normalizeAccountEmail(body.email);
+      const account = await db.collection('users').findOne({ email });
+      if (account) await issueAccountOtp(db, { email, userId: account.id, purpose: 'forgot_password', organizationId: account.organization_id });
+      return json({ message: 'If an account exists for that email, a verification code has been sent.' });
+    }
+    if (id === 'password' && sub === 'forgot' && action === 'confirm' && method === 'POST') {
+      const body = await req.json();
+      const email = normalizeAccountEmail(body.email);
+      if (!body.new_password || String(body.new_password).length < 8 || !await consumeAccountOtp(db, { email, purpose: 'forgot_password', code: body.otp })) return json({ error: 'Invalid or expired verification code' }, 422);
+      const account = await db.collection('users').findOne({ email });
+      if (!account) return json({ error: 'Invalid or expired verification code' }, 422);
+      await db.collection('users').updateOne({ id: account.id }, { $set: { password_hash: await bcrypt.hash(body.new_password, 10), password_updated_at: new Date().toISOString() } });
+      await recordAccountAudit(db, { ...account, email }, 'password_reset');
+      return json({ ok: true });
+    }
+    if (id === 'password' && sub === 'change' && action === 'request' && method === 'POST') {
+      const authRes = await requireAuth(req);
+      if (authRes.error) return authRes.error;
+      const account = await db.collection('users').findOne({ id: authRes.user.id });
+      const result = await issueAccountOtp(db, { email: account.email, userId: account.id, purpose: 'change_password', organizationId: account.organization_id });
+      return result.error ? json({ error: result.error }, 422) : json({ ok: true });
+    }
+    if (id === 'password' && sub === 'change' && action === 'confirm' && method === 'POST') {
+      const authRes = await requireAuth(req);
+      if (authRes.error) return authRes.error;
+      const body = await req.json();
+      const account = await db.collection('users').findOne({ id: authRes.user.id });
+      if (!body.new_password || String(body.new_password).length < 8 || !await consumeAccountOtp(db, { email: account.email, purpose: 'change_password', code: body.otp })) return json({ error: 'Invalid or expired verification code' }, 422);
+      await db.collection('users').updateOne({ id: account.id }, { $set: { password_hash: await bcrypt.hash(body.new_password, 10), password_updated_at: new Date().toISOString() } });
+      await recordAccountAudit(db, authRes.user, 'password_changed');
+      return json({ ok: true });
+    }
+    if (id === 'me' && method === 'PUT') {
+      const authRes = await requireAuth(req);
+      if (authRes.error) return authRes.error;
+      const body = await req.json();
+      const name = String(body.name || '').trim();
+      const phone = String(body.phone || '').trim();
+      if (!name) return json({ error: 'Name is required' }, 422);
+      await db.collection('users').updateOne({ id: authRes.user.id }, { $set: { name, phone, updated_at: new Date().toISOString() } });
+      await recordAccountAudit(db, authRes.user, 'account_updated', { fields: ['name', 'phone'] });
+      return json({ ok: true, user: { ...authRes.user, name, phone } });
     }
   }
 
