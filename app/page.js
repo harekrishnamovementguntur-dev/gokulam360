@@ -253,6 +253,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
   const [view, setView] = useState('dashboard');
   const [cmdOpen, setCmdOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const [students, setStudents] = useState([]);
   const [teachers, setTeachers] = useState([]);
 
@@ -335,7 +336,7 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
                 <div className="text-sm font-semibold truncate">{user.name}</div>
                 <div className="text-[10px] text-muted-foreground truncate capitalize">{user.role.replace('_', ' ')}</div>
               </div>
-              <button onClick={onLogout} className="p-1.5 rounded-lg hover:bg-white/40 text-muted-foreground hover:text-foreground transition" title="Logout"><LogOut size={14} /></button>
+
             </div>
           </div>
         </div>
@@ -360,10 +361,16 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
               <Search size={14} /> <span>Search…</span>
               <kbd className="ml-6 text-[10px] px-1.5 py-0.5 rounded bg-muted border font-mono">⌘K</kbd>
             </button>
-            <button aria-label="Manage account" onClick={() => setAccountOpen(true)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/60 border transition">
-              <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground grid place-items-center text-sm font-semibold">{initials(user.name)}</div>
-              <span className="hidden lg:block text-sm font-medium max-w-28 truncate">{user.name}</span>
-            </button>
+            <div className="relative">
+              <button aria-label="Open profile menu" onClick={() => setProfileMenuOpen(v => !v)} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/60 border transition">
+                <div className="w-8 h-8 rounded-full bg-primary text-primary-foreground grid place-items-center text-sm font-semibold">{initials(user.name)}</div>
+                <span className="hidden lg:block text-sm font-medium max-w-28 truncate">{user.name}</span>
+              </button>
+              {profileMenuOpen && <div className="absolute right-0 top-11 z-30 w-48 rounded-xl border bg-background p-1.5 shadow-xl">
+                <button className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-muted" onClick={() => { setProfileMenuOpen(false); setAccountOpen(true); }}>Manage account</button>
+                <button className="w-full rounded-lg px-3 py-2 text-left text-sm text-destructive hover:bg-muted" onClick={() => { setProfileMenuOpen(false); onLogout(); }}><LogOut size={14} className="mr-2 inline" />Log out</button>
+              </div>}
+            </div>
             <Button size="icon" variant="ghost" className="rounded-lg" onClick={() => setDark(!dark)}>
               {dark ? <Sun size={16} /> : <Moon size={16} />}
             </Button>
