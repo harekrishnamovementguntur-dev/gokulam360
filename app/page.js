@@ -118,6 +118,7 @@ function Login({ onLoggedIn }) {
 function Workspace({ user, organization, onLogout }) {
   const [setupOpen, setSetupOpen] = useState(false);
   const [message, setMessage] = useState('');
+  const [passwordOpen, setPasswordOpen] = useState(false);
 
   const isSuperAdmin = user.role === 'super_admin';
 
@@ -132,7 +133,7 @@ function Workspace({ user, organization, onLogout }) {
           <div className="flex items-center gap-3">
             <div className="grid h-9 w-9 place-items-center rounded-full bg-violet-100 text-sm font-bold text-violet-700">{initials(user.name)}</div>
             <div className="hidden text-right sm:block"><p className="text-sm font-semibold">{user.name}</p><p className="text-xs capitalize text-slate-500">{user.role.replace('_', ' ')}</p></div>
-            <button onClick={onLogout} className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-50">Sign out</button>
+            <button onClick={() => setPasswordOpen(true)} className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-50">Account</button><button onClick={onLogout} className="rounded-lg border px-3 py-2 text-sm hover:bg-slate-50">Sign out</button>
           </div>
         </div>
       </header>
@@ -157,9 +158,40 @@ function Workspace({ user, organization, onLogout }) {
           </>
         )}
         {message && <p className="mt-4 rounded-xl bg-emerald-50 p-4 text-sm text-emerald-700">{message}</p>}
+        {passwordOpen && <ChangePasswordPanel onClose={() => setPasswordOpen(false)} />}
       </div>
     </main>
   );
+}
+
+function ChangePasswordPanel({ onClose }) {
+  const [mobile, setMobile] = useState('');
+  const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [step, setStep] = useState('mobile');
+  const [developmentOtp, setDevelopmentOtp] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const sendOtp = async (event) => {
+    event.preventDefault(); setBusy(true); setError('');
+    try {
+      const result = await request('auth/password/request-otp', { method: 'POST', body: JSON.stringify({ mobile }) });
+      setDevelopmentOtp(result.development_otp || ''); setStep('password');
+    } catch (requestError) { setError(requestError.message); }
+    finally { setBusy(false); }
+  };
+  const save = async (event) => {
+    event.preventDefault(); setError('');
+    if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return; }
+    setBusy(true);
+    try { await request('auth/password/change', { method: 'POST', body: JSON.stringify({ otp, new_password: newPassword }) }); onClose(); }
+    catch (requestError) { setError(requestError.message); }
+    finally { setBusy(false); }
+  };
+
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4 backdrop-blur-sm"><section className="w-full max-w-md rounded-3xl bg-white p-6 text-slate-900 shadow-2xl"><div className="flex items-start justify-between gap-4"><div><p className="text-sm font-semibold uppercase tracking-widest text-[#285f87]">Account security</p><h2 className="mt-2 text-2xl font-bold">Change password</h2></div><button onClick={onClose} className="text-slate-500">Close</button></div>{step === 'mobile' ? <form onSubmit={sendOtp} className="mt-6 space-y-4"><p className="text-sm text-slate-500">We will send a one-time code to the mobile number registered on your account.</p><label className="block text-sm font-medium">Registered mobile<input className="mt-2 w-full rounded-xl border px-3 py-3" type="tel" value={mobile} onChange={(event) => setMobile(event.target.value)} required /></label>{error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}<button disabled={busy} className="w-full rounded-xl bg-[#285f87] px-4 py-3 font-semibold text-white disabled:opacity-50">{busy ? 'Sending…' : 'Send OTP'}</button></form> : <form onSubmit={save} className="mt-6 space-y-4">{developmentOtp && <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">Development OTP: <strong>{developmentOtp}</strong></p>}<label className="block text-sm font-medium">6-digit OTP<input className="mt-2 w-full rounded-xl border px-3 py-3" inputMode="numeric" maxLength="6" value={otp} onChange={(event) => setOtp(event.target.value.replace(/\D/g, '').slice(0, 6))} required /></label><label className="block text-sm font-medium">New password<input className="mt-2 w-full rounded-xl border px-3 py-3" type="password" minLength="8" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} required /></label><label className="block text-sm font-medium">Confirm password<input className="mt-2 w-full rounded-xl border px-3 py-3" type="password" minLength="8" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required /></label>{error && <p role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}<div className="flex gap-2"><button type="button" onClick={() => setStep('mobile')} className="flex-1 rounded-xl border px-4 py-3">Back</button><button disabled={busy} className="flex-1 rounded-xl bg-[#7650a9] px-4 py-3 font-semibold text-white disabled:opacity-50">{busy ? 'Saving…' : 'Change password'}</button></div></form>}</section></div>;
 }
 
 function ModuleCard({ title, description, status }) {
