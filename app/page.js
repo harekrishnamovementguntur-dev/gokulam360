@@ -133,18 +133,19 @@ function PasswordField({ label, value, onChange, minLength = 8 }) {
 
 function AccountDialog({ user, open, onOpenChange, onUpdated }) {
   const [name, setName] = useState(user.name || '');
+  const [email, setEmail] = useState(user.email || '');
   const [phone, setPhone] = useState(user.phone || '');
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [step, setStep] = useState('details');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (open) { setName(user.name || ''); setPhone(user.phone || ''); setStep('details'); setOtp(''); setNewPassword(''); setConfirmPassword(''); } }, [open, user]);
-  const saveDetails = async () => { setBusy(true); try { const r=await api('/auth/me',{method:'PUT',body:JSON.stringify({name,phone})}); onUpdated(r.user); toast.success('Account details updated'); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
+  useEffect(() => { if (open) { setName(user.name || ''); setEmail(user.email || ''); setPhone(user.phone || ''); setStep('details'); setOtp(''); setNewPassword(''); setConfirmPassword(''); } }, [open, user]);
+  const saveDetails = async () => { setBusy(true); try { const r=await api('/auth/me',{method:'PUT',body:JSON.stringify({name,email,phone})}); onUpdated(r.user); toast.success('Account details updated'); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
   const requestOtp = async () => { setBusy(true); try { await api('/auth/password/change/request',{method:'POST'}); setStep('password'); toast.success('Verification code sent to your email'); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
   const changePassword = async () => { if (newPassword.length < 8) return toast.error('Password must be at least 8 characters'); if (newPassword !== confirmPassword) return toast.error('Passwords do not match'); setBusy(true); try { await api('/auth/password/change/confirm',{method:'POST',body:JSON.stringify({otp,new_password:newPassword})}); toast.success('Password changed'); setStep('details'); setOtp(''); setNewPassword(''); setConfirmPassword(''); } catch(e){toast.error(e.message)} finally{setBusy(false)} };
   return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="max-w-md"><DialogHeader><DialogTitle>Manage account</DialogTitle><DialogDescription>Update your profile and secure your account.</DialogDescription></DialogHeader>
-    {step === 'details' ? <div className="space-y-4"><div><Label>Name</Label><Input value={name} onChange={e=>setName(e.target.value)} /></div><div><Label>Email</Label><Input value={user.email} disabled /></div><div><Label>Phone</Label><Input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Optional phone number" /></div><div className="text-sm text-muted-foreground">Role: {user.role.replaceAll('_',' ')}</div><div className="flex justify-between gap-2"><Button variant="outline" onClick={requestOtp} disabled={busy}>Change password</Button><Button onClick={saveDetails} disabled={busy}>Save details</Button></div></div>
+    {step === 'details' ? <div className="space-y-4"><div><Label>Name</Label><Input value={name} onChange={e=>setName(e.target.value)} /></div><div><Label>Email</Label><Input type="email" value={email} onChange={e=>setEmail(e.target.value)} /></div><div><Label>Phone</Label><Input value={phone} onChange={e=>setPhone(e.target.value)} placeholder="Optional phone number" /></div><div className="text-sm text-muted-foreground">Role: {user.role.replaceAll('_',' ')}</div><div className="flex justify-between gap-2"><Button variant="outline" onClick={requestOtp} disabled={busy}>Change password</Button><Button onClick={saveDetails} disabled={busy}>Save details</Button></div></div>
     : <div className="space-y-4"><p className="text-sm text-muted-foreground">Enter the code sent to {user.email}, then choose a new password.</p><div><Label>Email OTP</Label><Input value={otp} onChange={e=>setOtp(e.target.value)} inputMode="numeric" maxLength={6} /></div><PasswordField label="New password" value={newPassword} onChange={e=>setNewPassword(e.target.value)} /><PasswordField label="Confirm new password" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} /><div className="flex justify-between gap-2"><Button variant="outline" onClick={()=>setStep('details')}>Back</Button><Button onClick={changePassword} disabled={busy}>Set new password</Button></div></div>}
   </DialogContent></Dialog>;
 }
@@ -277,7 +278,7 @@ function Login({ onLoggedIn }) {
    SHELL
 ============================================================ */
 function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
-  const [view, setView] = useState('dashboard');
+  const [view, setView] = useState(user.role === 'super_admin' ? 'organizations' : 'dashboard');
   const [cmdOpen, setCmdOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
@@ -307,18 +308,18 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
 
   const nav = useMemo(() => {
     const items = [
-      { key: 'dashboard', label: 'Dashboard', icon: BarChart3, roles: ['super_admin', 'org_admin', 'teacher'] },
-      { key: 'ask-ai', label: 'Ask AI', icon: Bot, roles: ['super_admin', 'org_admin', 'teacher'] },
+      { key: 'dashboard', label: 'Dashboard', icon: BarChart3, roles: ['org_admin', 'teacher'] },
+      { key: 'ask-ai', label: 'Ask AI', icon: Bot, roles: ['org_admin', 'teacher'] },
       { key: 'organizations', label: 'Organizations', icon: Building2, roles: ['super_admin'] },
-      { key: 'students', label: 'Students', icon: GraduationCap, roles: ['super_admin', 'org_admin', 'teacher'] },
-      { key: 'teachers', label: 'Faculty', icon: Users, roles: ['super_admin', 'org_admin'] },
-      { key: 'classes', label: 'Programs', icon: School, roles: ['super_admin', 'org_admin', 'teacher'] },
-      { key: 'attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['super_admin', 'org_admin', 'teacher'] },
-      { key: 'fees', label: 'Fees', icon: IndianRupee, roles: ['super_admin', 'org_admin'] },
-      { key: 'notifications', label: 'Notifications', icon: Bell, roles: ['super_admin', 'org_admin'] },
-      { key: 'reports', label: 'Reports', icon: FileText, roles: ['super_admin', 'org_admin'] },
-      { key: 'events', label: 'Events', icon: CalendarIcon, roles: ['super_admin', 'org_admin', 'teacher'] },
-      { key: 'backup', label: 'Backup', icon: Download, roles: ['super_admin', 'org_admin'] },
+      { key: 'students', label: 'Students', icon: GraduationCap, roles: ['org_admin', 'teacher'] },
+      { key: 'teachers', label: 'Faculty', icon: Users, roles: ['org_admin'] },
+      { key: 'classes', label: 'Programs', icon: School, roles: ['org_admin', 'teacher'] },
+      { key: 'attendance', label: 'Attendance', icon: ClipboardCheck, roles: ['org_admin', 'teacher'] },
+      { key: 'fees', label: 'Fees', icon: IndianRupee, roles: ['org_admin'] },
+      { key: 'notifications', label: 'Notifications', icon: Bell, roles: ['org_admin'] },
+      { key: 'reports', label: 'Reports', icon: FileText, roles: ['org_admin'] },
+      { key: 'events', label: 'Events', icon: CalendarIcon, roles: ['org_admin', 'teacher'] },
+      { key: 'backup', label: 'Backup', icon: Download, roles: ['org_admin'] },
     ];
     return items.filter(i => i.roles.includes(user.role));
   }, [user.role]);
