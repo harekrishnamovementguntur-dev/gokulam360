@@ -934,6 +934,13 @@ function Organizations() {
       return a.items || [];
     } catch (e) { toast.error(e.message); return []; }
   };
+  const deleteOrganization = async (org) => {
+    const confirmation = window.prompt(`Permanent deletion removes this empty organization and its platform records. Type "${org.name}" to continue.`);
+    if (confirmation === null) return;
+    if (confirmation !== org.name) { toast.error('Organization name did not match'); return; }
+    try { await api(`/organizations/${org.id}`, { method: 'DELETE', body: JSON.stringify({ confirmation }) }); toast.success('Organization permanently deleted'); load(); }
+    catch (e) { toast.error(e.message); }
+  };
   return (
     <div className="space-y-5">
       <PageHeader title="Organizations" subtitle="Manage tenants, administrators, and platform access" icon={Building2}
@@ -962,6 +969,7 @@ function Organizations() {
                 <Button size="sm" variant="ghost" className="ml-auto" onClick={() => toggleLifecycle(o)}>
                   {o.status === 'archived' ? <><CheckCircle2 size={13} className="mr-1" />Restore</> : <><Trash2 size={13} className="mr-1" />Archive</>}
                 </Button>
+                <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteOrganization(o)}><Trash2 size={13} className="mr-1" />Delete</Button>
               </div>
             </motion.div>
           ))}
