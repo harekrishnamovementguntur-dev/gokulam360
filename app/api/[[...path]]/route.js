@@ -847,11 +847,14 @@ async function router(req, method) {
       if (authRes.error) return authRes.error;
       const body = await req.json();
       const name = String(body.name || '').trim();
+      const email = normalizeAccountEmail(body.email || authRes.user.email);
       const phone = String(body.phone || '').trim();
-      if (!name) return json({ error: 'Name is required' }, 422);
-      await db.collection('users').updateOne({ id: authRes.user.id }, { $set: { name, phone, updated_at: new Date().toISOString() } });
-      await recordAccountAudit(db, authRes.user, 'account_updated', { fields: ['name', 'phone'] });
-      return json({ ok: true, user: { ...authRes.user, name, phone } });
+      if (!name || !email || !email.includes('@')) return json({ error: 'Valid name and email are required' }, 422);
+      const duplicate = await db.collection('users').findOne({ email, id: { $ne: authRes.user.id } });
+      if (duplicate) return json({ error: 'That email is already in use' }, 409);
+      await db.collection('users').updateOne({ id: authRes.user.id }, { $set: { name, email, phone, updated_at: new Date().toISOString() } });
+      await recordAccountAudit(db, { ...authRes.user, email }, 'account_updated', { fields: ['name', 'email', 'phone'] });
+      return json({ ok: true, user: { ...authRes.user, name, email, phone } });
     }
   }
 
@@ -985,11 +988,20 @@ async function router(req, method) {
     }
     if (method === 'DELETE' && id) {
       if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
+      const body = await req.json().catch(() => ({}));
       const current = await db.collection('organizations').findOne({ id });
       if (!current) return json({ error: 'Organization not found' }, 404);
-      await db.collection('organizations').updateOne({ id }, { $set: { is_deleted: true, updated_at: new Date().toISOString() } });
-      await recordPlatformAudit(db, user, 'organization_archived', { organization_id: id, via: 'delete_endpoint' }, id);
-      return json({ ok: true, status: 'archived' });
+      if (String(body.confirmation || '') !== String(current.name || '')) return json({ error: 'Type the exact organization name to permanently delete it' }, 422);
+      const protectedCollections = ['organizations', 'users', 'audit_logs', 'activity'];
+      const collections = (await db.listCollections().toArray()).map(c => c.name).filter(name => !protectedCollections.includes(name) && !name.startsWith('system.'));
+      const counts = await Promise.all(collections.map(async name => ({ name, count: await db.collection(name).countDocuments({ organization_id: id }, { limit: 1 }) })));
+      const occupied = counts.find(c => c.count > 0);
+      if (occupied) return json({ error: 'This organization contains operational data. Archive it instead of permanently deleting it.' }, 409);
+      await db.collection('users').deleteMany({ organization_id: id });
+      await db.collection('audit_logs').deleteMany({ organization_id: id });
+      await db.collection('activity').deleteMany({ organization_id: id });
+      await db.collection('organizations').deleteOne({ id });
+      return json({ ok: true, status: 'deleted' });
     }
   }
 
