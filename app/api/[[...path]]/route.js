@@ -271,8 +271,11 @@ async function answerAskAI(db, user, question) {
   }
   if (q.includes('credit') && (q.includes('less') || q.includes('below') || q.includes('low') || q.includes('3'))) {
     const rows = enrollmentRecords.map(e => {
-      const s = studentMap.get(e.student_id); const granted = Number(e.credits_granted ?? e.total_credits ?? e.credit_quantity ?? 0); const used = Number(e.credits_used ?? 0);
-      return { student: studentDisplayName(s), phone: s?.mobile || s?.phone || '—', program: programMap.get(e.program_id)?.name || e.program_name || '—', granted, used, remaining: Number(e.credits_remaining ?? granted - used) };
+      const s = studentMap.get(e.student_id);
+      const granted = Number(e.credits_granted ?? e.sessions_credited ?? e.total_credits ?? e.credit_quantity ?? 0);
+      const used = Number(e.credits_used ?? e.sessions_attended ?? 0);
+      const remaining = Number(e.credits_remaining ?? e.sessions_remaining ?? Math.max(0, granted - used));
+      return { student: studentDisplayName(s), phone: s?.mobile || s?.phone || '—', program: programMap.get(e.program_id)?.name || e.program_name || '—', granted, used, remaining };
     }).filter(r => r.remaining <= 3 && r.remaining >= 0);
     return answerRows('low_credits', 'Students with 3 or fewer credits', ['student','phone','program','granted','used','remaining'], rows, { students: rows.length }, rows.length ? `${rows.length} student(s) need attention` : 'No students have 3 or fewer credits');
   }
