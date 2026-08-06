@@ -995,14 +995,24 @@ async function router(req, method) {
       const current = await db.collection('organizations').findOne({ id });
       if (!current) return json({ error: 'Organization not found' }, 404);
       if (String(body.confirmation || '') !== String(current.name || '')) return json({ error: 'Type the exact organization name to permanently delete it' }, 422);
-      const protectedCollections = ['organizations', 'users', 'audit_logs', 'activity'];
-      const collections = (await db.listCollections().toArray()).map(c => c.name).filter(name => !protectedCollections.includes(name) && !name.startsWith('system.'));
-      const counts = await Promise.all(collections.map(async name => ({ name, count: await db.collection(name).countDocuments({ organization_id: id }, { limit: 1 }) })));
-      const occupied = counts.find(c => c.count > 0);
-      if (occupied) return json({ error: 'This organization contains operational data. Archive it instead of permanently deleting it.' }, 409);
-      await db.collection('users').deleteMany({ organization_id: id });
-      await db.collection('audit_logs').deleteMany({ organization_id: id });
-      await db.collection('activity').deleteMany({ organization_id: id });
+      const collectionNames = (await db.listCollections({}, { nameOnly: true }).toArray())
+        .map(c => c.name)
+        .filter(name => !name.startsWith('system.'));
+      const relatedIds = new Set([id]);
+      const referenceFields = ['organization_id', 'student_id', 'program_id', 'parent_program_id', 'program_offering_id', 'term_id', 'session_id', 'membership_id', 'participation_id', 'payment_id', 'allocation_id', 'user_id', 'actor_id', 'entity_id', 'source_id'];
+      // First collect every identifier owned by the tenant, then remove records
+      // that reference those identifiers as well as records with organization_id.
+      for (const name of collectionNames) {
+        const owned = await db.collection(name).find({ organization_id: id }).project({ _id: 0 }).toArray();
+        for (const doc of owned) for (const field of referenceFields) if (doc[field]) relatedIds.add(String(doc[field]));
+        for (const doc of owned) if (doc.id) relatedIds.add(String(doc.id));
+      }
+      const idValues = [...relatedIds];
+      for (const name of collectionNames) {
+        if (name === 'organizations') continue;
+        const filter = { $or: referenceFields.map(field => ({ [field]: { $in: idValues } })) };
+        await db.collection(name).deleteMany(filter);
+      }
       await db.collection('organizations').deleteOne({ id });
       return json({ ok: true, status: 'deleted' });
     }
