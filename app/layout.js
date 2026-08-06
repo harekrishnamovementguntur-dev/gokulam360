@@ -8,7 +8,7 @@ export const metadata = {
   manifest: '/manifest.webmanifest',
   applicationName: 'Gokulam360',
   appleWebApp: { capable: true, statusBarStyle: 'default', title: 'Gokulam360' },
-  icons: { icon: '/icon.svg', apple: '/icon.svg' },
+  icons: { icon: '/icon-v2.svg', apple: '/icon-v2.svg' },
 };
 
 export const viewport = {
