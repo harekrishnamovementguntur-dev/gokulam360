@@ -790,11 +790,13 @@ async function router(req, method) {
       const body = await req.json();
       const user = await db.collection('users').findOne({ email: body.email });
       if (!user) return json({ error: 'Invalid credentials' }, 401);
+      if (user.status === 'inactive' || user.is_deleted === true) return json({ error: 'This account is inactive' }, 403);
+      const org = user.organization_id ? await db.collection('organizations').findOne({ id: user.organization_id }) : null;
+      if (user.organization_id && (!org || org.is_deleted === true)) return json({ error: 'This organization is inactive' }, 403);
       const ok = await bcrypt.compare(body.password || '', user.password_hash);
       if (!ok) return json({ error: 'Invalid credentials' }, 401);
-      const org = user.organization_id ? await db.collection('organizations').findOne({ id: user.organization_id }) : null;
-      const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role, organization_id: user.organization_id });
-      return json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, organization_id: user.organization_id }, organization: org ? stripId(org) : null });
+      const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role, organization_id: user.organization_id, force_password_change: user.force_password_change === true });
+      return json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, organization_id: user.organization_id, phone: user.phone || '', force_password_change: user.force_password_change === true }, organization: org ? stripId(org) : null });
     }
     if (id === 'me' && method === 'GET') {
       const authRes = await requireAuth(req);
@@ -836,7 +838,7 @@ async function router(req, method) {
       const body = await req.json();
       const account = await db.collection('users').findOne({ id: authRes.user.id });
       if (!body.new_password || String(body.new_password).length < 8 || !await consumeAccountOtp(db, { email: account.email, purpose: 'change_password', code: body.otp })) return json({ error: 'Invalid or expired verification code' }, 422);
-      await db.collection('users').updateOne({ id: account.id }, { $set: { password_hash: await bcrypt.hash(body.new_password, 10), password_updated_at: new Date().toISOString() } });
+      await db.collection('users').updateOne({ id: account.id }, { $set: { password_hash: await bcrypt.hash(body.new_password, 10), password_updated_at: new Date().toISOString(), force_password_change: false } });
       await recordAccountAudit(db, authRes.user, 'password_changed');
       return json({ ok: true });
     }
