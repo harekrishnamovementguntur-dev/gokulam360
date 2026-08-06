@@ -1597,10 +1597,11 @@ async function router(req, method) {
     if (type === 'attendance') {
       const query = { ...scope, ...dateFilter('date'), student_id: { $exists: true } };
       const items = await db.collection('attendance').find(query).sort({ date: -1, created_at: -1 }).toArray();
-      const students = await db.collection('students').find(scope).toArray();
+      const students = await db.collection('students').find({ ...scope, is_deleted: { $ne: true } }).toArray();
+      const activeStudentIds = new Set(students.map(s => s.id));
       const sMap = Object.fromEntries(students.map(s => [s.id, `${s.first_name || ''} ${s.last_name || ''}`.trim() || s.student_id || '-']));
       const counts = { present: 0, late: 0, absent: 0, excused: 0 };
-      const reportItems = items.map(a => {
+      const reportItems = items.filter(a => activeStudentIds.has(a.student_id)).map(a => {
         const status = a.status || 'unknown';
         if (status in counts) counts[status] += 1;
         return {
