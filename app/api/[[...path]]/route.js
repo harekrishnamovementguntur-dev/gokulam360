@@ -303,6 +303,18 @@ function orgScope(user, extra = {}) {
   return { organization_id: user.organization_id, ...extra };
 }
 
+async function recordPlatformAudit(db, actor, action, metadata = {}, organizationId = null) {
+  await db.collection('audit_logs').insertOne({
+    id: uuidv4(),
+    organization_id: organizationId,
+    actor_id: actor.id,
+    actor_email: actor.email,
+    action,
+    metadata,
+    created_at: new Date().toISOString(),
+  });
+}
+
 function stripId(doc) {
   if (!doc) return doc;
   const { _id, password_hash, ...rest } = doc;
@@ -851,12 +863,58 @@ async function router(req, method) {
     return answerAskAI(db, user, body.question);
   }
 
+  // Super Admin organization administrator management
+  if (resource === 'organization-admins') {
+    if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
+    if (method === 'GET' && !id) {
+      const organizationId = url.searchParams.get('organization_id');
+      if (!organizationId) return json({ error: 'organization_id is required' }, 422);
+      const admins = await db.collection('users').find({ organization_id: organizationId, role: 'org_admin', is_deleted: { $ne: true } }).sort({ name: 1 }).toArray();
+      return json({ items: admins.map(stripId) });
+    }
+    if (method === 'PUT' && id && !sub) {
+      const body = await req.json();
+      const organizationId = String(body.organization_id || '').trim();
+      const admin = await db.collection('users').findOne({ id, organization_id: organizationId, role: 'org_admin', is_deleted: { $ne: true } });
+      if (!admin) return json({ error: 'Organization administrator not found' }, 404);
+      const name = String(body.name || '').trim();
+      const email = String(body.email || '').trim().toLowerCase();
+      const phone = String(body.phone || '').trim();
+      const status = body.status === 'inactive' ? 'inactive' : 'active';
+      if (!name || !email || !email.includes('@')) return json({ error: 'Valid name and email are required' }, 422);
+      const duplicate = await db.collection('users').findOne({ email, id: { $ne: id } });
+      if (duplicate) return json({ error: 'That email is already in use' }, 409);
+      await db.collection('users').updateOne({ id }, { $set: { name, email, phone, status, updated_at: new Date().toISOString() } });
+      const actorOrg = { ...user, organization_id: organizationId };
+      await recordPlatformAudit(db, user, 'organization_admin_updated', { admin_id: id, fields: ['name', 'email', 'phone', 'status'] }, organizationId);
+      return json(stripId(await db.collection('users').findOne({ id })));
+    }
+    if (method === 'POST' && id && sub === 'reset-password') {
+      const body = await req.json();
+      const organizationId = String(body.organization_id || '').trim();
+      const admin = await db.collection('users').findOne({ id, organization_id: organizationId, role: 'org_admin', is_deleted: { $ne: true } });
+      if (!admin) return json({ error: 'Organization administrator not found' }, 404);
+      await db.collection('users').updateOne({ id }, { $set: { password_hash: await bcrypt.hash('Password123', 10), force_password_change: true, password_reset_at: new Date().toISOString(), updated_at: new Date().toISOString() } });
+      await recordPlatformAudit(db, user, 'organization_admin_password_reset', { admin_id: id, forced_password_change: true }, organizationId);
+      return json({ ok: true, message: 'Temporary password set. The administrator must change it after signing in.' });
+    }
+  }
+
+  // Super Admin platform audit view
+  if (resource === 'platform-activity' && method === 'GET') {
+    if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
+    const organizationId = url.searchParams.get('organization_id');
+    const filter = organizationId ? { organization_id: organizationId } : {};
+    const items = await db.collection('audit_logs').find(filter).sort({ created_at: -1 }).limit(100).toArray();
+    return json({ items: items.map(stripId) });
+  }
+
   // Organizations
   if (resource === 'organizations') {
     if (method === 'GET' && !id) {
       if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
-      const orgs = await db.collection('organizations').find({ is_deleted: { $ne: true } }).toArray();
-      return json({ items: orgs.map(stripId) });
+      const orgs = await db.collection('organizations').find({}).sort({ is_deleted: 1, name: 1 }).toArray();
+      return json({ items: orgs.map(o => ({ ...stripId(o), status: o.is_deleted ? 'archived' : 'active' })) });
     }
     if (method === 'POST' && !id) {
       if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
@@ -891,14 +949,30 @@ async function router(req, method) {
     if (method === 'PUT' && id) {
       if (user.role !== 'super_admin' && !(user.role === 'org_admin' && user.organization_id === id)) return json({ error: 'Forbidden' }, 403);
       const body = await req.json();
-      await db.collection('organizations').updateOne({ id }, { $set: { ...body, updated_at: new Date().toISOString() } });
+      const current = await db.collection('organizations').findOne({ id });
+      if (!current) return json({ error: 'Organization not found' }, 404);
+      if (body.action === 'archive' || body.action === 'restore') {
+        const archived = body.action === 'archive';
+        await db.collection('organizations').updateOne({ id }, { $set: { is_deleted: archived, updated_at: new Date().toISOString() } });
+        await recordPlatformAudit(db, user, archived ? 'organization_archived' : 'organization_restored', { organization_id: id }, id);
+      } else {
+        const allowed = ['name', 'address', 'contact_email', 'contact_phone', 'currency', 'academic_year', 'logo_url'];
+        const patch = Object.fromEntries(allowed.filter(k => body[k] !== undefined).map(k => [k, body[k]]));
+        if (patch.name !== undefined && String(patch.name).trim().length < 2) return json({ error: 'Organization name is required' }, 422);
+        if (patch.contact_email !== undefined && !String(patch.contact_email).includes('@')) return json({ error: 'A valid contact email is required' }, 422);
+        await db.collection('organizations').updateOne({ id }, { $set: { ...patch, updated_at: new Date().toISOString() } });
+        await recordPlatformAudit(db, user, 'organization_updated', { organization_id: id, fields: Object.keys(patch) }, id);
+      }
       const doc = await db.collection('organizations').findOne({ id });
-      return json(stripId(doc));
+      return json({ ...stripId(doc), status: doc.is_deleted ? 'archived' : 'active' });
     }
     if (method === 'DELETE' && id) {
       if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
-      await db.collection('organizations').updateOne({ id }, { $set: { is_deleted: true } });
-      return json({ ok: true });
+      const current = await db.collection('organizations').findOne({ id });
+      if (!current) return json({ error: 'Organization not found' }, 404);
+      await db.collection('organizations').updateOne({ id }, { $set: { is_deleted: true, updated_at: new Date().toISOString() } });
+      await recordPlatformAudit(db, user, 'organization_archived', { organization_id: id, via: 'delete_endpoint' }, id);
+      return json({ ok: true, status: 'archived' });
     }
   }
 
