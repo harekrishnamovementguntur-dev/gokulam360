@@ -266,7 +266,24 @@ async function answerAskAI(db, user, question) {
   });
   if (q.includes('upcoming') || q.includes('next session')) {
     const today = localToday();
-    const rows = programs.flatMap(p => (Array.isArray(p.sessions) ? p.sessions : []).filter(s => String(s.date || '').slice(0,10) >= today).map(s => ({ date: s.date, program: p.name || '—', batch: s.batch_name || s.batch || '—', status: s.status || 'scheduled' }))).sort((a,b) => String(a.date).localeCompare(String(b.date)));
+    const parentPrograms = new Map(programs.filter(p => !p.parent_program_id).map(p => [p.id, p]));
+    const rows = programs
+      .filter(batch => batch.parent_program_id)
+      .flatMap(batch => {
+        const sessionDates = Array.isArray(batch.sessions) && batch.sessions.length
+          ? batch.sessions
+          : generateSessions(batch);
+        const parent = parentPrograms.get(batch.parent_program_id);
+        return sessionDates
+          .filter(date => String(date || '').slice(0, 10) >= today)
+          .map(date => ({
+            date,
+            program: parent?.name || '—',
+            batch: batch.name || '—',
+            status: batch.status || 'scheduled',
+          }));
+      })
+      .sort((a, b) => String(a.date).localeCompare(String(b.date)));
     return answerRows('upcoming_sessions', 'Upcoming sessions', ['date','program','batch','status'], rows, { sessions: rows.length }, rows.length ? `${rows.length} upcoming session(s)` : 'No upcoming sessions found');
   }
   if (q.includes('credit') && (q.includes('less') || q.includes('below') || q.includes('low') || q.includes('3'))) {
