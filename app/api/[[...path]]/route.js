@@ -872,6 +872,21 @@ async function router(req, method) {
       const admins = await db.collection('users').find({ organization_id: organizationId, role: 'org_admin', is_deleted: { $ne: true } }).sort({ name: 1 }).toArray();
       return json({ items: admins.map(stripId) });
     }
+    if (method === 'POST' && !id) {
+      const body = await req.json();
+      const organizationId = String(body.organization_id || '').trim();
+      const org = await db.collection('organizations').findOne({ id: organizationId, is_deleted: { $ne: true } });
+      if (!org) return json({ error: 'Active organization not found' }, 404);
+      const name = String(body.name || '').trim();
+      const email = String(body.email || '').trim().toLowerCase();
+      const phone = String(body.phone || '').trim();
+      if (!name || !email || !email.includes('@')) return json({ error: 'Valid name and email are required' }, 422);
+      if (await db.collection('users').findOne({ email })) return json({ error: 'That email is already in use' }, 409);
+      const admin = { id: uuidv4(), email, name, phone, role: 'org_admin', organization_id: organizationId, status: 'active', password_hash: await bcrypt.hash('Password123', 10), force_password_change: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+      await db.collection('users').insertOne(admin);
+      await recordPlatformAudit(db, user, 'organization_admin_created', { admin_id: admin.id, forced_password_change: true }, organizationId);
+      return json({ ...stripId(admin), temporary_password_required: true }, 201);
+    }
     if (method === 'PUT' && id && !sub) {
       const body = await req.json();
       const organizationId = String(body.organization_id || '').trim();
