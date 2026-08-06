@@ -1999,7 +1999,7 @@ function Classes() {
           {programs.map((p, i) => {
             const allBatches = batchesFor(p.id);
             const batches = allBatches.filter(batch => showCompleted ? !isBatchActive(batch) : isBatchActive(batch));
-            if (!batches.length) return null;
+            if (showCompleted && !batches.length) return null;
             return (
               <motion.section key={p.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="rounded-3xl glass p-5 md:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
