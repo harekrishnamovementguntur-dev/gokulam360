@@ -802,8 +802,11 @@ async function router(req, method) {
       const authRes = await requireAuth(req);
       if (authRes.error) return authRes.error;
       const u = authRes.user;
-      const org = u.organization_id ? await db.collection('organizations').findOne({ id: u.organization_id }) : null;
-      return json({ user: u, organization: org ? stripId(org) : null });
+      const stored = await db.collection('users').findOne({ id: u.id });
+      if (!stored) return json({ error: 'Account not found' }, 404);
+      const currentUser = { id: stored.id, email: stored.email, name: stored.name, phone: stored.phone || '', role: stored.role, organization_id: stored.organization_id || null, force_password_change: stored.force_password_change === true };
+      const org = currentUser.organization_id ? await db.collection('organizations').findOne({ id: currentUser.organization_id }) : null;
+      return json({ user: currentUser, organization: org ? stripId(org) : null });
     }
     if (id === 'password' && sub === 'forgot' && action === 'request' && method === 'POST') {
       const body = await req.json();
