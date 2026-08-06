@@ -412,10 +412,16 @@ A: Allow popups for this site once. Or use "First 5" as target for testing.
 A: Deletes are soft. Restore via database: `db.students.updateOne({id: '...'}, {$set: {is_deleted: false}})`. Or restore from your latest JSON backup.
 
 **Q: How do I add another organization?**
-A: Log in as Super Admin → Organizations → **New Organization** → walk through the 7-step wizard.
+A: Log in as Super Admin → Organizations → **New Organization**. After creation, use **Administrators** to add or manage organization administrators.
 
-**Q: Where do I change the organization name / phone?**
-A: Currently via the Organizations wizard (edit) or directly via Super Admin. Org self-service edit is planned.
+**Q: How do I manage organizations?**
+A: Super Admin → Organizations. Use **Edit** for contact details, **Archive** to disable access while preserving data, and **Restore** to re-enable an archived organization. Archived organizations remain visible with an Archived status.
+
+**Q: When should I permanently delete an organization?**
+A: Only when the organization and all its tenant data should be removed permanently. The action requires typing the exact organization name and a second confirmation. It deletes the organization, users, operational records, audit/activity records, and linked records. Use Archive when the data may be needed later.
+
+**Q: How do I reset an organization administrator's password?**
+A: Super Admin → Organizations → **Administrators** → **Reset password**. The administrator receives the temporary password through your secure support process and must change it after signing in. Existing passwords are never displayed.
 
 **Q: How do I renew everyone at term start?**
 A: Currently one-by-one via History drawer. Bulk term rollover is planned.

@@ -303,6 +303,18 @@ function orgScope(user, extra = {}) {
   return { organization_id: user.organization_id, ...extra };
 }
 
+async function recordPlatformAudit(db, actor, action, metadata = {}, organizationId = null) {
+  await db.collection('audit_logs').insertOne({
+    id: uuidv4(),
+    organization_id: organizationId,
+    actor_id: actor.id,
+    actor_email: actor.email,
+    action,
+    metadata,
+    created_at: new Date().toISOString(),
+  });
+}
+
 function stripId(doc) {
   if (!doc) return doc;
   const { _id, password_hash, ...rest } = doc;
@@ -778,18 +790,23 @@ async function router(req, method) {
       const body = await req.json();
       const user = await db.collection('users').findOne({ email: body.email });
       if (!user) return json({ error: 'Invalid credentials' }, 401);
+      if (user.status === 'inactive' || user.is_deleted === true) return json({ error: 'This account is inactive' }, 403);
+      const org = user.organization_id ? await db.collection('organizations').findOne({ id: user.organization_id }) : null;
+      if (user.organization_id && (!org || org.is_deleted === true)) return json({ error: 'This organization is inactive' }, 403);
       const ok = await bcrypt.compare(body.password || '', user.password_hash);
       if (!ok) return json({ error: 'Invalid credentials' }, 401);
-      const org = user.organization_id ? await db.collection('organizations').findOne({ id: user.organization_id }) : null;
-      const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role, organization_id: user.organization_id });
-      return json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, organization_id: user.organization_id }, organization: org ? stripId(org) : null });
+      const token = signToken({ id: user.id, email: user.email, name: user.name, role: user.role, organization_id: user.organization_id, force_password_change: user.force_password_change === true });
+      return json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, organization_id: user.organization_id, phone: user.phone || '', force_password_change: user.force_password_change === true }, organization: org ? stripId(org) : null });
     }
     if (id === 'me' && method === 'GET') {
       const authRes = await requireAuth(req);
       if (authRes.error) return authRes.error;
       const u = authRes.user;
-      const org = u.organization_id ? await db.collection('organizations').findOne({ id: u.organization_id }) : null;
-      return json({ user: u, organization: org ? stripId(org) : null });
+      const stored = await db.collection('users').findOne({ id: u.id });
+      if (!stored) return json({ error: 'Account not found' }, 404);
+      const currentUser = { id: stored.id, email: stored.email, name: stored.name, phone: stored.phone || '', role: stored.role, organization_id: stored.organization_id || null, force_password_change: stored.force_password_change === true };
+      const org = currentUser.organization_id ? await db.collection('organizations').findOne({ id: currentUser.organization_id }) : null;
+      return json({ user: currentUser, organization: org ? stripId(org) : null });
     }
     if (id === 'password' && sub === 'forgot' && action === 'request' && method === 'POST') {
       const body = await req.json();
@@ -824,7 +841,7 @@ async function router(req, method) {
       const body = await req.json();
       const account = await db.collection('users').findOne({ id: authRes.user.id });
       if (!body.new_password || String(body.new_password).length < 8 || !await consumeAccountOtp(db, { email: account.email, purpose: 'change_password', code: body.otp })) return json({ error: 'Invalid or expired verification code' }, 422);
-      await db.collection('users').updateOne({ id: account.id }, { $set: { password_hash: await bcrypt.hash(body.new_password, 10), password_updated_at: new Date().toISOString() } });
+      await db.collection('users').updateOne({ id: account.id }, { $set: { password_hash: await bcrypt.hash(body.new_password, 10), password_updated_at: new Date().toISOString(), force_password_change: false } });
       await recordAccountAudit(db, authRes.user, 'password_changed');
       return json({ ok: true });
     }
@@ -833,11 +850,14 @@ async function router(req, method) {
       if (authRes.error) return authRes.error;
       const body = await req.json();
       const name = String(body.name || '').trim();
+      const email = normalizeAccountEmail(body.email || authRes.user.email);
       const phone = String(body.phone || '').trim();
-      if (!name) return json({ error: 'Name is required' }, 422);
-      await db.collection('users').updateOne({ id: authRes.user.id }, { $set: { name, phone, updated_at: new Date().toISOString() } });
-      await recordAccountAudit(db, authRes.user, 'account_updated', { fields: ['name', 'phone'] });
-      return json({ ok: true, user: { ...authRes.user, name, phone } });
+      if (!name || !email || !email.includes('@')) return json({ error: 'Valid name and email are required' }, 422);
+      const duplicate = await db.collection('users').findOne({ email, id: { $ne: authRes.user.id } });
+      if (duplicate) return json({ error: 'That email is already in use' }, 409);
+      await db.collection('users').updateOne({ id: authRes.user.id }, { $set: { name, email, phone, updated_at: new Date().toISOString() } });
+      await recordAccountAudit(db, { ...authRes.user, email }, 'account_updated', { fields: ['name', 'email', 'phone'] });
+      return json({ ok: true, user: { ...authRes.user, name, email, phone } });
     }
   }
 
@@ -851,12 +871,73 @@ async function router(req, method) {
     return answerAskAI(db, user, body.question);
   }
 
+  // Super Admin organization administrator management
+  if (resource === 'organization-admins') {
+    if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
+    if (method === 'GET' && !id) {
+      const organizationId = url.searchParams.get('organization_id');
+      if (!organizationId) return json({ error: 'organization_id is required' }, 422);
+      const admins = await db.collection('users').find({ organization_id: organizationId, role: 'org_admin', is_deleted: { $ne: true } }).sort({ name: 1 }).toArray();
+      return json({ items: admins.map(stripId) });
+    }
+    if (method === 'POST' && !id) {
+      const body = await req.json();
+      const organizationId = String(body.organization_id || '').trim();
+      const org = await db.collection('organizations').findOne({ id: organizationId, is_deleted: { $ne: true } });
+      if (!org) return json({ error: 'Active organization not found' }, 404);
+      const name = String(body.name || '').trim();
+      const email = String(body.email || '').trim().toLowerCase();
+      const phone = String(body.phone || '').trim();
+      if (!name || !email || !email.includes('@')) return json({ error: 'Valid name and email are required' }, 422);
+      if (await db.collection('users').findOne({ email })) return json({ error: 'That email is already in use' }, 409);
+      const admin = { id: uuidv4(), email, name, phone, role: 'org_admin', organization_id: organizationId, status: 'active', password_hash: await bcrypt.hash('Password123', 10), force_password_change: true, created_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+      await db.collection('users').insertOne(admin);
+      await recordPlatformAudit(db, user, 'organization_admin_created', { admin_id: admin.id, forced_password_change: true }, organizationId);
+      return json({ ...stripId(admin), temporary_password_required: true }, 201);
+    }
+    if (method === 'PUT' && id && !sub) {
+      const body = await req.json();
+      const organizationId = String(body.organization_id || '').trim();
+      const admin = await db.collection('users').findOne({ id, organization_id: organizationId, role: 'org_admin', is_deleted: { $ne: true } });
+      if (!admin) return json({ error: 'Organization administrator not found' }, 404);
+      const name = String(body.name || '').trim();
+      const email = String(body.email || '').trim().toLowerCase();
+      const phone = String(body.phone || '').trim();
+      const status = body.status === 'inactive' ? 'inactive' : 'active';
+      if (!name || !email || !email.includes('@')) return json({ error: 'Valid name and email are required' }, 422);
+      const duplicate = await db.collection('users').findOne({ email, id: { $ne: id } });
+      if (duplicate) return json({ error: 'That email is already in use' }, 409);
+      await db.collection('users').updateOne({ id }, { $set: { name, email, phone, status, updated_at: new Date().toISOString() } });
+      const actorOrg = { ...user, organization_id: organizationId };
+      await recordPlatformAudit(db, user, 'organization_admin_updated', { admin_id: id, fields: ['name', 'email', 'phone', 'status'] }, organizationId);
+      return json(stripId(await db.collection('users').findOne({ id })));
+    }
+    if (method === 'POST' && id && sub === 'reset-password') {
+      const body = await req.json();
+      const organizationId = String(body.organization_id || '').trim();
+      const admin = await db.collection('users').findOne({ id, organization_id: organizationId, role: 'org_admin', is_deleted: { $ne: true } });
+      if (!admin) return json({ error: 'Organization administrator not found' }, 404);
+      await db.collection('users').updateOne({ id }, { $set: { password_hash: await bcrypt.hash('Password123', 10), force_password_change: true, password_reset_at: new Date().toISOString(), updated_at: new Date().toISOString() } });
+      await recordPlatformAudit(db, user, 'organization_admin_password_reset', { admin_id: id, forced_password_change: true }, organizationId);
+      return json({ ok: true, message: 'Temporary password set. The administrator must change it after signing in.' });
+    }
+  }
+
+  // Super Admin platform audit view
+  if (resource === 'platform-activity' && method === 'GET') {
+    if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
+    const organizationId = url.searchParams.get('organization_id');
+    const filter = organizationId ? { organization_id: organizationId } : {};
+    const items = await db.collection('audit_logs').find(filter).sort({ created_at: -1 }).limit(100).toArray();
+    return json({ items: items.map(stripId) });
+  }
+
   // Organizations
   if (resource === 'organizations') {
     if (method === 'GET' && !id) {
       if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
-      const orgs = await db.collection('organizations').find({ is_deleted: { $ne: true } }).toArray();
-      return json({ items: orgs.map(stripId) });
+      const orgs = await db.collection('organizations').find({}).sort({ is_deleted: 1, name: 1 }).toArray();
+      return json({ items: orgs.map(o => ({ ...stripId(o), status: o.is_deleted ? 'archived' : 'active' })) });
     }
     if (method === 'POST' && !id) {
       if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
@@ -891,14 +972,49 @@ async function router(req, method) {
     if (method === 'PUT' && id) {
       if (user.role !== 'super_admin' && !(user.role === 'org_admin' && user.organization_id === id)) return json({ error: 'Forbidden' }, 403);
       const body = await req.json();
-      await db.collection('organizations').updateOne({ id }, { $set: { ...body, updated_at: new Date().toISOString() } });
+      const current = await db.collection('organizations').findOne({ id });
+      if (!current) return json({ error: 'Organization not found' }, 404);
+      if (body.action === 'archive' || body.action === 'restore') {
+        const archived = body.action === 'archive';
+        await db.collection('organizations').updateOne({ id }, { $set: { is_deleted: archived, updated_at: new Date().toISOString() } });
+        await recordPlatformAudit(db, user, archived ? 'organization_archived' : 'organization_restored', { organization_id: id }, id);
+      } else {
+        const allowed = ['name', 'address', 'contact_email', 'contact_phone', 'currency', 'academic_year', 'logo_url'];
+        const patch = Object.fromEntries(allowed.filter(k => body[k] !== undefined).map(k => [k, body[k]]));
+        if (patch.name !== undefined && String(patch.name).trim().length < 2) return json({ error: 'Organization name is required' }, 422);
+        if (patch.contact_email !== undefined && !String(patch.contact_email).includes('@')) return json({ error: 'A valid contact email is required' }, 422);
+        await db.collection('organizations').updateOne({ id }, { $set: { ...patch, updated_at: new Date().toISOString() } });
+        await recordPlatformAudit(db, user, 'organization_updated', { organization_id: id, fields: Object.keys(patch) }, id);
+      }
       const doc = await db.collection('organizations').findOne({ id });
-      return json(stripId(doc));
+      return json({ ...stripId(doc), status: doc.is_deleted ? 'archived' : 'active' });
     }
     if (method === 'DELETE' && id) {
       if (user.role !== 'super_admin') return json({ error: 'Forbidden' }, 403);
-      await db.collection('organizations').updateOne({ id }, { $set: { is_deleted: true } });
-      return json({ ok: true });
+      const body = await req.json().catch(() => ({}));
+      const current = await db.collection('organizations').findOne({ id });
+      if (!current) return json({ error: 'Organization not found' }, 404);
+      if (String(body.confirmation || '') !== String(current.name || '')) return json({ error: 'Type the exact organization name to permanently delete it' }, 422);
+      const collectionNames = (await db.listCollections({}, { nameOnly: true }).toArray())
+        .map(c => c.name)
+        .filter(name => !name.startsWith('system.'));
+      const relatedIds = new Set([id]);
+      const referenceFields = ['organization_id', 'student_id', 'program_id', 'parent_program_id', 'program_offering_id', 'term_id', 'session_id', 'membership_id', 'participation_id', 'payment_id', 'allocation_id', 'user_id', 'actor_id', 'entity_id', 'source_id'];
+      // First collect every identifier owned by the tenant, then remove records
+      // that reference those identifiers as well as records with organization_id.
+      for (const name of collectionNames) {
+        const owned = await db.collection(name).find({ organization_id: id }).project({ _id: 0 }).toArray();
+        for (const doc of owned) for (const field of referenceFields) if (doc[field]) relatedIds.add(String(doc[field]));
+        for (const doc of owned) if (doc.id) relatedIds.add(String(doc.id));
+      }
+      const idValues = [...relatedIds];
+      for (const name of collectionNames) {
+        if (name === 'organizations') continue;
+        const filter = { $or: referenceFields.map(field => ({ [field]: { $in: idValues } })) };
+        await db.collection(name).deleteMany(filter);
+      }
+      await db.collection('organizations').deleteOne({ id });
+      return json({ ok: true, status: 'deleted' });
     }
   }
 
