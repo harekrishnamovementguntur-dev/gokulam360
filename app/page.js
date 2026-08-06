@@ -901,38 +901,117 @@ function ImportStudents({ programs, onImported }) {
 function Organizations() {
   const [items, setItems] = useState([]);
   const [wizardOpen, setWizardOpen] = useState(false);
-  const load = () => api('/organizations').then(r => setItems(r.items));
+  const [editing, setEditing] = useState(null);
+  const [managing, setManaging] = useState(null);
+  const [activity, setActivity] = useState([]);
+  const load = () => api('/organizations').then(r => setItems(r.items || [])).catch(e => toast.error(e.message));
   useEffect(() => { load(); }, []);
-
+  const toggleLifecycle = async (org) => {
+    const action = org.status === 'archived' ? 'restore' : 'archive';
+    const message = action === 'archive'
+      ? `Archive ${org.name}? Administrators will lose access, but data will be preserved.`
+      : `Restore ${org.name} and re-enable administrator access?`;
+    if (!window.confirm(message)) return;
+    try { await api(`/organizations/${org.id}`, { method: 'PUT', body: JSON.stringify({ action }) }); toast.success(action === 'archive' ? 'Organization archived' : 'Organization restored'); load(); }
+    catch (e) { toast.error(e.message); }
+  };
+  const openManagement = async (org) => {
+    setManaging(org);
+    try {
+      const [a, l] = await Promise.all([
+        api(`/organization-admins?organization_id=${encodeURIComponent(org.id)}`),
+        api(`/platform-activity?organization_id=${encodeURIComponent(org.id)}`),
+      ]);
+      setActivity(l.items || []);
+      return a.items || [];
+    } catch (e) { toast.error(e.message); return []; }
+  };
   return (
     <div className="space-y-5">
-      <PageHeader title="Organizations" subtitle="Manage every tenant on Gokulam360" icon={Building2}
+      <PageHeader title="Organizations" subtitle="Manage tenants, administrators, and platform access" icon={Building2}
         action={<Button onClick={() => setWizardOpen(true)} className="bg-saffron-gradient shadow"><Plus size={15} className="mr-1" /> New Organization</Button>} />
       {items.length === 0 ? <EmptyState text="No organizations yet" action={<Button className="mt-3 bg-saffron-gradient" onClick={() => setWizardOpen(true)}><Plus size={14} className="mr-1" />Create first organization</Button>} /> : (
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
           {items.map((o, i) => (
             <motion.div key={o.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
-              className="rounded-2xl glass p-5 card-lift">
+              className={`rounded-2xl glass p-5 card-lift ${o.status === 'archived' ? 'opacity-70' : ''}`}>
               <div className="flex items-start gap-3">
                 <div className="w-12 h-12 rounded-2xl bg-saffron-gradient text-white grid place-items-center shadow"><Building2 size={20} /></div>
                 <div className="flex-1 min-w-0">
                   <div className="font-semibold truncate">{o.name}</div>
-                  <div className="text-xs text-muted-foreground truncate">{o.address}</div>
+                  <div className="text-xs text-muted-foreground truncate">{o.address || 'No address added'}</div>
                 </div>
-                <Badge variant="secondary">{o.currency}</Badge>
+                <Badge variant={o.status === 'archived' ? 'outline' : 'secondary'}>{o.status}</Badge>
               </div>
               <div className="mt-3 space-y-1 text-xs">
                 <div className="flex items-center gap-2"><span className="text-muted-foreground">Email</span><span className="ml-auto font-medium truncate max-w-[60%]">{o.contact_email || '-'}</span></div>
                 <div className="flex items-center gap-2"><span className="text-muted-foreground">Phone</span><span className="ml-auto font-medium">{o.contact_phone || '-'}</span></div>
-                <div className="flex items-center gap-2"><span className="text-muted-foreground">Since</span><span className="ml-auto font-medium">{new Date(o.created_at).toLocaleDateString()}</span></div>
+                <div className="flex items-center gap-2"><span className="text-muted-foreground">Since</span><span className="ml-auto font-medium">{o.created_at ? new Date(o.created_at).toLocaleDateString() : '-'}</span></div>
+              </div>
+              <div className="mt-4 pt-3 border-t flex flex-wrap gap-2">
+                <Button size="sm" variant="outline" onClick={() => setEditing(o)}><Edit3 size={13} className="mr-1" />Edit</Button>
+                <Button size="sm" variant="outline" onClick={() => openManagement(o).then(() => {})}><Users size={13} className="mr-1" />Administrators</Button>
+                <Button size="sm" variant="ghost" className="ml-auto" onClick={() => toggleLifecycle(o)}>
+                  {o.status === 'archived' ? <><CheckCircle2 size={13} className="mr-1" />Restore</> : <><Trash2 size={13} className="mr-1" />Archive</>}
+                </Button>
               </div>
             </motion.div>
           ))}
         </div>
       )}
+      <div className="rounded-2xl glass p-5">
+        <div className="flex items-center gap-2 mb-3"><Activity size={18} className="text-primary" /><h3 className="font-semibold">Platform activity</h3></div>
+        <p className="text-sm text-muted-foreground mb-4">Security-sensitive organization and administrator actions are recorded here.</p>
+        {activity.length ? <div className="space-y-2 max-h-64 overflow-y-auto">{activity.map(a => <div key={a.id} className="flex items-center gap-3 rounded-xl bg-white/40 dark:bg-white/5 p-3 text-sm"><Badge variant="outline">{a.action}</Badge><span className="flex-1 truncate">{a.actor_email || 'Platform admin'}</span><span className="text-xs text-muted-foreground">{a.created_at ? new Date(a.created_at).toLocaleString() : ''}</span></div>)}</div> : <div className="text-sm text-muted-foreground">Select an organization’s Administrators button to inspect its recent activity.</div>}
+      </div>
       <OrgWizard open={wizardOpen} onOpenChange={setWizardOpen} onCreated={() => { setWizardOpen(false); load(); }} />
+      <OrganizationEditDialog organization={editing} onOpenChange={open => !open && setEditing(null)} onSaved={() => { setEditing(null); load(); }} />
+      <OrganizationAdminDialog organization={managing} onOpenChange={open => !open && setManaging(null)} />
     </div>
   );
+}
+
+function OrganizationEditDialog({ organization, onOpenChange, onSaved }) {
+  const [form, setForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { if (organization) setForm({ name: organization.name || '', address: organization.address || '', contact_email: organization.contact_email || '', contact_phone: organization.contact_phone || '', academic_year: organization.academic_year || '', currency: organization.currency || 'INR' }); }, [organization]);
+  const save = async () => {
+    setSaving(true);
+    try { await api(`/organizations/${organization.id}`, { method: 'PUT', body: JSON.stringify(form) }); toast.success('Organization details updated'); onSaved(); }
+    catch (e) { toast.error(e.message); } finally { setSaving(false); }
+  };
+  return <Dialog open={Boolean(organization)} onOpenChange={onOpenChange}><DialogContent className="max-w-lg"><DialogHeader><DialogTitle>Edit organization</DialogTitle><DialogDescription>Update platform contact details. Existing tenant data is preserved.</DialogDescription></DialogHeader>
+    {organization && <div className="space-y-4">
+      <div className="grid sm:grid-cols-2 gap-4"><div><Label>Name</Label><Input value={form.name || ''} onChange={e => setForm({ ...form, name: e.target.value })} /></div><div><Label>Academic year</Label><Input value={form.academic_year || ''} onChange={e => setForm({ ...form, academic_year: e.target.value })} /></div></div>
+      <div><Label>Contact email</Label><Input type="email" value={form.contact_email || ''} onChange={e => setForm({ ...form, contact_email: e.target.value })} /></div>
+      <div><Label>Contact phone</Label><Input value={form.contact_phone || ''} onChange={e => setForm({ ...form, contact_phone: e.target.value })} /></div>
+      <div><Label>Address</Label><Textarea value={form.address || ''} onChange={e => setForm({ ...form, address: e.target.value })} /></div>
+      <DialogFooter><Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button><Button disabled={saving} onClick={save} className="bg-saffron-gradient">{saving ? 'Saving…' : 'Save changes'}</Button></DialogFooter>
+    </div>}
+  </DialogContent></Dialog>;
+}
+
+function OrganizationAdminDialog({ organization, onOpenChange }) {
+  const [admins, setAdmins] = useState([]);
+  const [activity, setActivity] = useState([]);
+  const [form, setForm] = useState({ name: '', email: '', phone: '' });
+  const [saving, setSaving] = useState(false);
+  const load = async () => {
+    if (!organization) return;
+    try { const [a, l] = await Promise.all([api(`/organization-admins?organization_id=${encodeURIComponent(organization.id)}`), api(`/platform-activity?organization_id=${encodeURIComponent(organization.id)}`)]); setAdmins(a.items || []); setActivity(l.items || []); }
+    catch (e) { toast.error(e.message); }
+  };
+  useEffect(() => { if (organization) { setForm({ name: '', email: '', phone: '' }); load(); } }, [organization]);
+  const updateAdmin = async (admin, patch) => { try { await api(`/organization-admins/${admin.id}`, { method: 'PUT', body: JSON.stringify({ organization_id: organization.id, ...patch }) }); toast.success('Administrator updated'); load(); } catch (e) { toast.error(e.message); } };
+  const addAdmin = async () => { setSaving(true); try { await api('/organization-admins', { method: 'POST', body: JSON.stringify({ organization_id: organization.id, ...form }) }); toast.success('Administrator created with a forced first-login password change'); setForm({ name: '', email: '', phone: '' }); load(); } catch (e) { toast.error(e.message); } finally { setSaving(false); } };
+  const reset = async (admin) => { if (!window.confirm(`Reset ${admin.name}'s password? They will be required to change it after signing in.`)) return; try { await api(`/organization-admins/${admin.id}/reset-password`, { method: 'POST', body: JSON.stringify({ organization_id: organization.id }) }); toast.success('Temporary password set; change required at next login'); } catch (e) { toast.error(e.message); } };
+  return <Dialog open={Boolean(organization)} onOpenChange={onOpenChange}><DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto"><DialogHeader><DialogTitle>{organization?.name} administrators</DialogTitle><DialogDescription>Manage access without viewing or exposing passwords.</DialogDescription></DialogHeader>
+    {organization && <div className="space-y-5">
+      <div className="rounded-xl border p-4 space-y-3"><div className="font-semibold">Add administrator</div><div className="grid sm:grid-cols-3 gap-3"><Input placeholder="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /><Input placeholder="Email" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /><Input placeholder="Phone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></div><Button disabled={saving} onClick={addAdmin} className="bg-saffron-gradient"><UserPlus size={14} className="mr-1" />Create administrator</Button></div>
+      <div className="space-y-2">{admins.length ? admins.map(a => <div key={a.id} className="rounded-xl border p-4 flex flex-wrap gap-3 items-center"><Avatar className="h-9 w-9"><AvatarFallback>{initials(a.name)}</AvatarFallback></Avatar><div className="min-w-0 flex-1"><div className="font-medium truncate">{a.name}</div><div className="text-xs text-muted-foreground truncate">{a.email}{a.phone ? ` · ${a.phone}` : ''}</div></div><Badge variant={a.status === 'inactive' ? 'outline' : 'secondary'}>{a.status || 'active'}</Badge><Button size="sm" variant="outline" onClick={() => updateAdmin(a, { status: a.status === 'inactive' ? 'active' : 'inactive', name: a.name, email: a.email, phone: a.phone })}>{a.status === 'inactive' ? 'Activate' : 'Deactivate'}</Button><Button size="sm" variant="ghost" onClick={() => reset(a)}>Reset password</Button></div>) : <div className="text-sm text-muted-foreground">No organization administrators yet.</div>}</div>
+      <div><div className="font-semibold mb-2">Recent access activity</div>{activity.length ? <div className="space-y-2 max-h-40 overflow-y-auto">{activity.slice(0, 20).map(a => <div key={a.id} className="text-xs flex gap-2"><Badge variant="outline">{a.action}</Badge><span className="text-muted-foreground">{a.actor_email} · {a.created_at ? new Date(a.created_at).toLocaleString() : ''}</span></div>)}</div> : <div className="text-sm text-muted-foreground">No platform activity recorded for this organization.</div>}</div>
+    </div>}
+  </DialogContent></Dialog>;
 }
 
 function OrgWizard({ open, onOpenChange, onCreated }) {
