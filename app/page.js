@@ -938,6 +938,7 @@ function Organizations() {
     const confirmation = window.prompt(`Permanent deletion removes this organization and all of its tenant data. Type "${org.name}" to continue.`);
     if (confirmation === null) return;
     if (confirmation !== org.name) { toast.error('Organization name did not match'); return; }
+    if (!window.confirm(`This permanently deletes all data for ${org.name}. This cannot be undone. Continue?`)) return;
     try { await api(`/organizations/${org.id}`, { method: 'DELETE', body: JSON.stringify({ confirmation }) }); toast.success('Organization permanently deleted'); load(); }
     catch (e) { toast.error(e.message); }
   };
