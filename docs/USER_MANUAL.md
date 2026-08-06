@@ -327,7 +327,7 @@ Click your profile in the top bar to open **Manage account**. You can update you
 
 From the sign-in screen, choose **Forgot password?**, enter the account email, verify the email code, and set a new password.
 
-Codes expire after 10 minutes and have limited attempts. Email OTP requires `RESEND_API_KEY`. `AUTH_EMAIL_FROM` or `RESEND_FROM_EMAIL` is optional; when omitted, development uses Resend's `onboarding@resend.dev` sender, which can deliver only to the email address associated with the Resend account. Add a verified domain later and change only the sender environment variable for general recipients.
+Codes expire after 10 minutes and have limited attempts. Email OTP requires `SMTP_USER` and `SMTP_PASS`. `SMTP_PASS` must be a Gmail 16-character App Password; never use your normal Gmail password. `SMTP_HOST` and `SMTP_PORT` default to `smtp.gmail.com` and `465`. `AUTH_EMAIL_FROM` or `SMTP_FROM` is optional; if omitted, the sender uses `Gokulam360 <SMTP_USER>`.
 
 ---
 
