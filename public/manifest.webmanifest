@@ -1,0 +1,17 @@
+{
+  "name": "Gokulam360 — Sunday School Management",
+  "short_name": "Gokulam360",
+  "description": "A calm workspace for temple school management.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f2ff",
+  "theme_color": "#6d28d9",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
