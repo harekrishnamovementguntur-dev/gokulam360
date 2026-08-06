@@ -87,14 +87,38 @@ function normalizeAccountEmail(value) {
 function hashAccountOtp(code) {
   return crypto.createHash('sha256').update(`${JWT_SECRET}:${code}`).digest('hex');
 }
+function maskAccountEmail(email) {
+  const [local, domain] = String(email || '').split('@');
+  if (!domain) return 'invalid-email';
+  return `${local.slice(0, 2)}***@${domain}`;
+}
+
 async function sendAccountOtp(email, code, purpose) {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.AUTH_EMAIL_FROM
     || process.env.RESEND_FROM_EMAIL
     || 'Gokulam360 <onboarding@resend.dev>';
+  const payload = {
+    from,
+    to: [email],
+    subject: purpose === 'forgot_password'
+      ? 'Reset your Gokulam360 password'
+      : 'Verify your Gokulam360 password change',
+    text: `Your Gokulam360 verification code is ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`,
+  };
+
+  console.info('[account-otp] resend_request', {
+    purpose,
+    from,
+    to: [maskAccountEmail(email)],
+    subject: payload.subject,
+  });
 
   if (!apiKey) {
-    console.error('Account OTP email delivery is unavailable: RESEND_API_KEY is missing');
+    console.error('[account-otp] resend_unavailable', {
+      purpose,
+      reason: 'RESEND_API_KEY is missing',
+    });
     return { ok: false, error: 'Email delivery is not configured. Please contact an administrator.' };
   }
 
@@ -105,46 +129,89 @@ async function sendAccountOtp(email, code, purpose) {
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        from,
-        to: [email],
-        subject: purpose === 'forgot_password'
-          ? 'Reset your Gokulam360 password'
-          : 'Verify your Gokulam360 password change',
-        text: `Your Gokulam360 verification code is ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`,
-      }),
+      body: JSON.stringify(payload),
+    });
+    const responseText = await response.text();
+    let responseBody;
+    try {
+      responseBody = responseText ? JSON.parse(responseText) : null;
+    } catch {
+      responseBody = responseText;
+    }
+
+    console.info('[account-otp] resend_response', {
+      purpose,
+      status: response.status,
+      ok: response.ok,
+      response: responseBody,
     });
 
     if (!response.ok) {
-      const responseText = await response.text();
-      console.error('Account OTP email delivery failed', {
-        status: response.status,
-        response: responseText.slice(0, 500),
-        purpose,
-      });
-      return { ok: false, error: 'Unable to send the verification email. Please try again later.' };
+      const providerMessage = responseBody?.message || responseBody?.error?.message;
+      return {
+        ok: false,
+        error: providerMessage || 'Unable to send the verification email. Please try again later.',
+      };
     }
 
-    return { ok: true };
+    const emailId = responseBody?.id || responseBody?.data?.id;
+    if (!emailId) {
+      console.error('[account-otp] resend_invalid_response', {
+        purpose,
+        response: responseBody,
+      });
+      return { ok: false, error: 'Email provider returned an invalid response. Please try again later.' };
+    }
+
+    console.info('[account-otp] resend_accepted', { purpose, emailId });
+    return { ok: true, emailId };
   } catch (error) {
-    console.error('Account OTP email delivery request failed', {
-      message: error instanceof Error ? error.message : String(error),
+    console.error('[account-otp] resend_request_failed', {
       purpose,
+      message: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
     });
-    return { ok: false, error: 'Unable to send the verification email. Please try again later.' };
+    return { ok: false, error: 'Unable to reach the email provider. Please try again later.' };
   }
 }
+
 async function issueAccountOtp(db, { email, userId, purpose, organizationId }) {
+  console.info('[account-otp] request_received', {
+    purpose,
+    email: maskAccountEmail(email),
+    userId,
+  });
   const now = Date.now();
   const recent = await db.collection('account_otps').countDocuments({ email, purpose, created_at: { $gt: new Date(now - 60 * 1000) } });
   if (recent) return { error: 'Please wait before requesting another code' };
   const hourly = await db.collection('account_otps').countDocuments({ email, purpose, created_at: { $gt: new Date(now - 60 * 60 * 1000) } });
   if (hourly >= 5) return { error: 'Too many verification attempts. Try again later' };
   const code = String(crypto.randomInt(100000, 1000000));
-  if (!await sendAccountOtp(email, code, purpose)) return { error: 'Email delivery is not configured' };
+  console.info('[account-otp] otp_generated', {
+    purpose,
+    email: maskAccountEmail(email),
+    expiresInMinutes: 10,
+  });
+  const delivery = await sendAccountOtp(email, code, purpose);
+  if (!delivery.ok) {
+    console.error('[account-otp] final_status', {
+      purpose,
+      email: maskAccountEmail(email),
+      status: 'failed',
+      error: delivery.error,
+    });
+    return { error: delivery.error };
+  }
   await db.collection('account_otps').insertOne({ id: uuidv4(), email, user_id: userId, organization_id: organizationId || null, purpose, otp_hash: hashAccountOtp(code), expires_at: new Date(now + 10 * 60 * 1000), attempts: 0, used: false, created_at: new Date(now) });
-  return { ok: true };
+  console.info('[account-otp] final_status', {
+    purpose,
+    email: maskAccountEmail(email),
+    status: 'sent',
+    emailId: delivery.emailId,
+  });
+  return { ok: true, emailId: delivery.emailId };
 }
+
 async function consumeAccountOtp(db, { email, purpose, code }) {
   const otp = await db.collection('account_otps').findOne({ email, purpose, used: false }, { sort: { created_at: -1 } });
   if (!otp || otp.expires_at < new Date() || Number(otp.attempts || 0) >= 5) return false;
@@ -734,7 +801,10 @@ async function router(req, method) {
       const body = await req.json();
       const email = normalizeAccountEmail(body.email);
       const account = await db.collection('users').findOne({ email });
-      if (account) await issueAccountOtp(db, { email, userId: account.id, purpose: 'forgot_password', organizationId: account.organization_id });
+      if (account) {
+        const result = await issueAccountOtp(db, { email, userId: account.id, purpose: 'forgot_password', organizationId: account.organization_id });
+        if (result.error) return json({ error: result.error }, 422);
+      }
       return json({ message: 'If an account exists for that email, a verification code has been sent.' });
     }
     if (id === 'password' && sub === 'forgot' && action === 'confirm' && method === 'POST') {
@@ -752,7 +822,7 @@ async function router(req, method) {
       if (authRes.error) return authRes.error;
       const account = await db.collection('users').findOne({ id: authRes.user.id });
       const result = await issueAccountOtp(db, { email: account.email, userId: account.id, purpose: 'change_password', organizationId: account.organization_id });
-      return result.error ? json({ error: result.error }, 422) : json({ ok: true });
+      return result.error ? json({ error: result.error }, 422) : json({ ok: true, emailId: result.emailId });
     }
     if (id === 'password' && sub === 'change' && action === 'confirm' && method === 'POST') {
       const authRes = await requireAuth(req);
