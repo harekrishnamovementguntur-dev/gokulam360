@@ -286,12 +286,44 @@ async function answerAskAI(db, user, question) {
       .sort((a, b) => String(a.date).localeCompare(String(b.date)));
     return answerRows('upcoming_sessions', 'Upcoming sessions', ['date','program','batch','status'], rows, { sessions: rows.length }, rows.length ? `${rows.length} upcoming session(s)` : 'No upcoming sessions found');
   }
-  if (q.includes('credit') && (q.includes('less') || q.includes('below') || q.includes('low') || q.includes('3'))) {
-    const rows = enrollmentRecords.map(e => {
-      const s = studentMap.get(e.student_id); const granted = Number(e.credits_granted ?? e.total_credits ?? e.credit_quantity ?? 0); const used = Number(e.credits_used ?? 0);
-      return { student: studentDisplayName(s), phone: s?.mobile || s?.phone || '—', program: programMap.get(e.program_id)?.name || e.program_name || '—', granted, used, remaining: Number(e.credits_remaining ?? granted - used) };
-    }).filter(r => r.remaining <= 3 && r.remaining >= 0);
-    return answerRows('low_credits', 'Students with 3 or fewer credits', ['student','phone','program','granted','used','remaining'], rows, { students: rows.length }, rows.length ? `${rows.length} student(s) need attention` : 'No students have 3 or fewer credits');
+  const creditThreshold = Number(q.match(/(?:less|fewer|below|under|up to|at most)\\s+(?:than\\s+)?(\\d+)/)?.[1] || 3);
+  const wantsLowCredits = q.includes('credit') && (q.includes('less') || q.includes('fewer') || q.includes('below') || q.includes('under') || q.includes('low') || q.includes('lower') || q.includes('remaining') || /\\b\\d+\\b/.test(q));
+  const wantsPendingFees = (q.includes('pending') || q.includes('due') || q.includes('outstanding') || q.includes('unpaid')) && (q.includes('fee') || q.includes('payment') || q.includes('amount'));
+  const pendingByStudent = new Map();
+  for (const fee of fees) {
+    const amount = Number(fee.amount_minor ?? fee.amount ?? 0);
+    const paid = Number(fee.paid_amount_minor ?? fee.paid_amount ?? fee.paid ?? 0);
+    const pending = Math.max(0, amount - paid);
+    if (pending > 0) pendingByStudent.set(fee.student_id, (pendingByStudent.get(fee.student_id) || 0) + pending);
+  }
+
+  const creditRows = enrollmentRecords.map(e => {
+    const s = studentMap.get(e.student_id);
+    const granted = Number(e.credits_granted ?? e.sessions_credited ?? e.total_credits ?? e.credit_quantity ?? 0);
+    const used = Number(e.credits_used ?? e.sessions_attended ?? 0);
+    const remaining = Number(e.credits_remaining ?? e.sessions_remaining ?? Math.max(0, granted - used));
+    return { student: studentDisplayName(s), phone: s?.mobile || s?.phone || '—', program: programMap.get(e.program_id)?.name || e.program_name || '—', granted, used, remaining, pending_fee: pendingByStudent.get(e.student_id) || 0 };
+  });
+
+  if (wantsLowCredits && wantsPendingFees) {
+    const rows = creditRows.filter(row => row.remaining <= creditThreshold && row.remaining >= 0 && row.pending_fee > 0);
+    return answerRows('low_credits_pending_fees', 'Students with low credits and pending fees', ['student','phone','program','granted','used','remaining','pending_fee'], rows, { students: rows.length }, rows.length ? rows.length + ' student(s) need attention' : 'No students match both conditions');
+  }
+
+  if (wantsLowCredits) {
+    const rows = creditRows.filter(row => row.remaining <= creditThreshold && row.remaining >= 0);
+    return answerRows('low_credits', 'Students with ' + creditThreshold + ' or fewer credits', ['student','phone','program','granted','used','remaining'], rows, { students: rows.length, threshold: creditThreshold }, rows.length ? rows.length + ' student(s) need attention' : 'No students have ' + creditThreshold + ' or fewer credits');
+  }
+
+  if (wantsPendingFees) {
+    const rows = fees.map(fee => {
+      const s = studentMap.get(fee.student_id);
+      const amount = Number(fee.amount_minor ?? fee.amount ?? 0);
+      const paid = Number(fee.paid_amount_minor ?? fee.paid_amount ?? fee.paid ?? 0);
+      const pending = Math.max(0, amount - paid);
+      return { student: studentDisplayName(s), phone: s?.mobile || s?.phone || '—', program: programMap.get(fee.program_id)?.name || fee.program_name || '—', fee_type: fee.fee_type || '—', amount, paid, pending, due_date: fee.due_date || '—', status: fee.status || 'pending' };
+    }).filter(row => row.pending > 0);
+    return answerRows('pending_fees', 'Students with pending fees', ['student','phone','program','fee_type','amount','paid','pending','due_date','status'], rows, { students: new Set(rows.map(row => row.student)).size, pending_amount: rows.reduce((total, row) => total + row.pending, 0) }, rows.length ? rows.length + ' pending fee record(s)' : 'No pending fees found');
   }
   if (q.includes('absent') || q.includes('absence')) {
     const rows = rowsFor(isAbsent);

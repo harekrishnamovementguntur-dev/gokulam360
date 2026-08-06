@@ -3500,7 +3500,7 @@ function AskAI() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const suggestions = ['How many students are present today?', 'List absent students and phone numbers', 'What sessions are coming up?', 'Which students have 3 or fewer credits?'];
+  const suggestions = ['How many students are present today?', 'List absent students and phone numbers', 'What sessions are coming up?', 'Which students have 3 or fewer credits?', 'Which students have pending fees?', 'Which students have low credits and pending fees?'];
 
   const ask = async (value = question) => {
     const text = String(value || '').trim();
