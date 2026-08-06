@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Gokulam360 Krishna-inspired icon</title>
+  <desc id="desc">A blue and violet Krishna-inspired emblem with a peacock feather and golden flute.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#172554"/><stop offset=".55" stop-color="#312e81"/><stop offset="1" stop-color="#6d28d9"/></linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fde68a"/><stop offset=".5" stop-color="#f59e0b"/><stop offset="1" stop-color="#d97706"/></linearGradient>
+    <linearGradient id="feather" x1="0" y1="1" x2="1" y2="0"><stop stop-color="#14b8a6"/><stop offset=".48" stop-color="#22c55e"/><stop offset="1" stop-color="#facc15"/></linearGradient>
+    <filter id="shadow"><feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#020617" flood-opacity=".35"/></filter>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="184" fill="#0f172a" opacity=".18"/>
+  <g filter="url(#shadow)">
+    <path d="M314 166c34-73 78-97 116-106-8 47-22 84-59 118 27-2 54 5 76 22-32 17-73 22-111 11-17 19-30 42-37 68-22-28-28-64-15-95 8-6 18-12 30-18z" fill="url(#feather)"/>
+    <path d="M334 147c29-28 56-49 76-57-14 24-34 45-61 64z" fill="#0f766e" opacity=".85"/>
+    <ellipse cx="365" cy="128" rx="33" ry="43" fill="#f59e0b" opacity=".9"/>
+    <ellipse cx="365" cy="128" rx="22" ry="30" fill="#06b6d4"/>
+    <ellipse cx="365" cy="128" rx="13" ry="19" fill="#1e1b4b"/>
+    <path d="M150 285c3-54 34-96 80-116 31-14 66-16 98-4-25 15-43 35-54 61 27 12 49 34 59 62-18 15-42 24-68 25-2 38-22 70-54 87-43-14-63-56-61-115z" fill="#2563eb"/>
+    <path d="M153 286c10-46 36-77 75-96 17-8 35-12 53-12-27 19-45 42-54 70 19 10 32 26 38 47-16 29-35 46-62 58-31-11-49-33-50-67z" fill="#1d4ed8"/>
+    <path d="M202 326c16 9 36 12 57 8-9 24-28 39-53 43-18-7-28-22-28-41 7-5 15-8 24-10z" fill="#172554"/>
+    <circle cx="234" cy="248" r="8" fill="#0f172a"/>
+    <path d="M197 232c12-11 29-16 45-12-12 13-28 18-45 12z" fill="#dbeafe"/>
+    <path d="M190 302c14 11 31 14 50 11" fill="none" stroke="#fbbf24" stroke-width="8" stroke-linecap="round"/>
+    <path d="M116 346l280-116" stroke="url(#gold)" stroke-width="18" stroke-linecap="round"/>
+    <path d="M113 347l-18 8M397 230l18-8" stroke="#fbbf24" stroke-width="12" stroke-linecap="round"/>
+    <g fill="#92400e">
+      <circle cx="158" cy="329" r="5"/><circle cx="194" cy="314" r="5"/><circle cx="230" cy="299" r="5"/><circle cx="266" cy="284" r="5"/><circle cx="302" cy="269" r="5"/><circle cx="338" cy="254" r="5"/>
+    </g>
+  </g>
+</svg>
