@@ -417,6 +417,9 @@ A: Log in as Super Admin → Organizations → **New Organization**. After creat
 **Q: How do I manage organizations?**
 A: Super Admin → Organizations. Use **Edit** for contact details, **Archive** to disable access while preserving data, and **Restore** to re-enable an archived organization. Archived organizations remain visible with an Archived status.
 
+**Q: When should I permanently delete an organization?**
+A: Only when the organization and all its tenant data should be removed permanently. The action requires typing the exact organization name and a second confirmation. It deletes the organization, users, operational records, audit/activity records, and linked records. Use Archive when the data may be needed later.
+
 **Q: How do I reset an organization administrator's password?**
 A: Super Admin → Organizations → **Administrators** → **Reset password**. The administrator receives the temporary password through your secure support process and must change it after signing in. Existing passwords are never displayed.
 
