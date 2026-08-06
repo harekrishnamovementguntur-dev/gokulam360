@@ -285,6 +285,13 @@ function Shell({ user, org, onLogout, dark, setDark, refreshMe }) {
   const [teachers, setTeachers] = useState([]);
 
   useEffect(() => {
+    if (user.force_password_change) {
+      setAccountOpen(true);
+      toast.info('Your administrator reset your password. Please set a new password to continue.');
+    }
+  }, [user.force_password_change]);
+
+  useEffect(() => {
     const onKey = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); setCmdOpen(true); }
     };
