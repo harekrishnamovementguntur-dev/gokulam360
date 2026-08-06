@@ -112,12 +112,15 @@ curl -X POST http://localhost:3000/api/seed
 
 ## Account email OTP configuration
 
-Password change and password recovery use email OTP. Configure these server-side variables:
+Password change and password recovery use Gmail SMTP email OTP. Configure these server-side variables:
 
-- `RESEND_API_KEY`: Resend API key.
-- `AUTH_EMAIL_FROM` or `RESEND_FROM_EMAIL`: optional sender address. If omitted, development uses `Gokulam360 <onboarding@resend.dev>`; Resend restricts this default sender to your own Resend account email until a custom domain is verified.
+- `SMTP_USER`: dedicated Gmail sender address.
+- `SMTP_PASS`: Gmail 16-character App Password (never the normal Gmail password).
+- `SMTP_HOST`: optional; defaults to `smtp.gmail.com`.
+- `SMTP_PORT`: optional; defaults to `465`.
+- `AUTH_EMAIL_FROM` or `SMTP_FROM`: optional sender label/address. If omitted, the application uses `Gokulam360 <SMTP_USER>`.
 
-Keep these values out of source control. If they are missing, OTP delivery is rejected safely rather than exposing verification codes.
+Keep these values out of source control. If required SMTP settings are missing or Gmail rejects the request, OTP delivery fails safely without exposing verification codes.
 
 ---
 

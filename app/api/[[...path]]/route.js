@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
+import nodemailer from 'nodemailer';
 import twilio from 'twilio';
 
 const MONGO_URL = process.env.MONGO_URL;
@@ -94,84 +95,77 @@ function maskAccountEmail(email) {
 }
 
 async function sendAccountOtp(email, code, purpose) {
-  const apiKey = process.env.RESEND_API_KEY;
+  const smtpHost = process.env.SMTP_HOST || 'smtp.gmail.com';
+  const smtpPort = Number(process.env.SMTP_PORT || 465);
+  const smtpUser = process.env.SMTP_USER;
+  const smtpPass = process.env.SMTP_PASS;
   const from = process.env.AUTH_EMAIL_FROM
-    || process.env.RESEND_FROM_EMAIL
-    || 'Gokulam360 <onboarding@resend.dev>';
-  const payload = {
+    || process.env.SMTP_FROM
+    || (smtpUser ? `Gokulam360 <${smtpUser}>` : null);
+
+  console.info('[account-otp] smtp_request', {
+    purpose,
+    host: smtpHost,
+    port: smtpPort,
+    secure: smtpPort === 465,
     from,
-    to: [email],
+    to: [maskAccountEmail(email)],
     subject: purpose === 'forgot_password'
       ? 'Reset your Gokulam360 password'
       : 'Verify your Gokulam360 password change',
-    text: `Your Gokulam360 verification code is ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`,
-  };
-
-  console.info('[account-otp] resend_request', {
-    purpose,
-    from,
-    to: [maskAccountEmail(email)],
-    subject: payload.subject,
   });
 
-  if (!apiKey) {
-    console.error('[account-otp] resend_unavailable', {
+  if (!smtpUser || !smtpPass || !from) {
+    console.error('[account-otp] smtp_unavailable', {
       purpose,
-      reason: 'RESEND_API_KEY is missing',
+      reason: 'SMTP_USER, SMTP_PASS, and a sender address are required',
     });
     return { ok: false, error: 'Email delivery is not configured. Please contact an administrator.' };
   }
 
   try {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpPort === 465,
+      auth: {
+        user: smtpUser,
+        pass: smtpPass,
       },
-      body: JSON.stringify(payload),
     });
-    const responseText = await response.text();
-    let responseBody;
-    try {
-      responseBody = responseText ? JSON.parse(responseText) : null;
-    } catch {
-      responseBody = responseText;
-    }
-
-    console.info('[account-otp] resend_response', {
-      purpose,
-      status: response.status,
-      ok: response.ok,
-      response: responseBody,
+    const info = await transporter.sendMail({
+      from,
+      to: email,
+      subject: purpose === 'forgot_password'
+        ? 'Reset your Gokulam360 password'
+        : 'Verify your Gokulam360 password change',
+      text: `Your Gokulam360 verification code is ${code}. It expires in 10 minutes. If you did not request this, ignore this email.`,
     });
+    const response = {
+      messageId: info.messageId,
+      accepted: info.accepted,
+      rejected: info.rejected,
+      response: info.response,
+      envelope: info.envelope,
+    };
+    console.info('[account-otp] smtp_response', { purpose, response });
 
-    if (!response.ok) {
-      const providerMessage = responseBody?.message || responseBody?.error?.message;
-      return {
-        ok: false,
-        error: providerMessage || 'Unable to send the verification email. Please try again later.',
-      };
-    }
-
-    const emailId = responseBody?.id || responseBody?.data?.id;
-    if (!emailId) {
-      console.error('[account-otp] resend_invalid_response', {
-        purpose,
-        response: responseBody,
-      });
+    if (!info.messageId || !Array.isArray(info.accepted) || info.accepted.length === 0) {
+      console.error('[account-otp] smtp_invalid_response', { purpose, response });
       return { ok: false, error: 'Email provider returned an invalid response. Please try again later.' };
     }
 
-    console.info('[account-otp] resend_accepted', { purpose, emailId });
-    return { ok: true, emailId };
+    console.info('[account-otp] smtp_accepted', { purpose, messageId: info.messageId });
+    return { ok: true, emailId: info.messageId };
   } catch (error) {
-    console.error('[account-otp] resend_request_failed', {
+    console.error('[account-otp] smtp_request_failed', {
       purpose,
       message: error instanceof Error ? error.message : String(error),
+      code: error?.code,
+      response: error?.response,
       stack: error instanceof Error ? error.stack : undefined,
     });
-    return { ok: false, error: 'Unable to reach the email provider. Please try again later.' };
+    return { ok: false, error: 'Unable to send the verification email. Please try again later.' };
   }
 }
 
