@@ -2190,6 +2190,7 @@ function Attendance() {
   const [attendanceMode, setAttendanceMode] = useState('students');
   const [facultyDate, setFacultyDate] = useState(localDateKey());
   const [facultyMarks, setFacultyMarks] = useState({});
+  const [pendingAttendance, setPendingAttendance] = useState(null);
   useEffect(() => { api('/students').then(r => setStudents(r.items || [])); api('/programs').then(r => setPrograms(r.items || [])); api('/teachers').then(r => setTeachers(r.items || [])); }, []);
   useEffect(() => {
     if (!program) { setSessions([]); setDate(''); setEnrollments([]); return; }
@@ -2248,17 +2249,48 @@ function Attendance() {
   });
   const setMark = (id, v) => setMarks({ ...marks, [id]: v });
   const bulk = (v) => { const m = {}; list.forEach(s => m[s.id] = v); setMarks(m); };
-  const save = async () => {
+  const save = () => {
     if (!program) { toast.error('Please pick a batch first'); return; }
     if (!date) { toast.error('Pick a session date'); return; }
     if (selectedSession?.cancelled) { toast.error('Cancelled sessions cannot receive attendance'); return; }
+    if (!list.length) { toast.error('No active students are enrolled in this batch'); return; }
+
+    // Present is explicit; every active student left unmarked is recorded as absent.
+    const records = list.map(s => ({
+      student_id: s.id,
+      status: marks[s.id] === 'present' ? 'present' : 'absent',
+    }));
+    const presentCount = records.filter(record => record.status === 'present').length;
+    setPendingAttendance({
+      records,
+      presentCount,
+      absentCount: records.length - presentCount,
+    });
+  };
+
+  const confirmSave = async () => {
+    if (!pendingAttendance) return;
     try {
-      const records = list.map(s => ({ student_id: s.id, status: marks[s.id] || 'present' }));
-      await api('/attendance-bulk', { method: 'POST', body: JSON.stringify({ date, program_id: program, records }) });
+      await api('/attendance-bulk', {
+        method: 'POST',
+        body: JSON.stringify({
+          date,
+          program_id: program,
+          records: pendingAttendance.records,
+        }),
+      });
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#22c55e', '#7c3aed'] });
-      toast.success(`Attendance saved for ${records.length} students`);
-      Promise.all([api(`/programs/${program}/sessions`), api(`/enrollments?program_id=${program}`)]).then(([sessionResult, enrollmentResult]) => { setSessions(sessionResult.sessions || []); setEnrollments(enrollmentResult.items || []); });
-    } catch (e) { toast.error(e.message); }
+      toast.success(`Attendance saved: ${pendingAttendance.presentCount} present, ${pendingAttendance.absentCount} absent`);
+      setMarks(Object.fromEntries(pendingAttendance.records.map(record => [record.student_id, record.status])));
+      setExisting(Object.fromEntries(pendingAttendance.records.map(record => [record.student_id, record.status])));
+      setPendingAttendance(null);
+      Promise.all([api(`/programs/${program}/sessions`), api(`/enrollments?program_id=${program}`)]).then(([sessionResult, enrollmentResult]) => {
+        setSessions(sessionResult.sessions || []);
+        setEnrollments(enrollmentResult.items || []);
+      });
+    } catch (e) {
+      toast.error(e.message);
+    }
   };
 
   const counts = useMemo(() => {
@@ -2448,6 +2480,21 @@ s.cancelled ? 'bg-rose-500/15 border border-rose-500/40 text-rose-800 dark:text-
             </div>
           )}
       </div>
+      <Dialog open={Boolean(pendingAttendance)} onOpenChange={open => !open && setPendingAttendance(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save attendance?</DialogTitle>
+            <DialogDescription>
+              {pendingAttendance?.presentCount || 0} Present, {pendingAttendance?.absentCount || 0} Absent.
+              Save attendance and consume {pendingAttendance?.records.length || 0} credits?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPendingAttendance(null)}>Review</Button>
+            <Button onClick={confirmSave} className="bg-saffron-gradient shadow">Save Attendance</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
