@@ -2478,14 +2478,14 @@ s.cancelled ? 'bg-rose-500/15 border border-rose-500/40 text-rose-800 dark:text-
             </div>
           )}
       </div>
-    </div>
+      </div>
       <Dialog open={Boolean(pendingAttendance)} onOpenChange={open => !open && setPendingAttendance(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>Save attendance?</DialogTitle>
             <DialogDescription>
-              ${pendingAttendance?.presentCount || 0} Present, ${pendingAttendance?.absentCount || 0} Absent.
-              Save attendance and consume ${pendingAttendance?.records.length || 0} credits?
+              {pendingAttendance?.presentCount || 0} Present, {pendingAttendance?.absentCount || 0} Absent.
+              Save attendance and consume {pendingAttendance?.records.length || 0} credits?
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -2494,6 +2494,7 @@ s.cancelled ? 'bg-rose-500/15 border border-rose-500/40 text-rose-800 dark:text-
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
   );
 }
 
