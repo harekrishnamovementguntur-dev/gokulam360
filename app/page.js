@@ -2480,7 +2480,6 @@ s.cancelled ? 'bg-rose-500/15 border border-rose-500/40 text-rose-800 dark:text-
             </div>
           )}
       </div>
-      </div>
       <Dialog open={Boolean(pendingAttendance)} onOpenChange={open => !open && setPendingAttendance(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
