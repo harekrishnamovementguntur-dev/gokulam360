@@ -2253,7 +2253,13 @@ function Attendance() {
     if (!date) { toast.error('Pick a session date'); return; }
     if (selectedSession?.cancelled) { toast.error('Cancelled sessions cannot receive attendance'); return; }
     try {
-      const records = list.map(s => ({ student_id: s.id, status: marks[s.id] || 'present' }));
+      const records = list
+        .filter(s => marks[s.id] === 'present' || marks[s.id] === 'absent')
+        .map(s => ({ student_id: s.id, status: marks[s.id] }));
+      if (!records.length) {
+        toast.error('Mark at least one student before saving');
+        return;
+      }
       await api('/attendance-bulk', { method: 'POST', body: JSON.stringify({ date, program_id: program, records }) });
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#22c55e', '#7c3aed'] });
       toast.success(`Attendance saved for ${records.length} students`);
