@@ -2281,6 +2281,8 @@ function Attendance() {
       });
       confetti({ particleCount: 60, spread: 60, origin: { y: 0.7 }, colors: ['#10b981', '#22c55e', '#7c3aed'] });
       toast.success(`Attendance saved: ${pendingAttendance.presentCount} present, ${pendingAttendance.absentCount} absent`);
+      setMarks(Object.fromEntries(pendingAttendance.records.map(record => [record.student_id, record.status])));
+      setExisting(Object.fromEntries(pendingAttendance.records.map(record => [record.student_id, record.status])));
       setPendingAttendance(null);
       Promise.all([api(`/programs/${program}/sessions`), api(`/enrollments?program_id=${program}`)]).then(([sessionResult, enrollmentResult]) => {
         setSessions(sessionResult.sessions || []);
