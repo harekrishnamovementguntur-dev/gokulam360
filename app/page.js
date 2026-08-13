@@ -2507,6 +2507,7 @@ function Fees({ currentUser }) {
   const [students, setStudents] = useState([]);
   const [programs, setPrograms] = useState([]);
   const [programFilter, setProgramFilter] = useState('');
+  const [studentSearch, setStudentSearch] = useState('');
   const [paymentFor, setPaymentFor] = useState(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMode, setPaymentMode] = useState('cash');
@@ -2521,7 +2522,21 @@ function Fees({ currentUser }) {
   }, []);
   const sMap = Object.fromEntries(students.map(s => [s.id, s]));
   const batches = programs.filter(p => p.parent_program_id);
-  const visibleItems = programFilter ? items.filter(f => f.program_id === programFilter) : items;
+  const normalizedStudentSearch = studentSearch.trim().toLowerCase();
+  const visibleItems = items.filter(f => {
+    const matchesProgram = !programFilter || f.program_id === programFilter;
+    if (!normalizedStudentSearch) return matchesProgram;
+    const student = sMap[f.student_id];
+    const searchable = [
+      student?.first_name,
+      student?.last_name,
+      student?.student_id,
+      student?.mobile,
+      student?.phone,
+      student?.email,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return matchesProgram && searchable.includes(normalizedStudentSearch);
+  });
   const pending = visibleItems.filter(f => Number(f.amount || 0) > Number(f.paid_amount || 0));
   const paid = visibleItems.filter(f => Number(f.paid_amount || 0) > 0);
   const totalPending = pending.reduce((a, f) => a + Math.max(0, Number(f.amount || 0) - Number(f.paid_amount || 0)), 0);
@@ -2556,7 +2571,16 @@ function Fees({ currentUser }) {
   return (
     <div className="space-y-5">
       <PageHeader title="Fees" subtitle="Track collections & pending dues" icon={IndianRupee} />
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="min-w-[260px] flex-1 max-w-md">
+          <Label htmlFor="fees-student-search" className="sr-only">Search students</Label>
+          <Input
+            id="fees-student-search"
+            value={studentSearch}
+            onChange={e => setStudentSearch(e.target.value)}
+            placeholder="Search student by name, phone, ID or email"
+          />
+        </div>
         <span className="text-sm font-medium text-muted-foreground">Classify by</span>
         <Select value={programFilter || 'all'} onValueChange={v => setProgramFilter(v === 'all' ? '' : v)}>
           <SelectTrigger className="w-72"><SelectValue placeholder="All programs & batches" /></SelectTrigger>
