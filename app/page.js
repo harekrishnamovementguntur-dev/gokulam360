@@ -2579,11 +2579,12 @@ function Fees({ currentUser }) {
             value={studentSearch}
             onChange={e => setStudentSearch(e.target.value)}
             placeholder="Search student by name, phone, ID or email"
+            className="bg-white text-slate-900 placeholder:text-slate-500"
           />
         </div>
         <span className="text-sm font-medium text-muted-foreground">Classify by</span>
         <Select value={programFilter || 'all'} onValueChange={v => setProgramFilter(v === 'all' ? '' : v)}>
-          <SelectTrigger className="w-72"><SelectValue placeholder="All programs & batches" /></SelectTrigger>
+          <SelectTrigger className="w-72 bg-white text-slate-900"><SelectValue placeholder="All programs & batches" /></SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All programs & batches</SelectItem>
             {batches.map(batch => {
