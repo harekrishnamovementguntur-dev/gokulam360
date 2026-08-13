@@ -1444,7 +1444,7 @@ async function router(req, method) {
     const teachers = await db.collection('teachers').find(scope).toArray();
     const feesScope = user.role === 'super_admin' ? {} : { organization_id: user.organization_id };
     const fees = await db.collection('fees').find(feesScope).toArray();
-    const events = await db.collection('events').find(feesScope).toArray();
+    const events = await db.collection('events').find({ ...feesScope, is_deleted: { $ne: true } }).toArray();
     const attendance = await db.collection('attendance').find(feesScope).toArray();
 
     const activeStudents = students.filter(s => s.status === 'active').length;
