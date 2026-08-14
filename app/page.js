@@ -33,6 +33,31 @@ import { Command, CommandDialog, CommandEmpty, CommandGroup, CommandInput, Comma
 import { Progress } from '@/components/ui/progress';
 import { Skeleton } from '@/components/ui/skeleton';
 
+// A deterministic 14-verse rotation keeps Daily Inspiration available without external requests.
+// One verse is shown per calendar day and the catalog repeats after 14 days.
+const DAILY_INSPIRATIONS = [
+  { text: 'When one is satisfied within, there is no material duty left to perform.', reference: 'Bhagavad Gita 3.17' },
+  { text: 'You have a right to your work, but not to the results it produces.', reference: 'Bhagavad Gita 2.47' },
+  { text: 'Steady practice brings the mind back whenever it wanders.', reference: 'Bhagavad Gita 6.26' },
+  { text: 'A person is elevated by their own mind and can also be guided by it.', reference: 'Bhagavad Gita 6.5' },
+  { text: 'Knowledge is the boat that carries sincere seekers across difficulty.', reference: 'Bhagavad Gita 4.36' },
+  { text: 'Offer your work to Me, free from selfish attachment and anxiety.', reference: 'Bhagavad Gita 3.30' },
+  { text: 'The humble, learned person sees the same spiritual nature in every living being.', reference: 'Bhagavad Gita 5.18' },
+  { text: 'Whenever goodness declines and disorder rises, I manifest to protect dharma.', reference: 'Bhagavad Gita 4.7' },
+  { text: 'One who serves with devotion is dear to Me.', reference: 'Bhagavad Gita 12.14' },
+  { text: 'The soul is never born and never dies.', reference: 'Bhagavad Gita 2.20' },
+  { text: 'Whatever you do, do it as an offering with a steady heart.', reference: 'Bhagavad Gita 9.27' },
+  { text: 'From attachment comes desire, and from desire comes anger; wisdom breaks this chain.', reference: 'Bhagavad Gita 2.62-63' },
+  { text: 'By practice and detachment, the restless mind can be brought under control.', reference: 'Bhagavad Gita 6.35' },
+  { text: 'Abandon all varieties of duty and surrender unto Me; I will protect you, so do not fear.', reference: 'Bhagavad Gita 18.66' },
+];
+
+function getDailyInspiration(date = new Date()) {
+  const day = new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+  const index = Math.floor(day / 86400000) % DAILY_INSPIRATIONS.length;
+  return DAILY_INSPIRATIONS[index];
+}
+
 const API = '/api';
 
 /* ---------- helpers ---------- */
