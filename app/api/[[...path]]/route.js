@@ -218,11 +218,26 @@ async function recordAccountAudit(db, user, action, metadata = {}) {
   await db.collection('audit_logs').insertOne({ id: uuidv4(), organization_id: user.organization_id || null, actor_id: user.id, actor_email: user.email, action, metadata, created_at: new Date().toISOString() });
 }
 
-async function requireAuth(req, roles = null) {
+async function requireAuth(req, roles = null, db = null) {
   const user = verifyToken(req);
   if (!user) return { error: json({ error: 'Unauthorized' }, 401) };
   if (roles && !roles.includes(user.role)) {
     return { error: json({ error: 'Forbidden' }, 403) };
+  }
+  // JWTs are revalidated against current account and tenant state so disabled,
+  // deleted, or de-scoped accounts cannot keep using an old token.
+  if (db) {
+    const current = await db.collection('users').findOne({ id: user.id });
+    if (!current || current.is_deleted === true || current.status === 'inactive') {
+      return { error: json({ error: 'Account is inactive' }, 403) };
+    }
+    if (current.email !== user.email || current.role !== user.role || (current.organization_id || null) !== (user.organization_id || null)) {
+      return { error: json({ error: 'Session is no longer valid' }, 401) };
+    }
+    if (current.organization_id) {
+      const org = await db.collection('organizations').findOne({ id: current.organization_id });
+      if (!org || org.is_deleted === true) return { error: json({ error: 'Organization is inactive' }, 403) };
+    }
   }
   return { user };
 }
@@ -366,7 +381,7 @@ async function recordPlatformAudit(db, actor, action, metadata = {}, organizatio
 
 function stripId(doc) {
   if (!doc) return doc;
-  const { _id, password_hash, ...rest } = doc;
+  const { _id, password_hash, otp_hash, reset_token, access_token, refresh_token, ...rest } = doc;
   return rest;
 }
 
@@ -823,12 +838,16 @@ async function router(req, method) {
   if (resource === 'seed' && method === 'POST') {
     // Seeding is destructive and is only available for an explicitly enabled
     // local demo environment. Once users exist, a super admin must authorize it.
-    if (process.env.NODE_ENV === 'production' || process.env.ALLOW_DEMO_SEED !== 'true') {
+    if (
+      process.env.NODE_ENV === 'production' ||
+      process.env.ALLOW_DEMO_SEED !== 'true' ||
+      process.env.DEMO_SEED_CONFIRM !== 'reset-gokulam360-demo'
+    ) {
       return json({ error: 'Not found' }, 404);
     }
     const hasUsers = await db.collection('users').countDocuments({}, { limit: 1 });
     if (hasUsers) {
-      const seedAuth = await requireAuth(req, ['super_admin']);
+      const seedAuth = await requireAuth(req, ['super_admin'], db);
       if (seedAuth.error) return seedAuth.error;
     }
     return handleSeed();
@@ -848,7 +867,7 @@ async function router(req, method) {
       return json({ token, user: { id: user.id, email: user.email, name: user.name, role: user.role, organization_id: user.organization_id, phone: user.phone || '', force_password_change: user.force_password_change === true }, organization: org ? stripId(org) : null });
     }
     if (id === 'me' && method === 'GET') {
-      const authRes = await requireAuth(req);
+      const authRes = await requireAuth(req, null, db)
       if (authRes.error) return authRes.error;
       const u = authRes.user;
       const stored = await db.collection('users').findOne({ id: u.id });
@@ -1101,7 +1120,18 @@ async function router(req, method) {
     if (method === 'POST' && !id) {
        const body = await req.json();
        const enrollmentDetails = resource === 'students' ? (body.enrollment_details || {}) : {};
-       const { enrollment_details: ignoredEnrollmentDetails, ...persistedBody } = body;
+       const {
+         id: ignoredId,
+         _id: ignoredMongoId,
+         organization_id: ignoredOrganizationId,
+         password_hash: ignoredPasswordHash,
+         role: ignoredRole,
+         created_at: ignoredCreatedAt,
+         updated_at: ignoredUpdatedAt,
+         is_deleted: ignoredDeleted,
+         enrollment_details: ignoredEnrollmentDetails,
+         ...persistedBody
+       } = body;
        const organizationId = user.role === 'super_admin' ? body.organization_id : user.organization_id;
        if (!organizationId) return json({ error: 'organization_id is required' }, 400);
        if (resource === 'programs') {
@@ -1169,7 +1199,21 @@ async function router(req, method) {
        const before = await col.findOne({ id, ...orgScope(user) });
        if (!before) return json({ error: 'Not found' }, 404);
        // Do not let callers move records between tenants or alter server-owned fields.
-       const { id: ignoredId, organization_id: ignoredOrganizationId, created_at: ignoredCreatedAt, updated_at: ignoredUpdatedAt, is_deleted: ignoredDeleted, enrollment_details: ignoredEnrollmentDetails, ...changes } = body;
+       const {
+         id: ignoredId,
+         _id: ignoredMongoId,
+         organization_id: ignoredOrganizationId,
+         password_hash: ignoredPasswordHash,
+         role: ignoredRole,
+         user_id: ignoredUserId,
+         actor_id: ignoredActorId,
+         public_token: ignoredPublicToken,
+         created_at: ignoredCreatedAt,
+         updated_at: ignoredUpdatedAt,
+         is_deleted: ignoredDeleted,
+         enrollment_details: ignoredEnrollmentDetails,
+         ...changes
+       } = body;
        const updated = { ...changes, updated_at: new Date().toISOString() };
       if (resource === 'students' && changes.status && changes.status !== before.status) {
         updated.status_changed_at = updated.updated_at;
