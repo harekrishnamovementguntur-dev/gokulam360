@@ -524,6 +524,8 @@ function Dashboard({ user, org, onNav }) {
     { key: 'teachers', label: 'Faculty', value: stats.totalTeachers, sub: 'Faculty on board', icon: Users, grad: 'bg-violet-gradient', ring: 'from-violet-500/40 to-fuchsia-500/20' },
   ];
 
+  const dailyInspiration = getDailyInspiration();
+
   return (
     <div className="space-y-6">
       {/* HERO GREETING */}
@@ -706,8 +708,8 @@ function Dashboard({ user, org, onNav }) {
             <div className="inline-flex items-center gap-1.5 text-[10px] font-semibold bg-white/20 rounded-full px-2 py-0.5 mb-3">
               <Sparkles size={10} /> DAILY INSPIRATION
             </div>
-            <div className="text-lg font-semibold leading-snug">"For those who take pleasure in the self, whose human life is one of self-realization, there is no duty."</div>
-            <div className="text-xs opacity-80 mt-2">— Bhagavad Gita 3.17</div>
+            <div className="text-lg font-semibold leading-snug">"{dailyInspiration.text}"</div>
+            <div className="text-xs opacity-80 mt-2">— {dailyInspiration.reference}</div>
             <div className="mt-4 flex items-center gap-2 text-[11px] opacity-85">
               <PartyPopper size={12} /> Every child taught is a soul awakened
             </div>
