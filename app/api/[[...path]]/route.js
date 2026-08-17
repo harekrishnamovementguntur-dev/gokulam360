@@ -480,6 +480,79 @@ async function finalizePastStudentAttendance(db, user, programId, sessions) {
   }
 }
 
+const CREDIT_COUNTING_ATTENDANCE = new Set(['present', 'absent', 'late']);
+
+function isDateBasedProgram(program) {
+  return ['date', 'date_based', 'dates'].includes(String(program?.billing_model || '').toLowerCase());
+}
+
+async function refreshStudentLifecycle(db, user, students) {
+  if (!students.length) return students;
+  const scope = orgScope(user);
+  const studentIds = students.map(student => student.id);
+  const enrollments = await db.collection('enrollments').find({
+    ...scope,
+    student_id: { $in: studentIds },
+    left_at: null,
+    status: 'active',
+  }).toArray();
+  const programIds = [...new Set(enrollments.map(enrollment => enrollment.program_id).filter(Boolean))];
+  const [programs, attendance] = await Promise.all([
+    db.collection('programs').find({
+      ...scope,
+      id: { $in: programIds },
+      is_deleted: { $ne: true },
+    }).toArray(),
+    db.collection('attendance').find({
+      ...scope,
+      student_id: { $in: studentIds },
+    }).toArray(),
+  ]);
+  const programMap = new Map(programs.map(program => [program.id, program]));
+  const now = new Date().toISOString();
+  const today = localToday();
+
+  for (const student of students) {
+    const studentEnrollments = enrollments.filter(enrollment => enrollment.student_id === student.id);
+    const eligible = studentEnrollments.some(enrollment => {
+      const program = programMap.get(enrollment.program_id);
+      if (!program) return false;
+      if (isDateBasedProgram(program)) {
+        const start = String(program.start_date || '').slice(0, 10);
+        const end = String(program.end_date || '').slice(0, 10);
+        return (!start || today >= start) && (!end || today <= end);
+      }
+      const enrolledDate = String(enrollment.enrolled_at || '').slice(0, 10);
+      const used = attendance.filter(record =>
+        record.student_id === student.id &&
+        record.program_id === enrollment.program_id &&
+        CREDIT_COUNTING_ATTENDANCE.has(String(record.status || '').toLowerCase()) &&
+        (!enrolledDate || String(record.date || '').slice(0, 10) >= enrolledDate),
+      ).length;
+      const granted = Number(enrollment.sessions_credited ?? enrollment.credits_granted ?? enrollment.total_credits ?? 0);
+      return Math.max(0, granted - used) > 0;
+    });
+
+    if (student.status === 'active' && !eligible) {
+      student.status = 'inactive';
+      student.auto_inactive = true;
+      await db.collection('students').updateOne(
+        { id: student.id, ...scope },
+        { $set: { status: 'inactive', auto_inactive: true, updated_at: now } },
+      );
+    } else if (student.status === 'inactive' && student.auto_inactive === true && eligible) {
+      student.status = 'active';
+      student.auto_inactive = false;
+      await db.collection('students').updateOne(
+        { id: student.id, ...scope, status: 'inactive', auto_inactive: true },
+        { $set: { status: 'active', auto_inactive: false, updated_at: now } },
+      );
+    }
+  }
+
+  return students;
+}
+
 async function syncEnrollments(db, student, oldProgramIds = [], enrollmentDetails = {}, options = {}) {
   const orgId = student.organization_id;
   const newIds = student.program_ids || [];
@@ -1109,7 +1182,8 @@ async function router(req, method) {
        Object.keys(params).forEach(k => {
          if (!['organization_id', 'is_deleted', '_id'].includes(k)) q[k] = params[k];
        });
-      const items = await col.find(q).sort({ created_at: -1 }).limit(500).toArray();
+      let items = await col.find(q).sort({ created_at: -1 }).limit(500).toArray();
+      if (resource === 'students') items = await refreshStudentLifecycle(db, user, items);
       return json({ items: items.map(stripId) });
     }
     if (method === 'GET' && id && !sub) {
@@ -1154,7 +1228,10 @@ async function router(req, method) {
         updated_at: new Date().toISOString(),
         is_deleted: false,
       };
-      if (resource === 'students' && doc.status === 'active') doc.active_from = doc.created_at;
+      if (resource === 'students') {
+        doc.auto_inactive = false;
+        if (doc.status === 'active') doc.active_from = doc.created_at;
+      }
       // Auto-generate public token for students
       if (resource === 'students' && !doc.public_token) doc.public_token = uuidv4();
       if (resource === 'events') {
@@ -1211,10 +1288,14 @@ async function router(req, method) {
          created_at: ignoredCreatedAt,
          updated_at: ignoredUpdatedAt,
          is_deleted: ignoredDeleted,
+         auto_inactive: ignoredAutoInactive,
          enrollment_details: ignoredEnrollmentDetails,
          ...changes
        } = body;
        const updated = { ...changes, updated_at: new Date().toISOString() };
+      if (resource === 'students' && Object.prototype.hasOwnProperty.call(body, 'status')) {
+        updated.auto_inactive = false;
+      }
       if (resource === 'students' && changes.status && changes.status !== before.status) {
         updated.status_changed_at = updated.updated_at;
         if (changes.status === 'active') updated.active_from = updated.updated_at;
@@ -1440,8 +1521,11 @@ async function router(req, method) {
     const program = await db.collection('programs').findOne({ id: program_id, ...orgScope(user) });
     if (!program) return json({ error: 'Program not found' }, 404);
     const studentIds = [...new Set(records.map(r => r.student_id))];
-    const matchingStudents = await db.collection('students').countDocuments({ id: { $in: studentIds }, ...orgScope(user), is_deleted: { $ne: true } });
-    if (matchingStudents !== studentIds.length) return json({ error: 'One or more students do not belong to this organization' }, 400);
+    let attendanceStudents = await db.collection('students').find({ id: { $in: studentIds }, ...orgScope(user), is_deleted: { $ne: true } }).toArray();
+    if (attendanceStudents.length !== studentIds.length) return json({ error: 'One or more students do not belong to this organization' }, 400);
+    attendanceStudents = await refreshStudentLifecycle(db, user, attendanceStudents);
+    const activeStudentIds = new Set(attendanceStudents.filter(student => student.status === 'active').map(student => student.id));
+    if (activeStudentIds.size !== studentIds.length) return json({ error: 'Attendance can only be recorded for active students with available credits or active dates' }, 422);
     // Remove existing for this date+program+org
     await db.collection('attendance').deleteMany({ organization_id: user.organization_id, date, program_id });
     const docs = records.map(r => ({
@@ -1484,7 +1568,8 @@ async function router(req, method) {
   // Dashboard stats
   if (resource === 'dashboard' && method === 'GET') {
     const scope = orgScope(user, { is_deleted: { $ne: true } });
-    const students = await db.collection('students').find(scope).toArray();
+    let students = await db.collection('students').find(scope).toArray();
+    students = await refreshStudentLifecycle(db, user, students);
     const teachers = await db.collection('teachers').find(scope).toArray();
     const feesScope = user.role === 'super_admin' ? {} : { organization_id: user.organization_id };
     const fees = await db.collection('fees').find(feesScope).toArray();
