@@ -1528,7 +1528,7 @@ function Students({ students, setStudents }) {
               </div>
               <div className="text-[11px] text-muted-foreground mt-3 space-y-0.5">
                 {s.mobile && <div className="flex items-center gap-1.5"><Phone size={11} /> {s.mobile}</div>}
-                {(() => { const credits = creditsFor(s.id); const hasCredits = creditEnrollments(s.id).length > 0; return hasCredits ? <div className="text-[10px] text-primary truncate" title={`${credits.given} granted · ${credits.used} used · ${credits.remaining} left`}>{credits.given} granted · {credits.used} used · {credits.remaining} left</div> : <div className="text-[10px] text-muted-foreground">Date-based attendance</div>; })()}
+                {(() => { const credits = creditsFor(s.id); const hasCredits = creditEnrollments(s.id).length > 0; const lowCredits = credits.remaining <= 3; return hasCredits ? <div className={`text-[10px] truncate ${lowCredits ? 'text-red-600 font-semibold' : 'text-primary'}`} title={`${credits.given} granted · ${credits.used} used · ${credits.remaining} left`}>{credits.given} granted · {credits.used} used · {credits.remaining} left</div> : <div className="text-[10px] text-muted-foreground">Date-based attendance</div>; })()}
               </div>
               <div className="flex flex-wrap gap-1 mt-3 pt-3 border-t">
                 <Button size="sm" variant="ghost" className="min-w-0 flex-1 text-xs h-8" onClick={() => setHistoryOf(s)}><Activity size={13} className="mr-1" /> History</Button>
