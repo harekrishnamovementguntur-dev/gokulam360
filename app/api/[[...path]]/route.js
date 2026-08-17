@@ -1568,13 +1568,17 @@ async function router(req, method) {
   // Dashboard stats
   if (resource === 'dashboard' && method === 'GET') {
     const scope = orgScope(user, { is_deleted: { $ne: true } });
-    let students = await db.collection('students').find(scope).toArray();
-    students = await refreshStudentLifecycle(db, user, students);
-    const teachers = await db.collection('teachers').find(scope).toArray();
     const feesScope = user.role === 'super_admin' ? {} : { organization_id: user.organization_id };
-    const fees = await db.collection('fees').find(feesScope).toArray();
-    const events = await db.collection('events').find({ ...feesScope, is_deleted: { $ne: true } }).toArray();
-    const attendance = await db.collection('attendance').find(feesScope).toArray();
+    // These dashboard inputs are independent. Fetch them concurrently and project only
+    // the fields needed for the summary, avoiding a serial full-document waterfall.
+    let [students, totalTeachers, fees, events, attendance] = await Promise.all([
+      db.collection('students').find(scope).project({ id: 1, status: 1, auto_inactive: 1, admission_date: 1, created_at: 1 }).toArray(),
+      db.collection('teachers').countDocuments(scope),
+      db.collection('fees').find(feesScope).project({ amount: 1, paid_amount: 1, status: 1 }).toArray(),
+      db.collection('events').find({ ...feesScope, is_deleted: { $ne: true } }).project({ id: 1, name: 1, description: 1, date: 1 }).toArray(),
+      db.collection('attendance').find(feesScope).project({ date: 1, status: 1 }).toArray(),
+    ]);
+    students = await refreshStudentLifecycle(db, user, students);
 
     const activeStudents = students.filter(s => s.status === 'active').length;
     const totalStudents = students.length;
@@ -1624,7 +1628,7 @@ async function router(req, method) {
       attendancePct,
       pendingFees,
       collectedFees,
-      totalTeachers: teachers.length,
+      totalTeachers,
       upcomingEvents: events.filter(e => new Date(e.date) >= new Date()).slice(0, 5),
       monthlyAdmissions,
       attendanceTrend,
